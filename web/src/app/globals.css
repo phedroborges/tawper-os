@@ -1,0 +1,129 @@
+@import "tailwindcss";
+
+/*
+ * Tawper OS — interface sóbria.
+ * A marca é a base (navy para ação, vermelho reservado a alerta real e ao logo);
+ * o resto é neutro, claro e com bastante respiro.
+ */
+@theme {
+  --font-sans: "Poppins", Arial, Helvetica, sans-serif;
+
+  /* marca */
+  --color-navy: #0a1d3f;
+  --color-navy-2: #123058;
+  --color-navy-3: #2b4a78;
+  --color-brand: #d41624;
+  --color-brand-dark: #b0101c;
+  --color-brand-soft: #fdeef0;
+
+  /* neutros */
+  --color-paper: #fafaf9;
+  --color-surface: #ffffff;
+  --color-soft: #f2f4f7;
+  --color-soft-2: #e9edf3;
+  --color-ink: #1a2232;
+  --color-ink-2: #46506380;
+  --color-muted: #6b7484;
+  --color-line: #e6e8ec;
+
+  /* estados */
+  --color-ok: #157f5f;
+  --color-ok-soft: #e7f4ef;
+  --color-warn: #96670a;
+  --color-warn-soft: #fbf2e3;
+  --color-ai: #3f5a8a;
+  --color-ai-soft: #eef2f8;
+
+  --radius-sm: 4px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+
+  --shadow-card: 0 1px 2px #1a223208;
+  --shadow-pop: 0 16px 40px #1a22321f;
+
+  --animate-fade-in: fade-in 0.16s ease-out;
+  --animate-slide-up: slide-up 0.2s ease-out;
+  --animate-slide-left: slide-left 0.2s ease-out;
+  --animate-pulse-dot: pulse-dot 1.2s ease-in-out infinite;
+
+  @keyframes fade-in {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+  @keyframes slide-up {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+  @keyframes slide-left {
+    from { opacity: 0; transform: translateX(20px); }
+    to { opacity: 1; transform: translateX(0); }
+  }
+  @keyframes pulse-dot {
+    0%, 80%, 100% { opacity: 0.25; transform: scale(0.85); }
+    40% { opacity: 1; transform: scale(1); }
+  }
+}
+
+html,
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+}
+
+body {
+  font-family: var(--font-sans);
+  font-size: 13.5px;
+  -webkit-font-smoothing: antialiased;
+}
+
+::selection {
+  background: #0a1d3f1a;
+}
+
+/* rótulo discreto acima de um bloco — sem caixa alta pesada */
+.label {
+  font-size: 11.5px;
+  font-weight: 500;
+  color: var(--color-muted);
+}
+
+/* superfície escura do Modo TV (chapada, sem textura) */
+.navy-flat {
+  background: #0a1d3f;
+}
+
+.square-list li {
+  position: relative;
+  padding-left: 14px;
+}
+.square-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0.62em;
+  width: 4px;
+  height: 4px;
+  border-radius: 1px;
+  background: #9aa3b2;
+}
+
+.scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: #d3d8e0 transparent;
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* trechos que a IA reconheceu no texto */
+mark.ai-mark {
+  background: #3f5a8a14;
+  color: var(--color-ai);
+  border-bottom: 1px solid #3f5a8a66;
+  padding: 0 1px;
+  border-radius: 2px;
+}
