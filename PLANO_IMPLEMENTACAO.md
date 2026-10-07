@@ -366,7 +366,7 @@ As estimativas medem duração provável, não substituem os gates. Uma fase atr
 - [ ] Plano inicial de consentimento, retenção e exclusão para LGPD.
 - [ ] Critérios de aceite escritos para os cinco cenários principais.
 - [ ] Nomeação do responsável por aprovar cada gate.
-- [ ] ADR-001: stack e hospedagem aprovadas.
+- [ ] ADR-001: stack e hospedagem aprovadas. Redigida em `docs/adr/ADR-001-stack-e-hospedagem.md`; aguarda aprovação formal.
 - [ ] ADR-002: estratégia de autenticação aprovada.
 - [ ] ADR-003: estratégia temporária e futura do WhatsApp aprovada.
 - [x] Painel visual do plano mestre disponível em `/implementacao`.
@@ -1407,7 +1407,7 @@ Estas decisões impedem o Gate G0:
 - [ ] Quais números entram no piloto e quem é proprietário deles?
 - [ ] Qual volume diário esperado de mensagens?
 - [ ] Quais dados e históricos precisam ser retidos?
-- [ ] Qual será a hospedagem do Next.js e dos workers?
+- [x] Qual será a hospedagem do Next.js e dos workers? Respondida no ADR-001: Supabase Cloud para o banco; VPS com EasyPanel para o restante, compartilhada nos testes e duas VPS dedicadas em produção; Cloudflare na frente.
 - [ ] Quais indicadores são indispensáveis no primeiro dashboard?
 - [ ] Quais tempos máximos de resposta e indisponibilidade são aceitáveis?
 
