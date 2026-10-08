@@ -300,6 +300,7 @@ O caminho crítico do Marco A é:
 Somente estas atividades podem ocorrer antes da fase correspondente:
 
 - na Fase 0, realizar prova técnica descartável dos provedores de WhatsApp;
+- o banco de dados está sendo criado sem autenticação de usuários de login. A Fase 3 — Autenticação, autorização e segurança será alinhada por último com o Murilo; até essa decisão, o schema e o uso local não dependem de login;
 - durante F2–F4, preparar dados brutos de migração sem importá-los no banco final;
 - durante F5–F6, solicitar acessos, verificações e documentos necessários à API oficial;
 - durante F7–F10, preparar conjunto anonimizado de avaliações de IA, sem integrar IA à produção.

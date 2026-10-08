@@ -50,6 +50,7 @@ function NovaEmpresa() {
   const [next, setNext] = useState({ titulo: "Qualificar: frota, prensa e fornecedor atual", tipo: "WhatsApp" as ActivityType, due: toInputDate(rel(0)), prioridade: "Alta" as Prioridade });
   const [decision, setDecision] = useState<{ kind: "merge"; id: string } | { kind: "new" } | null>(null);
   const [touched, setTouched] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
     if (!lead || !conv || filled) return;
@@ -105,7 +106,7 @@ function NovaEmpresa() {
   const needsDecision = dups.length > 0 && !decision;
   const valid = f.nome.trim() && f.cidade.trim() && ct.nome.trim() && next.titulo.trim();
 
-  const save = () => {
+    const save = async () => {
     setTouched(true);
     if (!valid || needsDecision) return;
     const company: Partial<Company> & { nome: string } = {
@@ -124,15 +125,38 @@ function NovaEmpresa() {
       marcaAtual: f.marcaAtual || undefined,
       observacoes: f.observacoes || undefined,
     };
-    const input = {
+    const payload = {
       company,
       contacts: [{ nome: ct.nome.trim(), cargo: ct.cargo || ct.papel, papel: ct.papel, influencia: 2 as const, whatsapp: ct.whatsapp || undefined, email: ct.email || undefined, canal: "WhatsApp" as const, autorizaContato: true, ativo: true }],
       firstActivity: { tipo: next.tipo, titulo: next.titulo, dueAt: fromInputDate(next.due, 10), prioridade: next.prioridade, ownerId: f.ownerId },
       conversationId: convId,
     };
-    const id = decision?.kind === "merge" ? s.mergeIntoCompany(decision.id, input) : s.createCompany(input);
-    toast(decision?.kind === "merge" ? "Registros unidos — histórico preservado" : "Empresa cadastrada", { sub: "Oportunidade criada em Lead desconhecido com o primeiro próximo passo" });
-    router.push(`/empresas/${id}`);
+    if (decision?.kind === "merge" || process.env.NEXT_PUBLIC_TAWPER_USE_SUPABASE !== "true") {
+      const id = decision?.kind === "merge" ? s.mergeIntoCompany(decision.id, payload) : s.createCompany(payload);
+      toast(decision?.kind === "merge" ? "Registros unidos — histórico preservado" : "Empresa cadastrada", { sub: "Oportunidade criada em Lead desconhecido com o primeiro próximo passo" });
+      router.push(`/empresas/${id}`);
+      return;
+    }
+    setSaving(true);
+    try {
+      const res = await fetch("/api/crm/mutate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "createCompany", actorId: user.id, ...payload }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        toast(body.error ?? "Não foi possível salvar no banco", { tone: "warn" });
+        return;
+      }
+      s.adoptSaved(body);
+      toast("Empresa cadastrada no banco", { sub: "Oportunidade criada em Lead desconhecido com o primeiro próximo passo" });
+      router.push(`/empresas/${body.company.id}`);
+    } catch {
+      toast("Não foi possível salvar no banco", { tone: "warn" });
+    } finally {
+      setSaving(false);
+    }
   };
 
   const req = (v: string) => touched && !v.trim();
@@ -369,8 +393,8 @@ function NovaEmpresa() {
               <li>{conv ? "Vincula a conversa do WhatsApp à empresa e ao contato." : "Coloca o cliente na agenda do responsável."}</li>
               <li>Registra a criação na auditoria.</li>
             </ul>
-            <Button variant="primary" size="lg" className="mt-4 w-full" onClick={save} disabled={reading}>
-              <Check size={16} /> {decision?.kind === "merge" ? "Unir e salvar" : "Cadastrar empresa"}
+            <Button variant="primary" size="lg" className="mt-4 w-full" onClick={save} disabled={reading || saving}>
+              <Check size={16} /> {saving ? "Salvando no banco…" : decision?.kind === "merge" ? "Unir e salvar" : "Cadastrar empresa"}
             </Button>
             {touched && needsDecision && <p className="mt-2 text-[12px] font-semibold text-warn">Decida sobre a possível duplicidade antes de salvar.</p>}
             {touched && !valid && <p className="mt-2 text-[12px] font-semibold text-brand">Preencha nome, cidade, contato e próximo passo.</p>}

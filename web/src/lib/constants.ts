@@ -69,6 +69,11 @@ export function isManager(u?: User) {
   return u?.role === "admin" || u?.role === "gestor";
 }
 
+/** Sem login real, a exclusão de empresa fica presa a esta pessoa, não ao papel genérico. */
+export function isMuriloLouis(u?: { id?: string; name?: string }) {
+  return u?.id === "u-murilo" || u?.name === "Murilo Louis";
+}
+
 export interface Criterion {
   id: string;
   label: string;

@@ -88,7 +88,7 @@ export function ChatThread({ conv, className, showHeader = true }: { conv: Conve
               {deal && <StagePill deal={deal} />}
             </div>
             <div className="text-[11.5px] text-muted">
-              {conv.telefone} · no WhatsApp de {s.users.find((u) => u.id === conv.ownerId)?.short}
+              {conv.telefone} · {s.users.find((u) => u.id === conv.ownerId)?.short}
             </div>
           </div>
         </div>

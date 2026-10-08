@@ -14,6 +14,7 @@ import {
   Plus,
   Sparkles,
   StickyNote,
+  Trash2,
   Trophy,
   UserPlus,
   XCircle,
@@ -27,7 +28,7 @@ import { CopilotCard, StrategyTab } from "@/components/company/StrategyTab";
 import { CompanyLink, NextStepCard, QualityMeter, StagePill, StageStepper, StatusBadge, TaskRow, Timeline, UrgencyBadge, UserAvatar, userName } from "@/components/crm/crm";
 import { MenuItem, Popover } from "@/components/ui/overlay";
 import { Badge, Button, Card, CardHeader, Empty } from "@/components/ui/primitives";
-import { FUNNELS, getStage, isManager } from "@/lib/constants";
+import { FUNNELS, getStage, isManager, isMuriloLouis } from "@/lib/constants";
 import { fmtAgo, fmtDate, fmtDateTime, rel } from "@/lib/dates";
 import { canSeeCompany, currentDealOf, daysInStage, lastInteractionAt, missingCriteria, openDealOf, pendingOf, qualityOf, timelineOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
@@ -123,7 +124,7 @@ function EmpresaView() {
         <span className="truncate">{company.nome}</span>
       </div>
 
-      <Card className="mb-4 overflow-hidden">
+      <Card className="relative z-20 mb-4">
         <div className="p-4 md:p-5">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
             <div className="min-w-0">
@@ -183,6 +184,11 @@ function EmpresaView() {
                     <MenuItem icon={<MessageCircle size={14} />} onClick={() => { close(); startConversation(); }}>
                       Conversar no WhatsApp
                     </MenuItem>
+                    {isMuriloLouis(user) && (
+                      <MenuItem icon={<Trash2 size={14} />} danger onClick={() => { close(); open({ kind: "deleteCompany", companyId: company.id }); }} sub="somente Murilo Louis">
+                        Excluir empresa
+                      </MenuItem>
+                    )}
                     {deal && (
                       <MenuItem icon={<Trophy size={14} />} onClick={() => { close(); open({ kind: "win", dealId: deal.id }); }}>
                         Registrar venda

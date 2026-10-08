@@ -46,10 +46,10 @@ function Central() {
     <div className="-mt-1">
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div>
-          <div className="label">Central de conversas · WhatsApp integrado (simulado)</div>
+          <div className="label">Central de conversas</div>
           <h1 className="text-[26px] font-bold tracking-[-0.02em] text-ink">Conversas</h1>
         </div>
-        <div className="text-[12px] text-muted">5 números da equipe · cada conversa vinculada à empresa e ao contato</div>
+        <div className="text-[12px] text-muted">Cada conversa vinculada à empresa, ao contato e à oportunidade</div>
       </div>
       <Card className="grid h-[calc(100dvh-190px)] min-h-[560px] grid-cols-1 overflow-hidden md:grid-cols-[300px_1fr] xl:grid-cols-[320px_1fr_330px]">
         <aside className={cn("flex min-h-0 min-w-0 flex-col border-r border-line", conv && "hidden md:flex")}>
@@ -90,7 +90,7 @@ function Central() {
                         </span>
                         {c.unread > 0 && <span className="grid min-w-5 place-items-center rounded-full bg-ok px-1.5 text-[10.5px] leading-5 font-bold text-white">{c.unread}</span>}
                       </span>
-                      {isManager(user) && <span className="mt-0.5 block text-[10.5px] text-muted/80">WhatsApp de {s.users.find((u) => u.id === c.ownerId)?.short}</span>}
+                      {isManager(user) && <span className="mt-0.5 block text-[10.5px] text-muted/80">{s.users.find((u) => u.id === c.ownerId)?.short}</span>}
                     </span>
                   </button>
                 </li>

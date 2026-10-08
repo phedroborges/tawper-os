@@ -37,6 +37,7 @@ import { useUI } from "@/lib/ui-store";
 import { cn, normalize } from "@/lib/utils";
 import { AssistantPanel } from "./Assistant";
 import { DemoGuide } from "./DemoGuide";
+import { DbStatus, SupabaseBridge } from "./SupabaseBridge";
 import { Toaster } from "./Toaster";
 
 interface NavItem {
@@ -402,6 +403,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   if (!mounted) return <Splash />;
   return (
     <div className="min-h-dvh bg-paper">
+      <SupabaseBridge />
       <CrossTabSync />
       <aside className="fixed inset-y-0 left-0 z-50 hidden w-[224px] md:block">
         <Sidebar />
@@ -415,6 +417,7 @@ export function AppShell({ children }: { children: ReactNode }) {
       )}
       <div className="md:pl-[224px]">
         <Topbar />
+        <DbStatus />
         <main className="mx-auto w-full max-w-[1440px] px-4 pt-6 pb-28 md:px-8 md:pt-7 md:pb-14">{children}</main>
       </div>
       <MobileTabBar />

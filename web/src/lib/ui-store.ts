@@ -17,6 +17,7 @@ export type Flow =
   | { kind: "contact"; companyId: string }
   | { kind: "editCompany"; companyId: string }
   | { kind: "cobranca"; companyId: string; texto?: string }
+  | { kind: "deleteCompany"; companyId: string }
   | { kind: "drill"; title: string; subtitle?: string; companyIds: string[] }
   | { kind: "reschedule"; activityId: string };
 
@@ -44,6 +45,8 @@ interface UIState {
   setTyping: (convId: string, v: boolean) => void;
   activeConversation: string | null;
   setActiveConversation: (id: string | null) => void;
+  dbHealth: { ok: boolean; label: string } | null;
+  setDbHealth: (v: { ok: boolean; label: string } | null) => void;
 }
 
 let tid = 0;
@@ -70,4 +73,6 @@ export const useUI = create<UIState>()((set, get) => ({
   setTyping: (convId, v) => set({ typing: { ...get().typing, [convId]: v } }),
   activeConversation: null,
   setActiveConversation: (activeConversation) => set({ activeConversation }),
+  dbHealth: null,
+  setDbHealth: (dbHealth) => set({ dbHealth }),
 }));

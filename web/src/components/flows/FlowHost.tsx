@@ -2,7 +2,7 @@
 
 import { useUI } from "@/lib/ui-store";
 import { CompleteActivityModal, NewActivityModal, RescheduleModal } from "./activity";
-import { CobrancaModal, ContactModal, DrillModal, EditCompanyModal } from "./misc";
+import { CobrancaModal, ContactModal, DeleteCompanyModal, DrillModal, EditCompanyModal } from "./misc";
 import { QuickRegisterModal } from "./quick";
 import { QuoteModal } from "./quote";
 import { LoseDealModal, MoveStageModal, StandbyModal, WinDealModal } from "./stage";
@@ -37,6 +37,8 @@ export function FlowHost() {
       return <EditCompanyModal key={key} companyId={flow.companyId} />;
     case "cobranca":
       return <CobrancaModal key={key} companyId={flow.companyId} texto={flow.texto} />;
+    case "deleteCompany":
+      return <DeleteCompanyModal key={key} companyId={flow.companyId} />;
     case "drill":
       return <DrillModal key={key} title={flow.title} subtitle={flow.subtitle} companyIds={flow.companyIds} />;
     default:

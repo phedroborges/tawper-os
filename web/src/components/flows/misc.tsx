@@ -1,14 +1,15 @@
 "use client";
 
-import { Building2, ExternalLink, Megaphone, UserPlus } from "lucide-react";
+import { Building2, ExternalLink, Megaphone, Trash2, UserPlus } from "lucide-react";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { DueLabel, StagePill, StatusBadge, UserAvatar } from "@/components/crm/crm";
 import { Modal } from "@/components/ui/overlay";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui/primitives";
-import { MARCAS, PAPEIS, PRENSAS, RAMOS, REGIOES, UFS } from "@/lib/constants";
+import { isMuriloLouis, MARCAS, PAPEIS, PRENSAS, RAMOS, REGIOES, UFS } from "@/lib/constants";
 import { currentDealOf, nextStepOf, qualityOf } from "@/lib/selectors";
-import { useStore } from "@/lib/store";
+import { useCurrentUser, useStore } from "@/lib/store";
 import type { Company, Papel, Potencial, Prensa, Urgencia } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 
@@ -306,6 +307,71 @@ export function DrillModal({ title, subtitle, companyIds }: { title: string; sub
             </Link>
           );
         })}
+      </div>
+    </Modal>
+  );
+}
+
+export function DeleteCompanyModal({ companyId }: { companyId: string }) {
+  const s = useStore();
+  const user = useCurrentUser();
+  const router = useRouter();
+  const { close, toast } = useUI();
+  const company = s.companies.find((c) => c.id === companyId);
+  const [motivo, setMotivo] = useState("");
+  const [busy, setBusy] = useState(false);
+  if (!company || !isMuriloLouis(user)) return null;
+
+  const confirm = async () => {
+    if (!isMuriloLouis(user) || motivo.trim().length < 3 || busy) return;
+    setBusy(true);
+    try {
+      const res = await fetch("/api/crm/mutate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "deleteCompany", id: company.id, actorId: user.id, reason: motivo.trim() }),
+      });
+      const body = await res.json();
+      if (!res.ok) {
+        toast(body.error ?? "Não foi possível excluir a empresa", { tone: "warn" });
+        return;
+      }
+      s.removeCompany(company.id);
+      toast("Empresa excluída", { sub: company.nome });
+      close();
+      router.push("/carteira");
+    } catch {
+      toast("Não foi possível excluir a empresa", { tone: "warn" });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <Modal
+      onClose={close}
+      size="sm"
+      kicker="Exclusão administrativa"
+      title={company.nome}
+      icon={<Trash2 size={18} />}
+      footer={
+        <>
+          <Button variant="ghost" onClick={close} disabled={busy}>
+            Cancelar
+          </Button>
+          <Button variant="danger" onClick={confirm} disabled={motivo.trim().length < 3 || busy}>
+            {busy ? "Excluindo…" : "Excluir empresa"}
+          </Button>
+        </>
+      }
+    >
+      <div className="space-y-3">
+        <p className="text-[13px] text-ink/80">
+          A empresa {company.codigo} sai da carteira, dos funis e do banco. O motivo fica na auditoria. Somente Murilo Louis pode excluir.
+        </p>
+        <Field label="Motivo" required>
+          <Textarea value={motivo} onChange={(e) => setMotivo(e.target.value)} rows={3} placeholder="Por que esta empresa deve ser excluída" />
+        </Field>
       </div>
     </Modal>
   );

@@ -69,6 +69,9 @@ interface Actions {
   login: (userId: string) => void;
   logout: () => void;
   resetDemo: () => void;
+  hydrateCrm: (snapshot: Partial<DemoData>) => void;
+  adoptSaved: (saved: { company: Company; contacts: Contact[]; deal: Deal; activity: Activity }) => void;
+  removeCompany: (id: string) => void;
 
   createCompany: (input: NewCompanyInput) => string;
   mergeIntoCompany: (existingId: string, input: NewCompanyInput) => string;
@@ -144,9 +147,69 @@ function fmtField(key: keyof Company, v: unknown, users: DemoData["users"], comp
 // Sem tela de login: a demo já abre como o gestor (Murilo). O seletor no topo troca de perfil.
 export const DEFAULT_USER_ID = "u-murilo";
 
-function freshState(): DemoData & Session {
-  return { ...buildSeed(), currentUserId: DEFAULT_USER_ID };
+const USE_SUPABASE = process.env.NEXT_PUBLIC_TAWPER_USE_SUPABASE === "true";
+
+function mergeById<T extends { id: string }>(server: T[] | undefined, local: T[]): T[] {
+  if (!server) return local;
+  const ids = new Set(server.map((row) => row.id));
+  return [...server, ...local.filter((row) => !ids.has(row.id))];
 }
+
+const actorAlias = new Map<string, string>();
+
+export function setActorAliases(map: Record<string, string>) {
+  for (const [from, to] of Object.entries(map)) actorAlias.set(from, to);
+}
+
+function pushMutation(body: unknown) {
+  if (!USE_SUPABASE || typeof window === "undefined") return;
+  void fetch("/api/crm/mutate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function emptyCrm(): DemoData & Session {
+  const seed = buildSeed();
+  return {
+    ...seed,
+    companies: [],
+    contacts: [],
+    deals: [],
+    strategies: [],
+    strategyHistory: [],
+    suggestions: [],
+    activities: [],
+    interactions: [],
+    conversations: [],
+    quotes: [],
+    audit: [],
+    notifications: [],
+    routes: [],
+    seq: { codigo: 1, quote: 1 },
+    currentUserId: DEFAULT_USER_ID,
+  };
+}
+
+function freshState(): DemoData & Session {
+  return USE_SUPABASE ? emptyCrm() : { ...buildSeed(), currentUserId: DEFAULT_USER_ID };
+}
+
+const memoryStorage: Storage = {
+  get length() {
+    return 0;
+  },
+  clear() {},
+  getItem() {
+    return null;
+  },
+  key() {
+    return null;
+  },
+  removeItem() {},
+  setItem() {},
+};
 
 export const useStore = create<AppState>()(
   persist(
@@ -162,11 +225,41 @@ export const useStore = create<AppState>()(
         ...freshState(),
 
         // -------------------------------------------------------------------
-        login: (userId) => set({ currentUserId: userId }),
+        login: (userId) => set({ currentUserId: actorAlias.get(userId) ?? userId }),
         logout: () => set({ currentUserId: DEFAULT_USER_ID }),
         resetDemo: () => {
           const keepUser = get().currentUserId ?? DEFAULT_USER_ID;
-          set({ ...buildSeed(), currentUserId: keepUser });
+          set({ ...(USE_SUPABASE ? emptyCrm() : buildSeed()), currentUserId: keepUser });
+        },
+        hydrateCrm: (snapshot) => {
+          set((s) => ({
+            companies: mergeById(snapshot.companies, s.companies),
+            contacts: mergeById(snapshot.contacts, s.contacts),
+            deals: mergeById(snapshot.deals, s.deals),
+            activities: mergeById(snapshot.activities, s.activities),
+            users: snapshot.users?.length ? snapshot.users : s.users,
+          }));
+        },
+        adoptSaved: ({ company, contacts, deal, activity }) => {
+          set((s) => ({
+            companies: [company, ...s.companies.filter((c) => c.id !== company.id)],
+            contacts: [...contacts, ...s.contacts],
+            deals: [deal, ...s.deals],
+            activities: [activity, ...s.activities],
+          }));
+        },
+        removeCompany: (id) => {
+          set((s) => ({
+            companies: s.companies.filter((c) => c.id !== id),
+            contacts: s.contacts.filter((c) => c.companyId !== id),
+            deals: s.deals.filter((d) => d.companyId !== id),
+            activities: s.activities.filter((a) => a.companyId !== id),
+            interactions: s.interactions.filter((i) => i.companyId !== id),
+            conversations: s.conversations.filter((c) => c.companyId !== id),
+            quotes: s.quotes.filter((q) => q.companyId !== id),
+            suggestions: s.suggestions.filter((x) => x.companyId !== id),
+            strategies: s.strategies.filter((x) => x.companyId !== id),
+          }));
         },
 
         // -------------------------------------------------------------------
@@ -328,6 +421,7 @@ export const useStore = create<AppState>()(
             deals: patch.ownerId ? s.deals.map((d) => (d.companyId === id && d.status === "aberta" ? { ...d, ownerId: patch.ownerId! } : d)) : s.deals,
             audit: [...entries, ...s.audit],
           });
+          pushMutation({ action: "updateCompany", id, patch, actorId: me() });
         },
 
         addContact: (c) => {
@@ -338,6 +432,7 @@ export const useStore = create<AppState>()(
             interactions: [interaction({ companyId: c.companyId, canal: "Sistema", autorId: me(), kind: "contact", titulo: `Contato adicionado: ${c.nome}`, conteudo: `${c.cargo} · ${c.papel}` }), ...s.interactions],
             audit: [auditEntry({ autorId: me(), origem: "usuario", entidade: "Contato", entidadeId: id, companyId: c.companyId, campo: "criado", para: c.nome }), ...s.audit],
           });
+          pushMutation({ action: "addContact", contact: c, actorId: me() });
           return id;
         },
 
@@ -354,6 +449,7 @@ export const useStore = create<AppState>()(
             activities: [act, ...s.activities],
             audit: [auditEntry({ autorId: act.origem === "ia" ? "ia" : me(), origem: act.origem === "regra" ? "automacao" : act.origem === "ia" ? "ia" : "usuario", entidade: "Atividade", entidadeId: id, companyId: a.companyId, campo: "criada", para: act.titulo }), ...s.audit],
           });
+          pushMutation({ action: "addActivity", activity: { ...a, dealId: deal, ownerId: act.ownerId } });
           return id;
         },
 
@@ -374,6 +470,12 @@ export const useStore = create<AppState>()(
             entries.unshift(auditEntry({ autorId: n.origem === "ia" ? "ia" : me(), origem: n.origem === "ia" ? "ia" : "usuario", entidade: "Atividade", entidadeId: nextId, companyId: a.companyId, campo: "próximo passo", para: n.titulo }));
           }
           set({ activities, audit: [...entries, ...s.audit] });
+          pushMutation({
+            action: "completeActivity",
+            id,
+            resultado,
+            next: next ? { ...next, companyId: a.companyId, dealId: a.dealId, ownerId: next.ownerId ?? a.ownerId } : undefined,
+          });
           return nextId;
         },
 
@@ -792,7 +894,7 @@ export const useStore = create<AppState>()(
     {
       name: STORAGE_KEY,
       version: DATA_VERSION,
-      storage: createJSONStorage(() => localStorage),
+      storage: createJSONStorage(() => (USE_SUPABASE ? memoryStorage : localStorage)),
       partialize: (s) => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
         const { login, logout, resetDemo, ...rest } = s;
