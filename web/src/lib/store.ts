@@ -28,6 +28,7 @@ import type {
   Standby,
   Strategy,
 } from "./types";
+import { formatCNPJ, storedCNPJ, storedWhatsApp } from "./br-ids";
 import { money, quoteTotals, uid } from "./utils";
 
 export const STORAGE_KEY = "tawper-os-demo";
@@ -141,6 +142,7 @@ function fmtField(key: keyof Company, v: unknown, users: DemoData["users"], comp
   if (key === "ownerId") return users.find((u) => u.id === v)?.name ?? String(v);
   if (key === "influenciadoraId") return companies.find((c) => c.id === v)?.nome ?? String(v);
   if (key === "potencialMensal") return money(v as number);
+  if (key === "cnpj") return formatCNPJ(String(v));
   return String(v);
 }
 
@@ -277,12 +279,13 @@ export const useStore = create<AppState>()(
             id,
             codigo,
             razaoSocial: input.company.razaoSocial || input.company.nome,
+            cnpj: storedCNPJ(input.company.cnpj),
             status: "ativa",
             ownerId,
             createdAt: now,
             updatedAt: now,
           };
-          const contacts: Contact[] = input.contacts.map((c) => ({ ...c, id: uid("ct"), companyId: id }));
+          const contacts: Contact[] = input.contacts.map((c) => ({ ...c, id: uid("ct"), companyId: id, whatsapp: storedWhatsApp(c.whatsapp) }));
           const dealId = uid("d");
           const deal: Deal = {
             id: dealId,
@@ -345,10 +348,10 @@ export const useStore = create<AppState>()(
           const patch: Partial<Company> = {};
           (Object.keys(input.company) as (keyof Company)[]).forEach((k) => {
             const v = input.company[k];
-            if (v !== undefined && v !== "" && v !== existing[k]) (patch as Record<string, unknown>)[k] = v;
+            if (v !== undefined && v !== "" && v !== existing[k]) (patch as Record<string, unknown>)[k] = k === "cnpj" ? storedCNPJ(String(v)) : v;
           });
           const merged: Company = { ...existing, ...patch, status: "ativa", importadoDe: existing.importadoDe, updatedAt: now };
-          const contacts: Contact[] = input.contacts.map((c) => ({ ...c, id: uid("ct"), companyId: existingId }));
+          const contacts: Contact[] = input.contacts.map((c) => ({ ...c, id: uid("ct"), companyId: existingId, whatsapp: storedWhatsApp(c.whatsapp) }));
           let deals = s.deals;
           let deal = s.deals.find((d) => d.companyId === existingId && d.status === "aberta");
           const ownerId = merged.ownerId;
@@ -406,6 +409,7 @@ export const useStore = create<AppState>()(
           const actor = origem === "ia" ? "ia" : me();
           const c = s.companies.find((x) => x.id === id);
           if (!c) return;
+          if (patch.cnpj !== undefined) patch = { ...patch, cnpj: storedCNPJ(patch.cnpj) };
           const changed = (Object.keys(patch) as (keyof Company)[]).filter((k) => patch[k] !== c[k]);
           if (!changed.length) return;
           const entries = changed
@@ -427,12 +431,13 @@ export const useStore = create<AppState>()(
         addContact: (c) => {
           const s = get();
           const id = uid("ct");
+          const contact = { ...c, id, whatsapp: storedWhatsApp(c.whatsapp) };
           set({
-            contacts: [{ ...c, id }, ...s.contacts],
+            contacts: [contact, ...s.contacts],
             interactions: [interaction({ companyId: c.companyId, canal: "Sistema", autorId: me(), kind: "contact", titulo: `Contato adicionado: ${c.nome}`, conteudo: `${c.cargo} · ${c.papel}` }), ...s.interactions],
             audit: [auditEntry({ autorId: me(), origem: "usuario", entidade: "Contato", entidadeId: id, companyId: c.companyId, campo: "criado", para: c.nome }), ...s.audit],
           });
-          pushMutation({ action: "addContact", contact: c, actorId: me() });
+          pushMutation({ action: "addContact", contact, actorId: me() });
           return id;
         },
 
@@ -731,7 +736,7 @@ export const useStore = create<AppState>()(
           const company = s.companies.find((c) => c.id === companyId)!;
           const id = uid("conv");
           const conv: Conversation = {
-            id, companyId, contactId, contatoNome: contact.nome, telefone: contact.whatsapp ?? "—", ownerId: company.ownerId, messages: [], unread: 0, lastAt: nowIso(),
+            id, companyId, contactId, contatoNome: contact.nome, telefone: storedWhatsApp(contact.whatsapp) ?? contact.whatsapp ?? "—", ownerId: company.ownerId, messages: [], unread: 0, lastAt: nowIso(),
           };
           set({ conversations: [conv, ...s.conversations] });
           return id;

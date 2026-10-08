@@ -22,9 +22,10 @@ import type {
   RoutePlan,
   Strategy,
 } from "./types";
+import { normalizeWhatsApp, withValidCNPJCheckDigits } from "./br-ids";
 import { quoteTotals } from "./utils";
 
-export const DATA_VERSION = 3;
+export const DATA_VERSION = 4;
 
 export function buildSeed(now = new Date()): DemoData {
   const R = (days: number, h = 9, m = 0) => rel(days, h, m, now);
@@ -37,6 +38,7 @@ export function buildSeed(now = new Date()): DemoData {
     status: "ativa",
     updatedAt: c.createdAt,
     ...c,
+    cnpj: c.cnpj ? withValidCNPJCheckDigits(c.cnpj) : undefined,
   });
 
   const companies: Company[] = [
@@ -232,7 +234,7 @@ export function buildSeed(now = new Date()): DemoData {
   const ct = (
     id: string, companyId: string, nome: string, cargo: string, papel: Contact["papel"], influencia: 1 | 2 | 3,
     whatsapp?: string, email?: string, canal: Contact["canal"] = "WhatsApp",
-  ): Contact => ({ id, companyId, nome, cargo, papel, influencia, whatsapp, email, canal, autorizaContato: true, ativo: true });
+  ): Contact => ({ id, companyId, nome, cargo, papel, influencia, whatsapp: whatsapp ? normalizeWhatsApp(whatsapp) : undefined, email, canal, autorizaContato: true, ativo: true });
 
   const contacts: Contact[] = [
     ct("ct-alv-joao", "c-alvorada", "João Batista", "Supervisor de manutenção agrícola", "Técnico", 3, "(17) 99614-2230"),

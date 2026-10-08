@@ -14,7 +14,8 @@ import { currentDealOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { ActivityType, Company, Papel, Prensa, Prioridade, Urgencia } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
-import { cn, digits, nameSimilarity, normalize } from "@/lib/utils";
+import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, onlyDigits, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
+import { cn, nameSimilarity, normalize } from "@/lib/utils";
 
 const CITY_REGION: Record<string, string> = {
   "pereira barreto": "Noroeste Paulista",
@@ -68,7 +69,7 @@ function NovaEmpresa() {
         urgencia: lead.dor ? "Alta" : "Média",
         observacoes: [lead.indicacao && `Indicação: ${lead.indicacao}.`, lead.dor && `Dor relatada: ${lead.dor.toLowerCase()}.`, `Interesse: ${lead.interesse}.`].filter(Boolean).join(" "),
       }));
-      setCt((x) => ({ ...x, nome: lead.contatoNome, cargo: lead.cargo, papel: lead.papel, whatsapp: conv.telefone }));
+      setCt((x) => ({ ...x, nome: lead.contatoNome, cargo: lead.cargo, papel: lead.papel, whatsapp: formatWhatsApp(conv.telefone) }));
       setNext((x) => ({ ...x, titulo: `Responder ${lead.contatoNome} e qualificar frota, prensa e fornecedor`, tipo: "WhatsApp" }));
       setReading(false);
       setFilled(true);
@@ -77,7 +78,7 @@ function NovaEmpresa() {
   }, [lead, conv, filled]);
 
   const dups = useMemo(() => {
-    if (f.nome.trim().length < 4 && digits(f.cnpj).length < 8 && digits(ct.whatsapp).length < 8) return [];
+    if (f.nome.trim().length < 4 && onlyDigits(f.cnpj).length < 8 && onlyDigits(ct.whatsapp).length < 8) return [];
     return s.companies
       .map((c) => {
         let score = nameSimilarity(f.nome, c.nome);
@@ -87,12 +88,12 @@ function NovaEmpresa() {
           score += 0.2;
           reasons.push("mesma cidade");
         }
-        if (digits(f.cnpj).length >= 8 && digits(c.cnpj) === digits(f.cnpj)) {
+        if (onlyDigits(f.cnpj).length >= 8 && onlyDigits(c.cnpj) === onlyDigits(f.cnpj)) {
           score = 1.5;
           reasons.push("mesmo CNPJ");
         }
-        const phone = digits(ct.whatsapp).slice(-8);
-        if (phone.length === 8 && s.contacts.some((x) => x.companyId === c.id && digits(x.whatsapp).endsWith(phone))) {
+        const phone = onlyDigits(ct.whatsapp).slice(-8);
+        if (phone.length === 8 && s.contacts.some((x) => x.companyId === c.id && onlyDigits(x.whatsapp).endsWith(phone))) {
           score = Math.max(score, 1.2);
           reasons.push("mesmo telefone");
         }
@@ -109,10 +110,18 @@ function NovaEmpresa() {
     const save = async () => {
     setTouched(true);
     if (!valid || needsDecision) return;
+    if (f.cnpj.trim() && !isValidCNPJ(f.cnpj)) {
+      toast("CNPJ inválido", { sub: "Informe 14 dígitos com os dígitos verificadores corretos.", tone: "warn" });
+      return;
+    }
+    if (ct.whatsapp.trim() && !isValidWhatsApp(ct.whatsapp)) {
+      toast("WhatsApp inválido", { sub: "Use um celular brasileiro com DDD, no formato (64) 99999-9999.", tone: "warn" });
+      return;
+    }
     const company: Partial<Company> & { nome: string } = {
       nome: f.nome.trim(),
       razaoSocial: f.razaoSocial.trim() || f.nome.trim(),
-      cnpj: f.cnpj || undefined,
+      cnpj: storedCNPJ(f.cnpj),
       cidade: f.cidade.trim(),
       uf: f.uf,
       regiao: f.regiao || undefined,
@@ -127,7 +136,7 @@ function NovaEmpresa() {
     };
     const payload = {
       company,
-      contacts: [{ nome: ct.nome.trim(), cargo: ct.cargo || ct.papel, papel: ct.papel, influencia: 2 as const, whatsapp: ct.whatsapp || undefined, email: ct.email || undefined, canal: "WhatsApp" as const, autorizaContato: true, ativo: true }],
+      contacts: [{ nome: ct.nome.trim(), cargo: ct.cargo || ct.papel, papel: ct.papel, influencia: 2 as const, whatsapp: storedWhatsApp(ct.whatsapp), email: ct.email || undefined, canal: "WhatsApp" as const, autorizaContato: true, ativo: true }],
       firstActivity: { tipo: next.tipo, titulo: next.titulo, dueAt: fromInputDate(next.due, 10), prioridade: next.prioridade, ownerId: f.ownerId },
       conversationId: convId,
     };
@@ -205,7 +214,7 @@ function NovaEmpresa() {
                 <Input value={f.nome} onChange={(e) => { setF({ ...f, nome: e.target.value }); setDecision(null); }} className={cn(req(f.nome) && "border-brand")} placeholder="Ex.: Usina Vale do Sol Bioenergia" />
               </Field>
               <Field label="CNPJ" hint="opcional" className="lg:col-span-2">
-                <Input value={f.cnpj} onChange={(e) => { setF({ ...f, cnpj: e.target.value }); setDecision(null); }} placeholder="00.000.000/0000-00" />
+                <Input value={f.cnpj} inputMode="numeric" autoComplete="off" maxLength={18} onChange={(e) => { setF({ ...f, cnpj: formatCNPJ(e.target.value) }); setDecision(null); }} placeholder="00.000.000/0000-00" />
               </Field>
               <Field label="Cidade" required className="lg:col-span-3">
                 <Input value={f.cidade} onChange={(e) => setF({ ...f, cidade: e.target.value })} className={cn(req(f.cidade) && "border-brand")} />
@@ -298,7 +307,7 @@ function NovaEmpresa() {
                 </Select>
               </Field>
               <Field label="WhatsApp">
-                <Input value={ct.whatsapp} onChange={(e) => { setCt({ ...ct, whatsapp: e.target.value }); setDecision(null); }} />
+                <Input value={ct.whatsapp} inputMode="tel" autoComplete="off" maxLength={15} placeholder="(64) 99999-9999" onChange={(e) => { setCt({ ...ct, whatsapp: formatWhatsApp(e.target.value) }); setDecision(null); }} />
               </Field>
             </div>
           </Card>

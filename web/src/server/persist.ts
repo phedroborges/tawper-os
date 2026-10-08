@@ -3,6 +3,7 @@ import "server-only";
 import postgres from "postgres";
 import { USERS } from "@/lib/constants";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
+import { storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import type { Activity, ActivityType, Company, Contact, Deal, Papel, Prensa, Prioridade, Urgencia } from "@/lib/types";
 
 const PRESS_TO_DB: Record<string, string> = {
@@ -97,20 +98,18 @@ export async function resolveOwner(ownerId: string | undefined, actors: Record<s
   return actors["u-murilo"];
 }
 
-function e164(raw?: string | null): string | null {
-  if (!raw) return null;
-  const digits = raw.replace(/\D/g, "");
-  if (!digits) return null;
-  if (raw.trim().startsWith("+")) return `+${digits}`;
-  if (digits.startsWith("55") && digits.length >= 12) return `+${digits}`;
-  if (digits.length >= 10 && digits.length <= 11) return `+55${digits}`;
-  return null;
+function cnpj(raw?: string | null): string | null {
+  if (!raw?.trim()) return null;
+  const stored = storedCNPJ(raw);
+  if (!stored) throw new Error("CNPJ inválido. Informe 14 dígitos com dígitos verificadores corretos.");
+  return stored;
 }
 
-function cnpj(raw?: string | null): string | null {
-  if (!raw) return null;
-  const digits = raw.replace(/\D/g, "");
-  return digits.length === 14 ? digits : null;
+function whatsapp(raw?: string | null): string | null {
+  if (!raw?.trim()) return null;
+  const stored = storedWhatsApp(raw);
+  if (!stored) throw new Error("WhatsApp inválido. Use um celular brasileiro com DDD, no formato (64) 99999-9999.");
+  return stored;
 }
 
 async function regionId(name?: string | null): Promise<string | null> {
@@ -175,7 +174,7 @@ export async function registerCompany(input: {
         job_title: c.cargo || null,
         role: ROLE_TO_DB[c.papel] ?? "other",
         influence: c.influencia ?? 2,
-        whatsapp_e164: e164(c.whatsapp),
+        whatsapp_e164: whatsapp(c.whatsapp),
         email: c.email || null,
         preferred_channel: CHANNEL_TO_DB[c.canal] ?? "whatsapp",
         contact_allowed: c.autorizaContato,
@@ -184,7 +183,7 @@ export async function registerCompany(input: {
       .select("id")
       .single();
     if (row.error || !row.data) throw new Error(row.error?.message ?? "Falha ao gravar o contato.");
-    contacts.push({ ...c, id: row.data.id as string, companyId });
+    contacts.push({ ...c, id: row.data.id as string, companyId, whatsapp: whatsapp(c.whatsapp) ?? undefined });
   }
 
   const dealRow = await sb
@@ -292,7 +291,7 @@ export async function updateCompanyRecord(id: string, patch: Partial<Company>, a
   const row: Record<string, unknown> = {};
   if (patch.nome != null) row.trade_name = patch.nome;
   if (patch.razaoSocial != null) row.legal_name = patch.razaoSocial;
-  if (patch.cnpj !== undefined) row.cnpj = cnpj(patch.cnpj);
+  if (Object.prototype.hasOwnProperty.call(patch, "cnpj")) row.cnpj = cnpj(patch.cnpj);
   if (patch.cidade !== undefined) row.city = patch.cidade || null;
   if (patch.uf !== undefined) row.state = patch.uf || null;
   if (patch.ramo !== undefined) row.industry = patch.ramo || null;
@@ -325,7 +324,7 @@ export async function addContactRecord(contact: Omit<Contact, "id">, actorId?: s
       job_title: contact.cargo || null,
       role: ROLE_TO_DB[contact.papel as Papel] ?? "other",
       influence: contact.influencia ?? 2,
-      whatsapp_e164: e164(contact.whatsapp),
+      whatsapp_e164: whatsapp(contact.whatsapp),
       email: contact.email || null,
       preferred_channel: CHANNEL_TO_DB[contact.canal] ?? "whatsapp",
       contact_allowed: contact.autorizaContato,

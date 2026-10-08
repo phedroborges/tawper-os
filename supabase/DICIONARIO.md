@@ -35,7 +35,7 @@ Duplicada vira `status = merged` + `merged_into_company_id`. Exclusão comercial
 |---|---|
 | Empresa | `company_id` |
 | Nome, cargo, área | `name`, `job_title`, `department` |
-| Telefone / WhatsApp | `phone_e164`, `whatsapp_e164` |
+| Telefone / WhatsApp | `phone_e164` (E.164 com +), `whatsapp_e164` (55 + DDD + celular, só dígitos) |
 | E-mail | `email` |
 | Papel | `role` |
 | Influência | `influence` (1–3) |

@@ -11,6 +11,7 @@ import { fmtAgo } from "@/lib/dates";
 import { useNow } from "@/lib/hooks";
 import { alertsOf, currentDealOf, isStagnant, lastInteractionAt, nextStepOf, qualityOf, visibleCompanies } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
+import { digitsQueryMatch } from "@/lib/br-ids";
 import { cn, normalize } from "@/lib/utils";
 
 export default function CarteiraPage() {
@@ -49,7 +50,12 @@ export default function CarteiraPage() {
         if (marca && c.marcaAtual !== marca) return false;
         if (prensa && c.prensa !== prensa) return false;
         if (risco && !riskIds.has(c.id)) return false;
-        if (n && !normalize(`${c.nome} ${c.razaoSocial} ${c.cidade ?? ""} ${c.codigo}`).includes(n) && !s.contacts.some((ct) => ct.companyId === c.id && normalize(ct.nome).includes(n))) return false;
+        if (
+          n &&
+          !normalize(`${c.nome} ${c.razaoSocial} ${c.cidade ?? ""} ${c.codigo} ${c.cnpj ?? ""}`).includes(n) &&
+          !digitsQueryMatch(q, c.cnpj, ...s.contacts.filter((ct) => ct.companyId === c.id).map((ct) => ct.whatsapp)) &&
+          !s.contacts.some((ct) => ct.companyId === c.id && normalize(ct.nome).includes(n))
+        ) return false;
         return true;
       })
       .sort((a, b) => {

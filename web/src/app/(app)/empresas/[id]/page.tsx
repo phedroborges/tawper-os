@@ -33,6 +33,7 @@ import { fmtAgo, fmtDate, fmtDateTime, rel } from "@/lib/dates";
 import { canSeeCompany, currentDealOf, daysInStage, lastInteractionAt, missingCriteria, openDealOf, pendingOf, qualityOf, timelineOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
+import { formatCNPJ, formatWhatsApp } from "@/lib/br-ids";
 import { cn, money } from "@/lib/utils";
 
 type Tab = "timeline" | "conversa" | "atividades" | "negocio" | "estrategia" | "contatos" | "auditoria";
@@ -145,6 +146,12 @@ function EmpresaView() {
                 )}
                 <span>·</span>
                 <span>{company.codigo}</span>
+                {company.cnpj && (
+                  <>
+                    <span>·</span>
+                    <span>CNPJ {formatCNPJ(company.cnpj)}</span>
+                  </>
+                )}
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 {company.status !== "ativa" && <StatusBadge c={company} />}
@@ -372,7 +379,7 @@ function EmpresaView() {
                           <Badge tone="outline">prefere {c.canal}</Badge>
                         </div>
                         <div className="mt-2 text-[12px] text-ink/75">
-                          {c.whatsapp && <div>WhatsApp {c.whatsapp}</div>}
+                          {c.whatsapp && <div>WhatsApp {formatWhatsApp(c.whatsapp)}</div>}
                           {c.email && <div>{c.email}</div>}
                         </div>
                       </div>

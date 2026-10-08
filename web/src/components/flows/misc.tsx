@@ -11,6 +11,7 @@ import { isMuriloLouis, MARCAS, PAPEIS, PRENSAS, RAMOS, REGIOES, UFS } from "@/l
 import { currentDealOf, nextStepOf, qualityOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { Company, Papel, Potencial, Prensa, Urgencia } from "@/lib/types";
+import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import { useUI } from "@/lib/ui-store";
 
 export function ContactModal({ companyId }: { companyId: string }) {
@@ -20,7 +21,11 @@ export function ContactModal({ companyId }: { companyId: string }) {
   const [f, setF] = useState({ nome: "", cargo: "", papel: "Técnico" as Papel, whatsapp: "", email: "", influencia: 2 as 1 | 2 | 3 });
   if (!company) return null;
   const save = () => {
-    s.addContact({ companyId, nome: f.nome, cargo: f.cargo, papel: f.papel, influencia: f.influencia, whatsapp: f.whatsapp || undefined, email: f.email || undefined, canal: f.whatsapp ? "WhatsApp" : "E-mail", autorizaContato: true, ativo: true });
+    if (f.whatsapp.trim() && !isValidWhatsApp(f.whatsapp)) {
+      toast("WhatsApp inválido", { sub: "Use um celular brasileiro com DDD, no formato (64) 99999-9999.", tone: "warn" });
+      return;
+    }
+    s.addContact({ companyId, nome: f.nome, cargo: f.cargo, papel: f.papel, influencia: f.influencia, whatsapp: storedWhatsApp(f.whatsapp), email: f.email || undefined, canal: f.whatsapp ? "WhatsApp" : "E-mail", autorizaContato: true, ativo: true });
     toast("Contato adicionado", { sub: `${f.nome} · ${f.papel}` });
     close();
   };
@@ -63,7 +68,7 @@ export function ContactModal({ companyId }: { companyId: string }) {
           </Select>
         </Field>
         <Field label="WhatsApp">
-          <Input value={f.whatsapp} onChange={(e) => setF({ ...f, whatsapp: e.target.value })} placeholder="(17) 9…" />
+          <Input value={f.whatsapp} inputMode="tel" autoComplete="off" maxLength={15} onChange={(e) => setF({ ...f, whatsapp: formatWhatsApp(e.target.value) })} placeholder="(64) 99999-9999" />
         </Field>
         <Field label="E-mail">
           <Input value={f.email} onChange={(e) => setF({ ...f, email: e.target.value })} />
@@ -77,7 +82,7 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
   const s = useStore();
   const { close, toast } = useUI();
   const company = s.companies.find((c) => c.id === companyId);
-  const [f, setF] = useState<Partial<Company>>(company ? { ...company } : {});
+  const [f, setF] = useState<Partial<Company>>(company ? { ...company, cnpj: formatCNPJ(company.cnpj) } : {});
   if (!company) return null;
   const set = <K extends keyof Company>(k: K, v: Company[K]) => setF((x) => ({ ...x, [k]: v }));
   const save = () => {
@@ -86,6 +91,11 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
     keys.forEach((k) => {
       if (f[k] !== company[k]) (patch as Record<string, unknown>)[k] = f[k];
     });
+    if (String(f.cnpj ?? "").trim() && !isValidCNPJ(f.cnpj)) {
+      toast("CNPJ inválido", { sub: "Informe 14 dígitos com os dígitos verificadores corretos.", tone: "warn" });
+      return;
+    }
+    if ("cnpj" in patch) patch.cnpj = storedCNPJ(patch.cnpj);
     s.updateCompany(company.id, patch);
     toast("Cadastro atualizado", { sub: `${Object.keys(patch).length} campo(s) alterado(s) · registrado na auditoria` });
     close();
@@ -113,7 +123,7 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
           <Input value={f.nome ?? ""} onChange={(e) => set("nome", e.target.value)} />
         </Field>
         <Field label="CNPJ">
-          <Input value={f.cnpj ?? ""} onChange={(e) => set("cnpj", e.target.value)} placeholder="00.000.000/0000-00" />
+          <Input value={f.cnpj ?? ""} inputMode="numeric" autoComplete="off" maxLength={18} onChange={(e) => set("cnpj", formatCNPJ(e.target.value))} placeholder="00.000.000/0000-00" />
         </Field>
         <Field label="Razão social" className="lg:col-span-3">
           <Input value={f.razaoSocial ?? ""} onChange={(e) => set("razaoSocial", e.target.value)} />

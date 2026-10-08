@@ -11,6 +11,7 @@ import { addDays, fmtDateShort, fmtDue, fromInputDate, rel, toInputDate } from "
 import { criterionMet, pendingOf } from "@/lib/selectors";
 import { useStore, type ActivityDraft } from "@/lib/store";
 import type { Company, Contact, Papel, Potencial, Prensa } from "@/lib/types";
+import { formatWhatsApp, isValidWhatsApp, storedWhatsApp } from "@/lib/br-ids";
 import { useUI } from "@/lib/ui-store";
 import { cn, money, quoteTotals } from "@/lib/utils";
 
@@ -55,10 +56,14 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
 
   const confirm = () => {
     if (!targetStage) return;
+    if (newContact.nome.trim() && newContact.whatsapp.trim() && !isValidWhatsApp(newContact.whatsapp)) {
+      toast("WhatsApp inválido", { sub: "Use um celular brasileiro com DDD, no formato (64) 99999-9999.", tone: "warn" });
+      return;
+    }
     const patch = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined && v !== ""));
     if (Object.keys(patch).length) s.updateCompany(company.id, patch);
     if (newContact.nome.trim()) {
-      s.addContact({ companyId: company.id, nome: newContact.nome, cargo: newContact.cargo || newContact.papel, papel: newContact.papel, influencia: 2, whatsapp: newContact.whatsapp || undefined, canal: "WhatsApp", autorizaContato: true, ativo: true });
+      s.addContact({ companyId: company.id, nome: newContact.nome, cargo: newContact.cargo || newContact.papel, papel: newContact.papel, influencia: 2, whatsapp: storedWhatsApp(newContact.whatsapp), canal: "WhatsApp", autorizaContato: true, ativo: true });
     }
     const tarefas: ActivityDraft[] = selectedTasks.map((t, i) => ({ companyId: company.id, dealId: deal.id, titulo: t.titulo, tipo: t.tipo, dueAt: rel(t.prazoDias, 9 + i), ownerId: deal.ownerId, origem: "regra" }));
     s.moveDeal(deal.id, targetStage.id, { checks, tarefas, nota: nota.trim() || undefined });
@@ -81,7 +86,7 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
               <option key={p}>{p}</option>
             ))}
           </Select>
-          <Input placeholder="WhatsApp" value={newContact.whatsapp} onChange={(e) => setNewContact({ ...newContact, whatsapp: e.target.value })} />
+          <Input placeholder="(64) 99999-9999" inputMode="tel" autoComplete="off" maxLength={15} value={newContact.whatsapp} onChange={(e) => setNewContact({ ...newContact, whatsapp: formatWhatsApp(e.target.value) })} />
         </div>
       );
     if (c.kind === "quote")

@@ -11,6 +11,7 @@ import { isManager } from "@/lib/constants";
 import { dayDiff, fmtDateShort, fmtTime } from "@/lib/dates";
 import { canSeeCompany, nextStepOf, openDealOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
+import { digitsQueryMatch, formatWhatsApp } from "@/lib/br-ids";
 import { cn, normalize } from "@/lib/utils";
 
 function Central() {
@@ -32,7 +33,7 @@ function Central() {
         return co ? canSeeCompany(user, co) : false;
       })
       .filter((c) => (filter === "naolidas" ? c.unread > 0 : filter === "semvinculo" ? !c.companyId : true))
-      .filter((c) => !n || normalize(`${c.contatoNome} ${s.companies.find((x) => x.id === c.companyId)?.nome ?? ""} ${c.telefone}`).includes(n))
+      .filter((c) => !n || normalize(`${c.contatoNome} ${s.companies.find((x) => x.id === c.companyId)?.nome ?? ""} ${formatWhatsApp(c.telefone)} ${c.telefone}`).includes(n) || digitsQueryMatch(q, c.telefone))
       .sort((a, b) => b.lastAt.localeCompare(a.lastAt));
   }, [s.conversations, s.companies, user, filter, q]);
 

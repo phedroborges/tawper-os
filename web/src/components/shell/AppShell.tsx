@@ -34,6 +34,7 @@ import { useMounted } from "@/lib/hooks";
 import { alertsOf, canSeeCompany } from "@/lib/selectors";
 import { STORAGE_KEY, useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
+import { digitsQueryMatch } from "@/lib/br-ids";
 import { cn, normalize } from "@/lib/utils";
 import { AssistantPanel } from "./Assistant";
 import { DemoGuide } from "./DemoGuide";
@@ -271,7 +272,14 @@ function GlobalSearch() {
     if (n.length < 2) return [];
     return companies
       .filter((c) => canSeeCompany(user, c))
-      .filter((c) => normalize(`${c.nome} ${c.cidade ?? ""} ${c.codigo} ${c.razaoSocial}`).includes(n) || contacts.some((ct) => ct.companyId === c.id && normalize(ct.nome).includes(n)))
+      .filter((c) => {
+        const companyContacts = contacts.filter((ct) => ct.companyId === c.id);
+        return (
+          normalize(`${c.nome} ${c.cidade ?? ""} ${c.codigo} ${c.razaoSocial} ${c.cnpj ?? ""}`).includes(n) ||
+          digitsQueryMatch(q, c.cnpj, ...companyContacts.map((ct) => ct.whatsapp)) ||
+          companyContacts.some((ct) => normalize(ct.nome).includes(n))
+        );
+      })
       .slice(0, 7);
   }, [q, companies, contacts, user]);
   return (
