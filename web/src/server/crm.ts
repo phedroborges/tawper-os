@@ -1,7 +1,7 @@
 import "server-only";
 
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
-import type { Company, Contact, Deal, DemoData, User } from "@/lib/types";
+import type { Activity, Company, Contact, Deal, DemoData, User } from "@/lib/types";
 import { USERS } from "@/lib/constants";
 
 export type DbHealth =
@@ -211,7 +211,7 @@ export async function loadCrmSnapshot(): Promise<Pick<DemoData, "companies" | "c
     other: "Outro",
   };
 
-  const activities = (activitiesRes.data ?? []).map((row) => ({
+  const activities = (activitiesRes.data ?? []).map((row): Activity => ({
     id: row.id as string,
     companyId: row.company_id as string,
     dealId: (row.opportunity_id as string) ?? undefined,

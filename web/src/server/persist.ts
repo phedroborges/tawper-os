@@ -393,6 +393,7 @@ export async function deleteCompanyRecord(id: string, actorId: string, reason: s
   const company = await sb.from("companies").select("trade_name").eq("id", id).eq("organization_id", TAWPER_ORG_ID).maybeSingle();
   if (company.error) throw new Error(company.error.message);
   if (!company.data) throw new Error("Empresa não encontrada.");
+  const tradeName = company.data.trade_name;
 
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL ausente para exclusão administrativa.");
@@ -411,7 +412,7 @@ export async function deleteCompanyRecord(id: string, actorId: string, reason: s
         insert into public.audit_events (
           organization_id, actor_id, actor_type, entity_type, entity_id, company_id, field, old_value, new_value
         ) values (
-          ${TAWPER_ORG_ID}, ${profileId}, 'user', 'companies', ${id}, ${id}, 'exclusao_administrativa', ${company.data.trade_name}, ${motivo}
+          ${TAWPER_ORG_ID}, ${profileId}, 'user', 'companies', ${id}, ${id}, 'exclusao_administrativa', ${tradeName}, ${motivo}
         )
       `;
     });
