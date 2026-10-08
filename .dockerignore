@@ -1,0 +1,6 @@
+.git
+docs
+*.command
+**/node_modules
+**/.next
+**/.env*
