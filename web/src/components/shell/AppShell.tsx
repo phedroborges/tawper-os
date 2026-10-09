@@ -67,6 +67,7 @@ function useNav(): NavItem[] {
     { href: "/carteira", label: "Carteira", icon: <Building2 size={18} /> },
     { href: "/funis", label: "Funis", icon: <Columns3 size={18} /> },
     { href: "/conversas", label: "Conversas", icon: <MessageCircle size={18} />, badge: unread },
+    { href: "/prova-whatsapp", label: "WhatsApp", icon: <Smartphone size={18} /> },
     { href: "/rotas", label: "Rotas", icon: <Route size={18} /> },
     { href: "/implementacao", label: "Implementação", icon: <ListChecks size={18} /> },
     { href: "/gestao", label: "Gestão", icon: <ShieldCheck size={18} />, badge: exceptions, manager: true },

@@ -8,9 +8,12 @@ export type ProofEventView = {
   from: string;
   preview: string;
   accepted: boolean;
+  direction?: "in" | "out" | "note";
+  peer?: string;
+  name?: string;
 };
 
-const MAX = 40;
+const MAX = 200;
 const file = path.join("/tmp", "tawper-stevo-proof.json");
 
 function asRecord(value: unknown): Record<string, unknown> | null {
@@ -54,6 +57,22 @@ function readAll(): ProofEventView[] {
 
 function writeAll(items: ProofEventView[]) {
   writeFileSync(file, JSON.stringify(items.slice(0, MAX)));
+}
+
+function remember(item: ProofEventView): ProofEventView {
+  const existing = readAll();
+  if (item.direction === "out" && item.peer && item.preview) {
+    const duplicate = existing.some(
+      (old) =>
+        old.direction === "out" &&
+        old.peer === item.peer &&
+        old.preview === item.preview &&
+        Date.now() - new Date(old.receivedAt).getTime() < 20000,
+    );
+    if (duplicate) return item;
+  }
+  writeAll([item, ...existing]);
+  return item;
 }
 
 function phoneOf(value: string) {
@@ -101,9 +120,18 @@ export function recordInbound(payload: unknown, accepted = true): ProofEventView
     (typeof info?.Chat === "string" && info.Chat) ||
     (typeof data?.jid === "string" && data.jid) ||
     findString(payload, ["from", "sender", "remoteJid", "sender_pn", "jid"]);
-  const from = phoneOf(rawFrom) || (typeof info?.PushName === "string" ? info.PushName : "") || (typeof data?.pushName === "string" ? data.pushName : "");
+  const fromMe = info?.IsFromMe === true || info?.fromMe === true || event.toLowerCase() === "sendmessage";
+  const chatJid = (typeof info?.Chat === "string" && info.Chat) || (typeof data?.jid === "string" && data.jid) || "";
+  const peer = phoneOf(chatJid) || phoneOf(rawFrom) || phoneOf(typeof info?.Sender === "string" ? info.Sender : "");
+  const name =
+    (!fromMe && typeof info?.PushName === "string" && info.PushName) ||
+    (typeof data?.pushName === "string" ? data.pushName : "") ||
+    "";
+  const from = peer || name;
   const text = messageText(data);
+  const session = /connected|disconnected|loggedout|pairsuccess|qrcode|offlinesync/i.test(event);
   const preview = text || (event === "Connected" ? "WhatsApp conectado." : event === "Disconnected" ? "WhatsApp desconectado." : JSON.stringify(redact(payload)).slice(0, 180));
+  const direction = !accepted || session || !text ? "note" : fromMe ? "out" : "in";
   const item: ProofEventView = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     receivedAt: new Date().toISOString(),
@@ -111,10 +139,26 @@ export function recordInbound(payload: unknown, accepted = true): ProofEventView
     from,
     preview: (accepted ? preview : "A Stevo chamou, mas o token da URL não confere.").slice(0, 240),
     accepted,
+    direction,
+    peer: direction === "note" ? "" : peer,
+    name,
   };
-  const next = [item, ...readAll()].slice(0, MAX);
-  writeAll(next);
-  return item;
+  return remember(item);
+}
+
+export function recordSent(peer: string, text: string): ProofEventView {
+  const digits = phoneOf(peer) || peer.replace(/\D/g, "");
+  return remember({
+    id: `out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    receivedAt: new Date().toISOString(),
+    event: "SendMessage",
+    from: digits,
+    preview: text.slice(0, 240),
+    accepted: true,
+    direction: "out",
+    peer: digits,
+    name: "",
+  });
 }
 
 export function listInbound(): ProofEventView[] {

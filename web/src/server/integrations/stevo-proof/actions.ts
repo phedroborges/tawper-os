@@ -12,7 +12,7 @@ import {
   type StevoStatus,
 } from "./client";
 import { appPublicUrl, assertProofEnabled, proofEnabled, stevoConfigured, stevoInstance, testNumber, webhookPublicUrl } from "./config";
-import { listInbound, type ProofEventView } from "./events";
+import { listInbound, recordSent, type ProofEventView } from "./events";
 
 export type ProofSnapshot = {
   enabled: boolean;
@@ -77,7 +77,9 @@ export async function sendProofText(to: string, text: string) {
   assertProofEnabled();
   const body = text.trim();
   if (!body) throw new Error("Mensagem vazia.");
-  return sendStevoText(to, body);
+  const sent = await sendStevoText(to, body);
+  recordSent(sent.number, body);
+  return sent;
 }
 
 export async function registerProofWebhook() {
