@@ -49,6 +49,37 @@ function clock(iso: string) {
   return new Date(iso).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
+type PendingOut = { id: string; peer: string; text: string; at: string };
+
+function bubbleOf(item: PendingOut): ProofEventView {
+  return {
+    id: item.id,
+    receivedAt: item.at,
+    event: "SendMessage",
+    from: item.peer,
+    preview: item.text,
+    accepted: true,
+    direction: "out",
+    peer: item.peer,
+    name: "",
+  };
+}
+
+function sameChat(left: string, right: string) {
+  return left === right || normalizeWhatsApp(left) === normalizeWhatsApp(right);
+}
+
+function alreadySaved(events: ProofEventView[], item: PendingOut) {
+  const since = new Date(item.at).getTime() - 5000;
+  return events.some((event) => event.direction === "out" && !event.id.startsWith("local-") && sameChat(event.peer || "", item.peer) && event.preview === item.text && new Date(event.receivedAt).getTime() >= since);
+}
+
+function withPending(next: Snapshot, pending: PendingOut[]): Snapshot {
+  const missing = pending.filter((item) => !alreadySaved(next.events, item));
+  if (!missing.length) return next;
+  return { ...next, events: [...missing.map(bubbleOf), ...next.events] };
+}
+
 function dayLabel(iso: string) {
   const date = new Date(iso);
   const today = new Date();
@@ -69,6 +100,12 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
   const [pairPhone, setPairPhone] = useState(initial.testNumber);
   const [pending, start] = useTransition();
   const scroller = useRef<HTMLDivElement>(null);
+  const pendingOut = useRef<PendingOut[]>([]);
+
+  const show = (next: Snapshot) => {
+    pendingOut.current = pendingOut.current.filter((item) => !alreadySaved(next.events, item));
+    setSnap(withPending(next, pendingOut.current));
+  };
 
   const threads = useMemo(() => threadsOf(snap.events), [snap.events]);
   const visible = threads.filter((thread) => {
@@ -80,13 +117,12 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
   const active = threads.find((thread) => thread.peer === peer) ?? null;
 
   const reload = async () => {
-    const next = await loadProofSnapshot();
-    setSnap(next);
+    show(await loadProofSnapshot());
   };
 
   useEffect(() => {
     const timer = setInterval(() => {
-      loadProofSnapshot().then(setSnap).catch(() => undefined);
+      loadProofSnapshot().then(show).catch(() => undefined);
     }, 4000);
     return () => clearInterval(timer);
   }, []);
@@ -131,12 +167,22 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
       setError("O WhatsApp está offline. Abra a conexão e espere ficar online.");
       return;
     }
+    const item: PendingOut = { id: `local-${Date.now()}`, peer: target, text, at: new Date().toISOString() };
+    pendingOut.current = [item, ...pendingOut.current];
+    setDraft("");
+    setSnap((current) => withPending(current, pendingOut.current));
     run(async () => {
-      const sent = await sendProofText(target, text);
-      setPeer(sent.number);
-      setDraft("");
-      setNewNumber("");
-      await reload();
+      try {
+        const sent = await sendProofText(target, text);
+        setPeer(sent.number);
+        setNewNumber("");
+        show(await loadProofSnapshot());
+      } catch (error) {
+        pendingOut.current = pendingOut.current.filter((row) => row.id !== item.id);
+        setSnap((current) => ({ ...current, events: current.events.filter((event) => event.id !== item.id) }));
+        setDraft(text);
+        throw error;
+      }
     });
   };
 
