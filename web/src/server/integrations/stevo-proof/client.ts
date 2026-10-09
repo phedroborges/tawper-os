@@ -113,28 +113,10 @@ export async function getStevoStatus(): Promise<StevoStatus> {
 }
 
 export async function getStevoQr(): Promise<StevoQr> {
-  let body = await stevoFetch("/instance/qr");
-  let parsed = parseQr(body);
-  if (!parsed.image && !parsed.code) {
-    try {
-      const connected = await stevoFetch("/instance/connect", {
-        method: "POST",
-        body: JSON.stringify({ immediate: false, subscribe: ["QRCODE", "CONNECTION"] }),
-      });
-      parsed = parseQr(connected);
-      if (!parsed.image && !parsed.code) {
-        body = await stevoFetch("/instance/qr");
-        parsed = parseQr(body);
-      }
-    } catch {
-      // QR ainda pode não ter sido gerado.
-    }
-  }
-  return parsed;
+  return parseQr(await stevoFetch("/instance/qr"));
 }
 
 export async function refreshStevoQr(): Promise<StevoQr> {
-  await stevoFetch("/instance/reconnect", { method: "POST", body: JSON.stringify({}) });
   return getStevoQr();
 }
 
@@ -149,7 +131,7 @@ export function toStevoNumber(raw: string) {
 export async function requestStevoPairing(rawPhone: string) {
   const phone = toStevoNumber(rawPhone);
   if (!phone) throw new Error("Informe o celular com DDD. Exemplo: 64 99999-9999.");
-  const payload = { phone, subscribe: ["CONNECTION"] };
+  const payload = { phone, subscribe: ["MESSAGE", "SEND_MESSAGE", "CONNECTION"], webhookUrl: webhookPublicUrl() };
   let code = pairingCodeOf(await stevoFetch("/instance/pair", { method: "POST", body: JSON.stringify(payload) }));
   if (!code) {
     code = pairingCodeOf(
@@ -180,30 +162,20 @@ export async function sendStevoText(to: string, text: string) {
   return { number };
 }
 
-const WEBHOOK_EVENTS = ["MESSAGE", "CONNECTION", "MESSAGES_UPSERT", "CONNECTION_UPDATE", "QRCODE_UPDATED", "SEND_MESSAGE"];
-
 export async function registerStevoWebhook() {
   const url = webhookPublicUrl();
   if (!url) {
     throw new Error("Defina APP_PUBLIC_URL (HTTPS público do EasyPanel) e STEVO_WEBHOOK_TOKEN.");
   }
-  const body = {
-    url,
-    enabled: true,
-    webhookByEvents: false,
-    events: WEBHOOK_EVENTS,
-  };
-  const paths = ["/webhook/set", "/webhook"];
-  let lastError = "Não foi possível registrar o webhook na Stevo.";
-  for (const path of paths) {
-    try {
-      const result = (await stevoFetch(path, { method: "POST", body: JSON.stringify(body) })) as Json;
-      return { url, result };
-    } catch (error) {
-      lastError = error instanceof Error ? error.message : lastError;
-    }
-  }
-  throw new Error(lastError);
+  const result = (await stevoFetch("/instance/connect", {
+    method: "POST",
+    body: JSON.stringify({
+      webhookUrl: url,
+      subscribe: ["MESSAGE", "SEND_MESSAGE", "CONNECTION"],
+      immediate: true,
+    }),
+  })) as Json;
+  return { url, result };
 }
 
 export async function getStevoWebhook() {

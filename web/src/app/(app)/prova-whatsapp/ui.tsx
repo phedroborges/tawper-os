@@ -106,14 +106,14 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
 
         <Card className="p-4">
           <h2 className="text-[15px] font-semibold text-ink">Webhook de entrada</h2>
-          <p className="mt-1 text-[12.5px] text-muted">A Stevo só consegue avisar “chegou mensagem” se esta URL for HTTPS público (EasyPanel + domínio).</p>
+          <p className="mt-1 text-[12.5px] text-muted">O celular recebe direto do WhatsApp. O Tawper só vê a mensagem se a Stevo estiver inscrita no evento MESSAGE. Clique em Ativar recebimento uma vez, espere conectar de novo e peça um oi novo.</p>
           <div className="mt-3 break-all rounded-[6px] bg-soft px-3 py-2 text-[12px]">{snap.webhookUrl || "Falta APP_PUBLIC_URL e STEVO_WEBHOOK_TOKEN no EasyPanel."}</div>
           <div className="mt-3 flex flex-wrap gap-2">
             <Button size="sm" variant="dark" disabled={pending || !snap.webhookUrl} onClick={() => run(async () => {
               const registered = await registerProofWebhook();
-              setNotice(`Webhook registrado: ${registered.url}`);
+              setNotice(`Recebimento ativado. A sessão pode piscar e voltar. Peça um oi novo e clique em Ver eventos recebidos. ${registered.url}`);
               await reload();
-            })}>Registrar na Stevo</Button>
+            })}>Ativar recebimento</Button>
             <Button size="sm" disabled={pending} onClick={() => run(reload)}>Ver eventos recebidos</Button>
           </div>
           <ul className="mt-3 max-h-64 space-y-2 overflow-y-auto text-[12.5px]">

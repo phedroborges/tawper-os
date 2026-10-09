@@ -46,7 +46,9 @@ export async function loadProofSnapshot(): Promise<ProofSnapshot> {
       events: [],
     };
   }
-  const [status, qr, webhook] = await Promise.all([getStevoStatus(), getStevoQr().catch(() => ({ image: null, pairingCode: null, code: null })), getStevoWebhook().catch(() => null)]);
+  const status = await getStevoStatus();
+  const qr = status.loggedIn ? emptyQr : await getStevoQr().catch(() => emptyQr);
+  const webhook = await getStevoWebhook().catch(() => null);
   return {
     enabled,
     configured,

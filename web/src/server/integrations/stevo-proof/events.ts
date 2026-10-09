@@ -56,15 +56,54 @@ function writeAll(items: ProofEventView[]) {
   writeFileSync(file, JSON.stringify(items.slice(0, MAX)));
 }
 
+function phoneOf(value: string) {
+  const head = value.split("@")[0] ?? "";
+  const digits = head.split(":")[0]?.replace(/\D/g, "") ?? "";
+  return digits.length >= 10 ? digits : "";
+}
+
+function messageText(data: Record<string, unknown> | null) {
+  const message = asRecord(data?.Message) ?? asRecord(data?.message);
+  if (!message) return "";
+  if (typeof message.conversation === "string") return message.conversation;
+  const extended = asRecord(message.extendedTextMessage);
+  if (typeof extended?.text === "string") return extended.text;
+  for (const key of ["imageMessage", "videoMessage", "documentMessage"]) {
+    const media = asRecord(message[key]);
+    if (typeof media?.caption === "string" && media.caption) return media.caption;
+  }
+  if (message.audioMessage) return "[áudio]";
+  if (message.imageMessage) return "[imagem]";
+  if (message.videoMessage) return "[vídeo]";
+  if (message.documentMessage) return "[documento]";
+  return "";
+}
+
+function redact(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(redact);
+  const record = asRecord(value);
+  if (!record) return value;
+  return Object.fromEntries(
+    Object.entries(record).map(([key, child]) => (/token|apikey|secret|authorization/i.test(key) ? [key, "[oculto]"] : [key, redact(child)])),
+  );
+}
+
 export function recordInbound(payload: unknown, accepted = true): ProofEventView {
   const record = asRecord(payload);
+  const data = asRecord(record?.data) ?? record;
+  const info = asRecord(data?.Info) ?? asRecord(data?.info);
   const event =
+    (typeof record?.event === "string" && record.event) ||
     findString(payload, ["event", "Event", "type", "Type"]) ||
-    (typeof record?.event === "string" ? record.event : "webhook");
-  const from = findString(payload, ["from", "From", "sender", "number", "Number", "phone", "Phone", "remoteJid", "RemoteJid", "sender_pn"]);
-  const preview =
-    findString(payload, ["text", "Text", "body", "Body", "conversation", "caption", "Caption", "message"]) ||
-    JSON.stringify(payload).slice(0, 180);
+    "webhook";
+  const rawFrom =
+    (typeof info?.Sender === "string" && info.Sender) ||
+    (typeof info?.Chat === "string" && info.Chat) ||
+    (typeof data?.jid === "string" && data.jid) ||
+    findString(payload, ["from", "sender", "remoteJid", "sender_pn", "jid"]);
+  const from = phoneOf(rawFrom) || (typeof info?.PushName === "string" ? info.PushName : "") || (typeof data?.pushName === "string" ? data.pushName : "");
+  const text = messageText(data);
+  const preview = text || (event === "Connected" ? "WhatsApp conectado." : event === "Disconnected" ? "WhatsApp desconectado." : JSON.stringify(redact(payload)).slice(0, 180));
   const item: ProofEventView = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     receivedAt: new Date().toISOString(),
