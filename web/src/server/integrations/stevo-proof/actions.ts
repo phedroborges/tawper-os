@@ -3,7 +3,7 @@
 import {
   getStevoQr,
   getStevoStatus,
-  getStevoWebhook,
+  ensureLiveWebhook,
   refreshStevoQr,
   registerStevoWebhook,
   requestStevoPairing,
@@ -12,7 +12,7 @@ import {
   type StevoStatus,
 } from "./client";
 import { appPublicUrl, assertProofEnabled, proofEnabled, stevoConfigured, stevoInstance, testNumber, webhookPublicUrl } from "./config";
-import { listInbound, recordSent, type ProofEventView } from "./events";
+import { listMessages, recordSent, type ProofEventView } from "./events";
 
 export type ProofSnapshot = {
   enabled: boolean;
@@ -48,7 +48,7 @@ export async function loadProofSnapshot(): Promise<ProofSnapshot> {
   }
   const status = await getStevoStatus();
   const qr = status.loggedIn ? emptyQr : await getStevoQr().catch(() => emptyQr);
-  const webhook = await getStevoWebhook().catch(() => null);
+  if (status.loggedIn) ensureLiveWebhook().catch(() => undefined);
   return {
     enabled,
     configured,
@@ -58,8 +58,8 @@ export async function loadProofSnapshot(): Promise<ProofSnapshot> {
     publicUrl: appPublicUrl(),
     instance: stevoInstance(),
     testNumber: testNumber(),
-    webhook,
-    events: listInbound(),
+    webhook: null,
+    events: await listMessages(),
   };
 }
 
@@ -78,7 +78,7 @@ export async function sendProofText(to: string, text: string) {
   const body = text.trim();
   if (!body) throw new Error("Mensagem vazia.");
   const sent = await sendStevoText(to, body);
-  recordSent(sent.number, body);
+  await recordSent(sent.number, body);
   return sent;
 }
 

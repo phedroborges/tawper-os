@@ -138,10 +138,10 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
     <div className="-mt-2">
       <div className="mb-3 flex items-end justify-between gap-3">
         <div>
-          <div className="text-[11px] font-semibold tracking-wide text-[#008069] uppercase">Prova Fase 0</div>
+          <div className="text-[11px] font-semibold tracking-wide text-[#008069] uppercase">Número conectado</div>
           <h1 className="text-[22px] font-semibold tracking-[-0.02em] text-ink">WhatsApp</h1>
         </div>
-        <p className="hidden max-w-sm text-right text-[12px] text-muted sm:block">Visualização das mensagens reais. Não grava empresa, contato nem oportunidade.</p>
+        <p className="hidden max-w-sm text-right text-[12px] text-muted sm:block">O vendedor lê e responde por aqui. A mensagem sai e entra no WhatsApp do número conectado.</p>
       </div>
 
       {error && <div className="mb-3 rounded-[8px] border border-brand/25 bg-brand-soft px-4 py-2.5 text-[13px] text-brand">{error}</div>}
@@ -268,7 +268,7 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
             <div className="grid flex-1 place-items-center border-b-[6px] border-[#00a884] bg-[#f0f2f5] px-8 text-center">
               <div>
                 <h2 className="text-[28px] font-light text-[#41525d]">Tawper WhatsApp</h2>
-                <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-[#667781]">Selecione uma conversa para ler e responder as mensagens reais do número conectado.</p>
+                <p className="mx-auto mt-2 max-w-md text-[14px] leading-relaxed text-[#667781]">Selecione uma conversa para ler e responder o cliente. Uma mensagem nova aparece sozinha em alguns segundos.</p>
               </div>
             </div>
           )}

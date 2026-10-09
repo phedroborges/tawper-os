@@ -1,3 +1,4 @@
+import { existsSync, writeFileSync } from "node:fs";
 import { stevoApiKey, stevoBaseUrl, stevoConfigured, webhookPublicUrl } from "./config";
 
 type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
@@ -160,6 +161,22 @@ export async function sendStevoText(to: string, text: string) {
     body: JSON.stringify({ number, text }),
   });
   return { number };
+}
+
+const subscribedFlag = "/tmp/tawper-stevo-subscribed";
+let subscribing: Promise<void> | null = null;
+
+export function ensureLiveWebhook() {
+  if (subscribing) return subscribing;
+  subscribing = (async () => {
+    if (existsSync(subscribedFlag)) return;
+    await registerStevoWebhook();
+    writeFileSync(subscribedFlag, new Date().toISOString());
+  })().catch((error: unknown) => {
+    subscribing = null;
+    throw error;
+  });
+  return subscribing;
 }
 
 export async function registerStevoWebhook() {

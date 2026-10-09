@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   } catch {
     payload = { raw: await request.text().catch(() => "") };
   }
-  const event = recordInbound(payload);
+  const event = await recordInbound(payload);
   return NextResponse.json({ ok: true, id: event.id, event: event.event });
 }
 
