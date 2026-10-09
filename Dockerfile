@@ -26,6 +26,8 @@ FROM node:22-alpine AS runner
 WORKDIR /repo/web
 ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
+ENV HOSTNAME=0.0.0.0
+ENV PORT=4100
 COPY PLANO_IMPLEMENTACAO.md /repo/PLANO_IMPLEMENTACAO.md
 COPY web/package.json ./
 COPY --from=deps /repo/web/node_modules ./node_modules

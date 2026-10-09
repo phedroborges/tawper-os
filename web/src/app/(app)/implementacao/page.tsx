@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import Link from "next/link";
 import {
   ArrowRight,
   CalendarDays,
@@ -220,6 +221,11 @@ export default async function ImplementacaoPage() {
           <div className="mt-4 border-t border-line pt-4">
             <div className="mb-2.5 text-[11.5px] font-semibold text-muted uppercase">Próximas pendências</div>
             <Checklist items={currentPending} />
+            {plan.currentPhaseNumber === 0 && (
+              <Link href="/prova-whatsapp" className="mt-4 inline-flex text-[12.5px] font-medium text-navy hover:underline">
+                Abrir prova técnica do WhatsApp (Stevo)
+              </Link>
+            )}
           </div>
         </section>
 
