@@ -62,7 +62,9 @@ export function recordInbound(payload: unknown): ProofEvent {
   return item;
 }
 
-export function listInbound(): ProofEvent[] {
+export type ProofEventView = Omit<ProofEvent, "payload">;
+
+export function listInbound(): ProofEventView[] {
   return buffer.map(({ payload: _payload, ...rest }) => rest);
 }
 

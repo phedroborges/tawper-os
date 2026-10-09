@@ -8,11 +8,28 @@ import {
   registerStevoWebhook,
   requestStevoPairing,
   sendStevoText,
+  type StevoQr,
+  type StevoStatus,
 } from "./client";
 import { appPublicUrl, assertProofEnabled, proofEnabled, stevoConfigured, stevoInstance, testNumber, webhookPublicUrl } from "./config";
-import { listInbound } from "./events";
+import { listInbound, type ProofEventView } from "./events";
 
-export async function loadProofSnapshot() {
+export type ProofSnapshot = {
+  enabled: boolean;
+  configured: boolean;
+  status: StevoStatus;
+  qr: StevoQr;
+  webhookUrl: string | null;
+  publicUrl: string;
+  instance: string;
+  testNumber: string;
+  webhook: unknown;
+  events: ProofEventView[];
+};
+
+const emptyQr: StevoQr = { image: null, pairingCode: null, code: null };
+
+export async function loadProofSnapshot(): Promise<ProofSnapshot> {
   const enabled = proofEnabled();
   const configured = stevoConfigured();
   if (!enabled || !configured) {
@@ -20,13 +37,13 @@ export async function loadProofSnapshot() {
       enabled,
       configured,
       status: await getStevoStatus(),
-      qr: { image: null, pairingCode: null, code: null },
+      qr: emptyQr,
       webhookUrl: webhookPublicUrl(),
       publicUrl: appPublicUrl(),
       instance: stevoInstance(),
       testNumber: testNumber(),
       webhook: null,
-      events: [] as ReturnType<typeof listInbound>,
+      events: [],
     };
   }
   const [status, qr, webhook] = await Promise.all([getStevoStatus(), getStevoQr().catch(() => ({ image: null, pairingCode: null, code: null })), getStevoWebhook().catch(() => null)]);
