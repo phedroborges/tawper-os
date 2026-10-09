@@ -121,8 +121,16 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
 
   const send = () => {
     const text = draft.trim();
-    const target = active?.peer || normalizeWhatsApp(newNumber);
-    if (!text || !target) return;
+    const target = peer || active?.peer || normalizeWhatsApp(newNumber);
+    if (!text) return;
+    if (!target) {
+      setError("Abra o número do cliente antes de enviar.");
+      return;
+    }
+    if (!snap.status.loggedIn) {
+      setError("O WhatsApp está offline. Abra a conexão e espere ficar online.");
+      return;
+    }
     run(async () => {
       const sent = await sendProofText(target, text);
       setPeer(sent.number);
@@ -259,7 +267,7 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
                   placeholder="Digite uma mensagem"
                   className="max-h-28 min-h-11 flex-1 resize-none rounded-lg border-0 bg-white px-3 py-3 text-[15px] text-[#111b21] outline-none"
                 />
-                <button type="submit" disabled={pending || !draft.trim() || !snap.status.loggedIn} className="grid size-11 shrink-0 place-items-center rounded-full bg-[#00a884] text-white disabled:opacity-40" aria-label="Enviar">
+                <button type="submit" disabled={pending || !draft.trim()} className="grid size-11 shrink-0 place-items-center rounded-full bg-[#00a884] text-white disabled:opacity-40" aria-label="Enviar">
                   <SendHorizontal size={18} />
                 </button>
               </form>
