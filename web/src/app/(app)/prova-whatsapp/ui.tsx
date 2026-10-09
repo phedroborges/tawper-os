@@ -28,7 +28,9 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
   };
 
   const reload = async () => {
-    setSnap(await loadProofSnapshot());
+    const next = await loadProofSnapshot();
+    setSnap(next);
+    setNotice(`Lista atualizada às ${new Date().toLocaleTimeString("pt-BR")}. ${next.events.length} aviso(s).`);
   };
 
   const statusTone = !snap.enabled ? "muted" : !snap.status.loggedIn ? "amber" : "green";
@@ -115,11 +117,11 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
             <Button size="sm" disabled={pending} onClick={() => run(reload)}>Ver eventos recebidos</Button>
           </div>
           <ul className="mt-3 max-h-64 space-y-2 overflow-y-auto text-[12.5px]">
-            {snap.events.length === 0 && <li className="text-muted">Nenhum POST chegou ainda. Depois do domínio público, responda pelo outro celular.</li>}
+            {snap.events.length === 0 && <li className="text-muted">Nenhum aviso da Stevo chegou neste servidor. Envie um oi do outro celular e clique de novo em Ver eventos recebidos.</li>}
             {snap.events.map((event) => (
               <li key={event.id} className="rounded-[6px] border border-line px-3 py-2">
                 <div className="flex justify-between gap-2 text-[11px] text-muted">
-                  <span>{event.event}</span>
+                  <span>{event.accepted ? event.event : "token recusado"}</span>
                   <span>{new Date(event.receivedAt).toLocaleString("pt-BR")}</span>
                 </div>
                 <div className="mt-0.5">{event.from || "origem não identificada"}</div>

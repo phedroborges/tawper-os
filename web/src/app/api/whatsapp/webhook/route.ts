@@ -18,6 +18,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "STEVO_WEBHOOK_TOKEN não configurado." }, { status: 503 });
   }
   if (tokenFrom(request) !== expected) {
+    recordInbound({ event: "token" }, false);
     return NextResponse.json({ error: "Token de webhook inválido." }, { status: 401 });
   }
   let payload: unknown = null;
