@@ -222,8 +222,8 @@ export default async function ImplementacaoPage() {
             <div className="mb-2.5 text-[11.5px] font-semibold text-muted uppercase">Próximas pendências</div>
             <Checklist items={currentPending} />
             {plan.currentPhaseNumber === 0 && (
-              <Link href="/prova-whatsapp" className="mt-4 inline-flex text-[12.5px] font-medium text-navy hover:underline">
-                Abrir prova técnica do WhatsApp (Stevo)
+              <Link href="/conversas" className="mt-4 inline-flex text-[12.5px] font-medium text-navy hover:underline">
+                Abrir as conversas do WhatsApp
               </Link>
             )}
           </div>
