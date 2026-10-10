@@ -4,7 +4,7 @@
 >
 > **Versão:** 1.0  
 > **Criado em:** 23/09/2026  
-> **Atualizado em:** 24/09/2026  
+> **Atualizado em:** 10/10/2026  
 > **Fase atual:** Fase 0 — Fechamento de produto e riscos  
 > **Estado geral:** EM ANDAMENTO  
 > **Responsável por aprovar os gates:** a definir na Fase 0
@@ -353,23 +353,23 @@ As estimativas medem duração provável, não substituem os gates. Uma fase atr
 
 - [ ] Nome, e-mail, telefone, perfil e região dos usuários iniciais.
 - [ ] Matriz de acesso: quem vê, cria, edita, transfere, exporta e arquiva cada tipo de dado.
-- [ ] Definição final dos dois funis e suas etapas.
+- [ ] Definição final dos dois funis e suas etapas. Rascunho na seção 6 da especificação e no seed `supabase/migrations/20261007200800_0009_seed_config.sql`; aguarda aprovação do Murilo.
 - [ ] Campos obrigatórios de entrada e saída por etapa.
-- [ ] Prazos, alertas e escalonamentos por etapa.
+- [ ] Prazos, alertas e escalonamentos por etapa. Prazos (`sla_days`) do seed são provisórios; aguardam definição.
 - [ ] Definição de urgência, estagnação, espera, retomada, ganho, perda e arquivamento.
 - [ ] Decisão sobre múltiplas oportunidades simultâneas por empresa.
 - [ ] Definição da fonte oficial de venda e faturamento.
-- [ ] Dicionário de dados com tipo, obrigatoriedade, origem e responsável por cada campo.
+- [ ] Dicionário de dados com tipo, obrigatoriedade, origem e responsável por cada campo. Rascunho em `supabase/DICIONARIO.md` mapeia campo → coluna; faltam obrigatoriedade, origem, responsável e aprovação.
 - [ ] Estratégia de migração: planilha, Moskit, coexistência, corte e histórico necessário.
 - [ ] Inventário de números do WhatsApp, proprietários e vendedores responsáveis.
-- [ ] Prova técnica descartável do provedor não oficial com um número secundário.
-- [ ] Registro dos recursos do provedor: texto, mídia, status, webhook, QR, reconexão e limites.
+- [ ] Prova técnica descartável do provedor não oficial com um número secundário. Implementada com a Stevo em `web/src/server/integrations/stevo-proof/` e publicada em `/prova-whatsapp` (ver `docs/easypanel-teste.md`); falta registrar a evidência do teste e confirmar que o número usado é secundário.
+- [ ] Registro dos recursos do provedor: texto, mídia, status, webhook, QR, reconexão e limites. A prova cobre texto, webhook e QR; mídia, status, reconexão e limites não foram testados nem documentados.
 - [ ] Plano inicial de consentimento, retenção e exclusão para LGPD.
-- [ ] Critérios de aceite escritos para os cinco cenários principais.
+- [ ] Critérios de aceite escritos para os cinco cenários principais. Os cinco cenários estão listados na seção 17 da especificação; falta escrever o critério de aceite de cada um.
 - [ ] Nomeação do responsável por aprovar cada gate.
 - [ ] ADR-001: stack e hospedagem aprovadas. Redigida em `docs/adr/ADR-001-stack-e-hospedagem.md`; aguarda aprovação formal.
 - [ ] ADR-002: estratégia de autenticação aprovada.
-- [ ] ADR-003: estratégia temporária e futura do WhatsApp aprovada.
+- [ ] ADR-003: estratégia temporária e futura do WhatsApp aprovada. Ainda não redigida; a prova usou a Stevo.
 - [x] Painel visual do plano mestre disponível em `/implementacao`.
 
 #### Testes e validações
@@ -377,7 +377,7 @@ As estimativas medem duração provável, não substituem os gates. Uma fase atr
 - [ ] Workshop de regras realizado com os responsáveis.
 - [ ] Pelo menos cinco registros reais percorridos do início ao fim nos funis.
 - [ ] Amostra de dados classificada em: importável, corrigível e não importável.
-- [ ] Provedor não oficial recebeu e enviou mensagem em ambiente de prova.
+- [ ] Provedor não oficial recebeu e enviou mensagem em ambiente de prova. Commits de 09/10/2026 relatam envio e recebimento reais pela Stevo; falta anexar a evidência (data, número, mensagem enviada e recebida).
 - [ ] Riscos comerciais e técnicos documentados com responsável e mitigação.
 
 #### Gate G0 — Produto fechado para fundação
@@ -1387,6 +1387,7 @@ Atualizar esta tabela sempre que uma fase mudar de estado.
 |---|---|---|---|---|---|
 | 23/09/2026 | F0 | NÃO INICIADA | PRONTA PARA INICIAR | — | Plano mestre criado |
 | 24/09/2026 | F0 | PRONTA PARA INICIAR | EM ANDAMENTO | Codex | Painel visual do plano concluído e validado em `/implementacao`; F0 permanece aberta até o Gate G0 |
+| 10/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Ágato (Brain) | Revisão do estado real. Nenhum entregável novo pôde ser marcado: os rascunhos existentes (funis, dicionário, prova da Stevo, ADR-001) aguardam aprovação ou evidência. Trabalho fora da F0 encontrado no repositório: schema da F2 (coberto pela `supabase/SOLICITACAO_MUDANCA.md`, SM-2026-10-07-001); app ligado ao Supabase (commit `2c7e798`) e Central de Conversas com WhatsApp real (commit `a870abc`), ambos sem solicitação de mudança registrada |
 
 ---
 
@@ -1404,7 +1405,7 @@ Estas decisões impedem o Gate G0:
 - [ ] Quais critérios formais definem ganho, perda e arquivamento?
 - [ ] Qual é a fonte oficial de venda e faturamento?
 - [ ] O Moskit será migrado integralmente ou haverá convivência?
-- [ ] Qual provedor não oficial será utilizado primeiro?
+- [ ] Qual provedor não oficial será utilizado primeiro? Stevo foi usada na prova técnica; a decisão formal depende do ADR-003.
 - [ ] Quais números entram no piloto e quem é proprietário deles?
 - [ ] Qual volume diário esperado de mensagens?
 - [ ] Quais dados e históricos precisam ser retidos?
