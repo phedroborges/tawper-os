@@ -1,7 +1,7 @@
 # ADR-001 — Stack e hospedagem
 
 **Data:** 06/10/2026
-**Estado:** Decidida por Phedro Borges; aprovação formal pendente da nomeação do aprovador de gates (Fase 0)
+**Estado:** Aprovada por Phedro Borges em 10/10/2026
 **Fase:** F0 — Fechamento de produto e riscos
 
 ## Contexto

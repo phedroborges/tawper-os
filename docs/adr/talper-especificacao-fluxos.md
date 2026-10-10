@@ -396,6 +396,34 @@ Ao ganhar:
 - responsável;
 - condição de retomada.
 
+### 6.4 Urgência da conta
+
+A urgência é calculada pelo sistema a partir de dois fatores: o calor da conta e o tempo sem contato. Quanto mais quente a conta, menos tempo ela pode ficar sem contato.
+
+**Calor**, definido pela etapa da oportunidade aberta mais avançada da empresa:
+
+| Calor | Aquisição | Recorrência | Contato esperado a cada |
+|---|---|---|---|
+| Quente | Homologação, Produto aprovado, Orçamento, Negociação | Novo orçamento, Negociação recorrente | 7 dias |
+| Morna | Apresentação técnica, Cadastro | Pós-venda, Previsão de nova compra | 15 dias |
+| Fria | Lead desconhecido, Qualificação, Apresentação da empresa | Relacionamento | 30 dias |
+
+**Tempo sem contato**: dias corridos desde a última interação registrada com a empresa (WhatsApp, ligação, e-mail, reunião ou visita). Empresa sem nenhuma interação conta a partir da data de cadastro.
+
+**Urgência resultante:**
+
+- **Alta:** o tempo sem contato atingiu ou passou o intervalo esperado para o calor da conta, ou existe próximo passo vencido.
+- **Média:** o tempo sem contato passou da metade do intervalo esperado.
+- **Baixa:** contato em dia.
+
+Regras complementares:
+
+- Conta em espera não gera urgência até a data de reavaliação; vencida a reavaliação, a urgência é Alta.
+- Conta perdida ou arquivada não tem urgência.
+- Os intervalos (7, 15 e 30 dias) são configuráveis pelo administrador.
+- Administrador e gestor podem fixar a urgência manualmente, com motivo; a alteração fica na auditoria e vale até ser removida. Vendedor e representante não alteram a urgência.
+- A urgência ordena o Meu Dia e a Carteira e alimenta o alerta de cliente sem interação (seção 8.1).
+
 ## 7. Fluxos operacionais
 
 ### 7.1 Entrada de novo cliente
@@ -726,6 +754,10 @@ O clique em qualquer indicador deve abrir a lista que originou o número.
 - receita e margem por segmento.
 
 As fórmulas financeiras só devem entrar em produção depois que fontes, periodicidade e responsabilidade pelos dados forem definidas.
+
+### 11.3 Fonte oficial de venda e faturamento
+
+A fonte oficial é o próprio Tawper OS. Venda e faturamento são o que estiver registrado no sistema: empresas, oportunidades ganhas e seus valores. Não há sistema externo de referência; sem registro no sistema, o indicador fica zerado.
 
 ## 12. Migração da planilha e do Moskit
 

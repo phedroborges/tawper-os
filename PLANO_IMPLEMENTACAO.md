@@ -7,7 +7,7 @@
 > **Atualizado em:** 10/10/2026  
 > **Fase atual:** Fase 0 — Fechamento de produto e riscos  
 > **Estado geral:** EM ANDAMENTO  
-> **Responsável por aprovar os gates:** a definir na Fase 0
+> **Responsável por aprovar os gates:** a própria equipe de implementação, representada por Phedro Borges
 
 ---
 
@@ -351,14 +351,14 @@ As estimativas medem duração provável, não substituem os gates. Uma fase atr
 
 #### Entregáveis
 
-- [ ] Nome, e-mail, telefone, perfil e região dos usuários iniciais. Nomes e perfis estão na seção 4 de `docs/adr/talper-especificacao-fluxos.md` (Murilo, Douglas, Paulo, Nilton/Newton e Fernando); faltam e-mail, telefone e região de cada um e a grafia Nilton/Newton.
+- [x] Nome, e-mail, telefone, perfil e região dos usuários iniciais. Decisão de Phedro Borges em 10/10/2026: a V1 começa com um único usuário, `dev@tawper.com.br` (desenvolvedor), perfil administrador, sem região restrita. A senha inicial foi definida fora do repositório. Os vendedores entram depois, pelo cadastro de usuários. A criação da conta no Supabase Auth pertence à Fase 3.
 - [x] Matriz de acesso: quem vê, cria, edita, transfere, exporta e arquiva cada tipo de dado. Definida na seção 4 de `docs/adr/talper-especificacao-fluxos.md`: administrador e gestor veem toda a carteira; vendedor e representante veem só a própria; transferência, importação, exportação, união e arquivamento são do administrador. Refletida em `supabase/migrations/20261007200700_0008_rls.sql`.
 - [x] Definição final dos dois funis e suas etapas. Seção 6 de `docs/adr/talper-especificacao-fluxos.md`: aquisição com 10 etapas e recorrência com 6; gravados em `supabase/migrations/20261007200800_0009_seed_config.sql`.
 - [x] Campos obrigatórios de entrada e saída por etapa. Seção 6 de `docs/adr/talper-especificacao-fluxos.md`, gravados como `stage_requirements` no seed.
 - [x] Prazos, alertas e escalonamentos por etapa. Regras nas seções 7.5 e 8.1 de `docs/adr/talper-especificacao-fluxos.md`; os limites são configuráveis por etapa e partem dos valores do seed (`sla_days`): aquisição 14, 21, 21, 21, 20, 45, 30, 10 e 15 dias; recorrência 10, 45, 60, 10 e 15 dias.
-- [ ] Definição de urgência, estagnação, espera, retomada, ganho, perda e arquivamento. Estagnação (7.5), espera e retomada (6.3), ganho e perda (6.1, etapas 9 e 10) e arquivamento (7.10) estão em `docs/adr/talper-especificacao-fluxos.md`; falta só a regra de urgência: o que torna uma conta Alta, Média ou Baixa e quem pode alterar.
+- [x] Definição de urgência, estagnação, espera, retomada, ganho, perda e arquivamento. Em `docs/adr/talper-especificacao-fluxos.md`: urgência (6.4, calor da conta × tempo sem contato), estagnação (7.5), espera e retomada (6.3), ganho e perda (6.1, etapas 9 e 10) e arquivamento (7.10).
 - [x] Decisão sobre múltiplas oportunidades simultâneas por empresa. Seção 5.3 de `docs/adr/talper-especificacao-fluxos.md`: a empresa pode ter mais de uma oportunidade, com visão consolidada da conta; o banco limita a uma oportunidade aberta por funil.
-- [ ] Definição da fonte oficial de venda e faturamento.
+- [x] Definição da fonte oficial de venda e faturamento. Decisão de Phedro Borges em 10/10/2026: a fonte é o próprio Tawper OS (seção 11.3 de `docs/adr/talper-especificacao-fluxos.md`).
 - [ ] Dicionário de dados com tipo, obrigatoriedade, origem e responsável por cada campo. Rascunho em `supabase/DICIONARIO.md` mapeia campo → coluna; faltam obrigatoriedade, origem, responsável e aprovação.
 - [x] Estratégia de migração: planilha, Moskit, coexistência, corte e histórico necessário. Decisão de Phedro Borges em 10/10/2026: o sistema começa do zero, sem migração do Moskit nem da planilha agora; os dados antigos ficam apenas como consulta.
 - [x] Inventário de números do WhatsApp, proprietários e vendedores responsáveis. Decisão de Phedro Borges em 10/10/2026: dispensado nesta fase; já existe uma instância conectada e em uso no sistema.
@@ -366,8 +366,8 @@ As estimativas medem duração provável, não substituem os gates. Uma fase atr
 - [ ] Registro dos recursos do provedor: texto, mídia, status, webhook, QR, reconexão e limites. A prova cobre texto, webhook e QR; mídia, status, reconexão e limites não foram testados nem documentados.
 - [ ] Plano inicial de consentimento, retenção e exclusão para LGPD.
 - [x] Critérios de aceite escritos para os cinco cenários principais. Seções 16 (critérios de aceite) e 17 (cinco cenários e o que cada demonstração deve mostrar) de `docs/adr/talper-especificacao-fluxos.md`.
-- [ ] Nomeação do responsável por aprovar cada gate.
-- [ ] ADR-001: stack e hospedagem aprovadas. Redigida em `docs/adr/ADR-001-stack-e-hospedagem.md`; aguarda aprovação formal.
+- [x] Nomeação do responsável por aprovar cada gate. Decisão de Phedro Borges em 10/10/2026: a própria equipe de implementação aprova, com registro simples de nome e data no gate.
+- [x] ADR-001: stack e hospedagem aprovadas. `docs/adr/ADR-001-stack-e-hospedagem.md`, aprovada por Phedro Borges em 10/10/2026.
 - [ ] ADR-002: estratégia de autenticação aprovada.
 - [ ] ADR-003: estratégia temporária e futura do WhatsApp aprovada. Ainda não redigida; a prova usou a Stevo.
 - [x] Painel visual do plano mestre disponível em `/implementacao`.
@@ -1389,6 +1389,7 @@ Atualizar esta tabela sempre que uma fase mudar de estado.
 | 24/09/2026 | F0 | PRONTA PARA INICIAR | EM ANDAMENTO | Codex | Painel visual do plano concluído e validado em `/implementacao`; F0 permanece aberta até o Gate G0 |
 | 10/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Ágato (Brain) | Revisão do estado real. Nenhum entregável novo pôde ser marcado: os rascunhos existentes (funis, dicionário, prova da Stevo, ADR-001) aguardam aprovação ou evidência. Trabalho fora da F0 encontrado no repositório: schema da F2 (coberto pela `supabase/SOLICITACAO_MUDANCA.md`, SM-2026-10-07-001); app ligado ao Supabase (commit `2c7e798`) e Central de Conversas com WhatsApp real (commit `a870abc`), ambos sem solicitação de mudança registrada |
 | 10/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Ágato (Brain) | Phedro Borges confirmou `docs/adr/talper-especificacao-fluxos.md` como fonte das regras de produto e decidiu: sistema começa do zero, sem migração do Moskit agora; inventário de números do piloto dispensado; prova da Stevo dada como feita; indicadores do primeiro dashboard são os da especificação. Fechados 9 entregáveis, 1 validação e 10 decisões pendentes. A decisão de não migrar afeta a Fase 6 (migração piloto) e o item "importação validada" do Marco A, a rever antes do G5 |
+| 10/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Ágato (Brain) | Decisões de Phedro Borges: usuário inicial único `dev@tawper.com.br` (administrador); regra de urgência por calor e tempo sem contato (especificação 6.4); fonte oficial de venda e faturamento é o próprio sistema (11.3); gates aprovados pela própria equipe. ADR-001 aprovada. Fechados mais 5 entregáveis e 3 decisões pendentes |
 
 ---
 
@@ -1396,15 +1397,15 @@ Atualizar esta tabela sempre que uma fase mudar de estado.
 
 Estas decisões impedem o Gate G0:
 
-- [ ] Quem aprova formalmente cada fase?
-- [ ] Quais são os usuários, e-mails, telefones e regiões corretos? Nomes definidos na especificação; faltam e-mail, telefone e região de cada um.
+- [x] Quem aprova formalmente cada fase? A própria equipe de implementação, representada por Phedro Borges, com registro de nome e data.
+- [x] Quais são os usuários, e-mails, telefones e regiões corretos? Um único usuário inicial: `dev@tawper.com.br`, administrador.
 - [x] Quem enxerga a carteira de quem? Administrador e gestor veem tudo; vendedor e representante veem só a própria carteira (especificação, seção 4).
 - [x] Uma empresa pode ter oportunidades simultâneas? Sim, com visão consolidada da conta; uma aberta por funil (especificação 5.3).
 - [x] Quais campos e evidências são obrigatórios por etapa? Os da seção 6 da especificação.
 - [x] Quais limites definem atenção e estagnação? Limite de dias por etapa, configurável, partindo dos valores do seed (especificação 7.5).
 - [x] Quando e por quanto tempo uma conta pode ficar em espera? Com motivo, responsável, condição de retomada e data obrigatória de reavaliação; sem prazo máximo fixo (especificação 6.3).
 - [x] Quais critérios formais definem ganho, perda e arquivamento? Ganho exige valor e data, perda exige motivo, arquivamento exige motivo e substitui a exclusão (especificação 6.1 e 7.10).
-- [ ] Qual é a fonte oficial de venda e faturamento?
+- [x] Qual é a fonte oficial de venda e faturamento? O próprio Tawper OS.
 - [x] O Moskit será migrado integralmente ou haverá convivência? Nenhum dos dois agora: o sistema começa do zero. Decisão de Phedro Borges em 10/10/2026.
 - [x] Qual provedor não oficial será utilizado primeiro? Stevo, já conectada e em uso; falta apenas registrar no ADR-003.
 - [x] Quais números entram no piloto e quem é proprietário deles? Dispensado nesta fase; já há uma instância conectada. Decisão de Phedro Borges em 10/10/2026.
