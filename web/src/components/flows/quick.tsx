@@ -15,9 +15,30 @@ import type { ActivityType, Company, Prioridade } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 import { aiQuickNote, aiTranscribe } from "@/server/ai/actions";
 
-function speechCtor(): (new () => SpeechRecognition) | null {
+interface SpeechResult {
+  isFinal: boolean;
+  0?: { transcript: string };
+}
+
+interface SpeechEvent {
+  results: ArrayLike<SpeechResult>;
+  error?: string;
+}
+
+interface SpeechSession {
+  lang: string;
+  continuous: boolean;
+  interimResults: boolean;
+  onresult: ((event: SpeechEvent) => void) | null;
+  onerror: ((event: SpeechEvent) => void) | null;
+  onend: (() => void) | null;
+  start: () => void;
+  stop: () => void;
+}
+
+function speechCtor(): (new () => SpeechSession) | null {
   if (typeof window === "undefined") return null;
-  const w = window as Window & { SpeechRecognition?: new () => SpeechRecognition; webkitSpeechRecognition?: new () => SpeechRecognition };
+  const w = window as Window & { SpeechRecognition?: new () => SpeechSession; webkitSpeechRecognition?: new () => SpeechSession };
   return w.SpeechRecognition ?? w.webkitSpeechRecognition ?? null;
 }
 
@@ -104,7 +125,7 @@ export function QuickRegisterModal({ companyId: initialCompany, text: initialTex
     applyText.current = setTextAndRead;
   });
 
-  const dictation = useRef<{ rec: SpeechRecognition; base: string; final: string; want: boolean } | null>(null);
+  const dictation = useRef<{ rec: SpeechSession; base: string; final: string; want: boolean } | null>(null);
   const tape = useRef<{ rec: MediaRecorder; stream: MediaStream; chunks: Blob[] } | null>(null);
   const alive = useRef(true);
 
@@ -133,7 +154,7 @@ export function QuickRegisterModal({ companyId: initialCompany, text: initialTex
     };
   }, []);
 
-  const startDictation = (Ctor: new () => SpeechRecognition) => {
+  const startDictation = (Ctor: new () => SpeechSession) => {
     const rec = new Ctor();
     const session = { rec, base: text.trim(), final: "", want: true };
     dictation.current = session;
@@ -152,7 +173,7 @@ export function QuickRegisterModal({ companyId: initialCompany, text: initialTex
       if (alive.current) applyText.current(joinSpeech(session.base, `${finalText}${interim}`));
     };
     rec.onerror = (event) => {
-      const code = (event as { error?: string }).error;
+      const code = event.error;
       if (code === "no-speech" || code === "aborted") return;
       session.want = false;
       if (!alive.current) return;
