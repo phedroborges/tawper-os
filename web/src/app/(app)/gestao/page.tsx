@@ -3,10 +3,11 @@
 import { ArrowRight, Megaphone, ShieldCheck, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertRow, UserAvatar, userName } from "@/components/crm/crm";
 import { Button, Card, CardHeader, Empty, PageHeader, Progress } from "@/components/ui/primitives";
-import { managerDigest } from "@/lib/ai";
+import { managerDigest, type ManagerDigest } from "@/lib/ai";
+import { aiDigest } from "@/server/ai/actions";
 import { isManager } from "@/lib/constants";
 import { fmtAgo, fmtDateTime } from "@/lib/dates";
 import { useNow } from "@/lib/hooks";
@@ -26,7 +27,47 @@ export default function GestaoPage() {
   const [tipo, setTipo] = useState<AlertType | "todas">("todas");
   const alerts = useMemo(() => alertsOf(s, { now }), [s, now]);
   const stats = useMemo(() => sellerStats(s, now), [s, now]);
-  const digest = useMemo(() => managerDigest(s, now), [s, now]);
+  const localDigest = useMemo(() => managerDigest(s, now), [s, now]);
+  const digestKey = localDigest.linhas.join("|");
+  const [aiDigestState, setAiDigestState] = useState<{ key: string; data: ManagerDigest } | null>(null);
+  const digest = aiDigestState?.key === digestKey ? aiDigestState.data : localDigest;
+
+  useEffect(() => {
+    const cacheKey = `tawper-ai-digest:${digestKey}`;
+    const fallback = managerDigest(useStore.getState(), new Date());
+    let alive = true;
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        const data = JSON.parse(cached) as ManagerDigest;
+        queueMicrotask(() => {
+          if (alive) setAiDigestState({ key: digestKey, data });
+        });
+        return () => {
+          alive = false;
+        };
+      }
+    } catch {
+      /* sessionStorage indisponível */
+    }
+    void (async () => {
+      try {
+        const data = await aiDigest({ fallback });
+        if (!alive) return;
+        setAiDigestState({ key: digestKey, data });
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify(data));
+        } catch {
+          /* ignore quota */
+        }
+      } catch {
+        /* mantém o resumo local */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [digestKey]);
   const cobrancas = s.interactions.filter((i) => i.kind === "cobranca").slice(0, 5);
 
   if (!isManager(user)) return <Empty icon={<ShieldCheck size={20} />} title="Área do gestor" text="Troque para o perfil do Murilo no topo para ver a gestão da carteira." />;

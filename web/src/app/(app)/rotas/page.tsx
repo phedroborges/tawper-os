@@ -12,6 +12,7 @@ import { alertsOf, daysInStage, lastInteractionAt, openDealOf, stageOf } from "@
 import { useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
 import { cn } from "@/lib/utils";
+import { aiRoute } from "@/server/ai/actions";
 
 /** Planejamento de rota (fluxo 7.8): IA prioriza por urgência, potencial, etapa e atraso. */
 export default function RotasPage() {
@@ -49,10 +50,28 @@ export default function RotasPage() {
 
   const suggest = () => {
     setThinking(true);
-    setTimeout(() => {
-      setPicked(candidates.slice(0, 4).map((x) => x.c.id));
+    const fallbackIds = candidates.slice(0, 4).map((x) => x.c.id);
+    void (async () => {
+      let ids = fallbackIds;
+      try {
+        ids = await aiRoute({
+          regiao,
+          candidates: candidates.slice(0, 16).map((x) => ({
+            id: x.c.id,
+            nome: x.c.nome,
+            cidade: x.c.cidade,
+            score: x.score,
+            motivos: x.motivos,
+            etapa: x.deal ? stageOf(x.deal).nome : undefined,
+          })),
+          fallbackIds,
+        });
+      } catch {
+        ids = fallbackIds;
+      }
+      setPicked(ids);
       setThinking(false);
-    }, 1800);
+    })();
   };
 
   const confirm = () => {

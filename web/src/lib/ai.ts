@@ -1,6 +1,5 @@
-// IA SIMULADA. Nada aqui chama um modelo de linguagem: são regras e modelos de texto que imitam o
-// comportamento esperado dos agentes descritos na especificação (seção 9). A interface das funções
-// foi pensada para ser trocada por chamadas reais a um LLM depois.
+// Regras locais da IA: rascunho instantâneo e fallback quando o modelo (gpt-4o-mini) não responde.
+// A chamada real fica em `src/server/ai/actions.ts`.
 
 import { FUNNELS, getStage, stageIndex } from "./constants";
 import { addDays, dayDiff, daysSince, fmtDateShort, greeting, nextWeekday, startOfDay, weekdayName } from "./dates";
@@ -852,6 +851,11 @@ export function assistantAnswer(d: Data, user: User, question: string, now = new
       "Posso responder com base nos dados registrados no Tawper OS. Experimente perguntar sobre clientes parados, sua agenda de hoje, orçamentos abertos, execução do time, recorrência ou pedir o resumo de uma conta.",
   };
 }
+
+export type ExtractedLead = ReturnType<typeof extractLead>;
+export type CopilotResult = ReturnType<typeof copilotFor>;
+export type DailyBriefing = ReturnType<typeof dailyBriefing>;
+export type ManagerDigest = ReturnType<typeof managerDigest>;
 
 export function funnelLabel(deal?: Deal) {
   if (!deal) return "—";

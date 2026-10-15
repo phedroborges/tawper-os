@@ -5,9 +5,12 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Drawer } from "@/components/ui/overlay";
 import { ASSISTANT_SUGGESTIONS, assistantAnswer, type AssistantAnswer } from "@/lib/ai";
+import { portfolioContext } from "@/lib/ai-context";
+import { isManager } from "@/lib/constants";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
 import { cn } from "@/lib/utils";
+import { aiAssistant } from "@/server/ai/actions";
 
 interface Msg {
   id: number;
@@ -16,7 +19,7 @@ interface Msg {
   answer?: AssistantAnswer;
 }
 
-/** "Pergunte à Tawper IA": respostas calculadas a partir dos dados da demo. */
+/** "Pergunte à Tawper IA": gpt-4o-mini sobre a carteira visível; regras locais se o modelo falhar. */
 export function AssistantPanel() {
   const { assistantOpen, setAssistant } = useUI();
   const user = useCurrentUser();
@@ -39,13 +42,30 @@ export function AssistantPanel() {
     setMsgs((m) => [...m, { id: userMsgId, from: "user", text: q }]);
     setText("");
     setBusy(true);
-    setTimeout(() => {
-      const answer = assistantAnswer(useStore.getState(), user, q);
+    const history = msgs
+      .slice(-6)
+      .map((m) => ({ role: (m.from === "user" ? "user" : "assistant") as "user" | "assistant", content: m.text }));
+    void (async () => {
+      const state = useStore.getState();
+      const fallback = assistantAnswer(state, user, q);
+      const allowedCompanyIds = state.companies.filter((c) => isManager(user) || c.ownerId === user.id).map((c) => c.id);
+      let answer = fallback;
+      try {
+        answer = await aiAssistant({
+          question: q,
+          history,
+          portfolio: portfolioContext(state, user),
+          fallback,
+          allowedCompanyIds,
+        });
+      } catch {
+        answer = fallback;
+      }
+      if (userMsgId !== seq.current) return;
       seq.current += 1;
-      const iaMsgId = seq.current;
-      setMsgs((m) => [...m, { id: iaMsgId, from: "ia", text: answer.texto, answer }]);
+      setMsgs((m) => [...m, { id: seq.current, from: "ia", text: answer.texto, answer }]);
       setBusy(false);
-    }, 1100);
+    })();
   };
 
   return (

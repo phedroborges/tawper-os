@@ -8,6 +8,7 @@ import { AIBadge, AIPanel, AIThinking } from "@/components/ai/ai";
 import { StagePill } from "@/components/crm/crm";
 import { Badge, Button, Card, CardHeader, Field, Input, PageHeader, Select, Textarea } from "@/components/ui/primitives";
 import { extractLead } from "@/lib/ai";
+import { aiExtractLead } from "@/server/ai/actions";
 import { ACTIVITY_TYPES, MARCAS, ORIGENS, PAPEIS, PRENSAS, RAMOS, REGIOES, UFS } from "@/lib/constants";
 import { fmtDate, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { currentDealOf } from "@/lib/selectors";
@@ -39,9 +40,8 @@ function NovaEmpresa() {
   const router = useRouter();
   const toast = useUI((u) => u.toast);
   const conv = s.conversations.find((c) => c.id === convId);
-  const lead = useMemo(() => (conv ? extractLead(conv) : undefined), [conv]);
-
-  const [reading, setReading] = useState(Boolean(lead));
+  const [lead, setLead] = useState<ReturnType<typeof extractLead>>();
+  const [reading, setReading] = useState(Boolean(convId));
   const [filled, setFilled] = useState(false);
   const [f, setF] = useState({
     nome: "", razaoSocial: "", cnpj: "", cidade: "", uf: "SP", regiao: "", ramo: "", origem: "Visita de prospecção", ownerId: user.id,
@@ -54,28 +54,45 @@ function NovaEmpresa() {
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!lead || !conv || filled) return;
-    const t = setTimeout(() => {
-      const cityKey = normalize(lead.cidade);
+    if (!conv || filled) return;
+    let alive = true;
+    void (async () => {
+      const local = extractLead(conv);
+      let got = local;
+      try {
+        got = await aiExtractLead({
+          contatoNome: conv.contatoNome,
+          telefone: conv.telefone,
+          messages: conv.messages.filter((m) => m.from === "cliente" || m.from === "tawper").map((m) => ({ from: m.from, text: m.text })),
+          fallback: local,
+        });
+      } catch {
+        got = local;
+      }
+      if (!alive) return;
+      setLead(got);
+      const cityKey = normalize(got.cidade);
       setF((x) => ({
         ...x,
-        nome: lead.empresa,
-        cidade: lead.cidade,
-        uf: lead.uf,
+        nome: got.empresa,
+        cidade: got.cidade,
+        uf: got.uf,
         regiao: CITY_REGION[cityKey] ?? "",
-        ramo: /usina/i.test(lead.empresa) ? "Usina sucroenergética" : x.ramo,
-        origem: lead.origem,
+        ramo: /usina/i.test(got.empresa) ? "Usina sucroenergética" : x.ramo,
+        origem: got.origem,
         ownerId: conv.ownerId,
-        urgencia: lead.dor ? "Alta" : "Média",
-        observacoes: [lead.indicacao && `Indicação: ${lead.indicacao}.`, lead.dor && `Dor relatada: ${lead.dor.toLowerCase()}.`, `Interesse: ${lead.interesse}.`].filter(Boolean).join(" "),
+        urgencia: got.dor ? "Alta" : "Média",
+        observacoes: [got.indicacao && `Indicação: ${got.indicacao}.`, got.dor && `Dor relatada: ${got.dor.toLowerCase()}.`, `Interesse: ${got.interesse}.`].filter(Boolean).join(" "),
       }));
-      setCt((x) => ({ ...x, nome: lead.contatoNome, cargo: lead.cargo, papel: lead.papel, whatsapp: formatWhatsApp(conv.telefone) }));
-      setNext((x) => ({ ...x, titulo: `Responder ${lead.contatoNome} e qualificar frota, prensa e fornecedor`, tipo: "WhatsApp" }));
+      setCt((x) => ({ ...x, nome: got.contatoNome, cargo: got.cargo, papel: got.papel, whatsapp: formatWhatsApp(conv.telefone) }));
+      setNext((x) => ({ ...x, titulo: `Responder ${got.contatoNome} e qualificar frota, prensa e fornecedor`, tipo: "WhatsApp" }));
       setReading(false);
       setFilled(true);
-    }, 1900);
-    return () => clearTimeout(t);
-  }, [lead, conv, filled]);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [conv, filled]);
 
   const dups = useMemo(() => {
     if (f.nome.trim().length < 4 && onlyDigits(f.cnpj).length < 8 && onlyDigits(ct.whatsapp).length < 8) return [];

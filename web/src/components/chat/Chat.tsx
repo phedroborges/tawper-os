@@ -7,6 +7,7 @@ import { AIPanel, AIThinking, Confidence } from "@/components/ai/ai";
 import { StagePill } from "@/components/crm/crm";
 import { Badge, Button } from "@/components/ui/primitives";
 import { summarizeConversation } from "@/lib/ai";
+import { companyContext, funnelStages } from "@/lib/ai-context";
 import { FIELD_LABELS, getStage, stageIndex } from "@/lib/constants";
 import { dayDiff, fmtDateShort, fmtDue, fmtTime, rel } from "@/lib/dates";
 import { openDealOf } from "@/lib/selectors";
@@ -14,6 +15,7 @@ import { simulateClientReply } from "@/lib/sim";
 import { useStore } from "@/lib/store";
 import type { Company, Conversation, ConversationSummary } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
+import { aiSummarize } from "@/server/ai/actions";
 import { formatWhatsApp } from "@/lib/br-ids";
 import { cn, money, quoteTotals } from "@/lib/utils";
 
@@ -210,6 +212,7 @@ export function ConversationAI({ conv, compact }: { conv: Conversation; compact?
   const [createdFor, setCreatedFor] = useState<string | null>(null);
   const [appliedFor, setAppliedFor] = useState<string | null>(null);
   const [liveSummary, setLiveSummary] = useState<ConversationSummary>();
+  const seq = useRef(0);
   const company = s.companies.find((c) => c.id === conv.companyId);
   const deal = company ? openDealOf(s, company.id) : undefined;
   const stored = s.conversations.some((c) => c.id === conv.id);
@@ -217,19 +220,33 @@ export function ConversationAI({ conv, compact }: { conv: Conversation; compact?
   const stale = sum && conv.messages.length && conv.messages.at(-1)!.at > sum.geradoEm;
 
   const generate = () => {
+    const n = ++seq.current;
     setThinking(true);
-    setTimeout(() => {
-      if (!stored) {
-        setLiveSummary(summarizeConversation(conv, deal));
-        setThinking(false);
-        return;
-      }
+    void (async () => {
       const fresh = useStore.getState();
-      const c2 = fresh.conversations.find((c) => c.id === conv.id)!;
-      const d2 = c2.companyId ? openDealOf(fresh, c2.companyId) : undefined;
-      fresh.setConversationSummary(conv.id, summarizeConversation(c2, d2));
+      const c2 = stored ? (fresh.conversations.find((c) => c.id === conv.id) ?? conv) : conv;
+      const d2 = c2.companyId ? openDealOf(fresh, c2.companyId) : deal;
+      const fallback = summarizeConversation(c2, d2);
+      const ctx = c2.companyId ? companyContext(fresh, c2.companyId) : null;
+      let sum = fallback;
+      try {
+        sum = await aiSummarize({
+          messages: c2.messages
+            .filter((m) => m.from === "cliente" || m.from === "tawper")
+            .slice(-40)
+            .map((m) => ({ from: m.from, text: m.text, at: m.at })),
+          context: ctx,
+          stages: funnelStages(d2),
+          fallback,
+        });
+      } catch {
+        sum = fallback;
+      }
+      if (n !== seq.current) return;
+      if (!stored) setLiveSummary(sum);
+      else useStore.getState().setConversationSummary(conv.id, sum);
       setThinking(false);
-    }, 1700);
+    })();
   };
 
   if (!company)

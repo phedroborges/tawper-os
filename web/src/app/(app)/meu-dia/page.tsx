@@ -3,10 +3,11 @@
 import { ArrowRight, CalendarCheck, CalendarClock, CircleAlert, MessageCircle, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AlertRow, TaskRow } from "@/components/crm/crm";
 import { Card, CardHeader, Empty, PageHeader, Segmented, Stat } from "@/components/ui/primitives";
-import { dailyBriefing } from "@/lib/ai";
+import { dailyBriefing, type DailyBriefing } from "@/lib/ai";
+import { aiBriefing } from "@/server/ai/actions";
 import { isManager } from "@/lib/constants";
 import { dayDiff, fmtAgo, longToday } from "@/lib/dates";
 import { useNow } from "@/lib/hooks";
@@ -28,7 +29,47 @@ export default function MeuDiaPage() {
   const atrasadas = mine.filter((a) => dayDiff(a.dueAt, now) < 0);
   const hoje = mine.filter((a) => dayDiff(a.dueAt, now) === 0);
   const proximas = mine.filter((a) => dayDiff(a.dueAt, now) > 0 && dayDiff(a.dueAt, now) <= 14);
-  const brief = useMemo(() => dailyBriefing(s, user, now), [s, user, now]);
+  const localBrief = useMemo(() => dailyBriefing(s, user, now), [s, user, now]);
+  const briefKey = `${user.id}|${localBrief.resumo}|${localBrief.prioridades.map((p) => p.companyId).join(",")}`;
+  const [aiBrief, setAiBrief] = useState<{ key: string; data: DailyBriefing } | null>(null);
+  const brief = aiBrief?.key === briefKey ? aiBrief.data : localBrief;
+
+  useEffect(() => {
+    const cacheKey = `tawper-ai-brief:${briefKey}`;
+    const fallback = dailyBriefing(useStore.getState(), user, new Date());
+    let alive = true;
+    try {
+      const cached = sessionStorage.getItem(cacheKey);
+      if (cached) {
+        const data = JSON.parse(cached) as DailyBriefing;
+        queueMicrotask(() => {
+          if (alive) setAiBrief({ key: briefKey, data });
+        });
+        return () => {
+          alive = false;
+        };
+      }
+    } catch {
+      /* sessionStorage indisponível */
+    }
+    void (async () => {
+      try {
+        const data = await aiBriefing({ fallback });
+        if (!alive) return;
+        setAiBrief({ key: briefKey, data });
+        try {
+          sessionStorage.setItem(cacheKey, JSON.stringify(data));
+        } catch {
+          /* ignore quota */
+        }
+      } catch {
+        /* mantém o briefing local */
+      }
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [briefKey, user]);
   const alerts = useMemo(() => alertsOf(s, { ownerId: user.id, now }).filter((a) => a.tipo !== "atraso"), [s, user.id, now]);
   const semProximo = alerts.filter((a) => a.tipo === "sem_proximo_passo");
   const convs = s.conversations.filter((c) => c.unread > 0 && (c.ownerId === user.id || isManager(user))).sort((a, b) => b.lastAt.localeCompare(a.lastAt));

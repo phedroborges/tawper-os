@@ -6,12 +6,14 @@ import { Confidence, Highlighted } from "@/components/ai/ai";
 import { Button, Checkbox, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { Modal } from "@/components/ui/overlay";
 import { parseQuickNote, QUICK_EXAMPLES, type QuickProposal } from "@/lib/ai";
+import { companyContext, funnelStages } from "@/lib/ai-context";
 import { ACTIVITY_TYPES, FUNNELS, FIELD_LABELS, isManager } from "@/lib/constants";
 import { fmtDue, fromInputDate, toInputDate } from "@/lib/dates";
 import { missingCriteria, nextStepOf, openDealOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { ActivityType, Company, Prioridade } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
+import { aiQuickNote } from "@/server/ai/actions";
 
 /** Registro em texto livre: a IA interpreta enquanto você escreve; você confirma numa tela só. */
 export function QuickRegisterModal({ companyId: initialCompany, text: initialText }: { companyId?: string; text?: string }) {
@@ -39,27 +41,48 @@ export function QuickRegisterModal({ companyId: initialCompany, text: initialTex
 
   // a IA lê sozinha quando o texto para de mudar — sem botão "interpretar"
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const seq = useRef(0);
   const schedule = (novoTexto: string, empresaId = companyId) => {
     if (timer.current) clearTimeout(timer.current);
     const alvo = s.companies.find((c) => c.id === empresaId);
     if (!alvo || novoTexto.trim().length < 12) {
+      seq.current += 1;
       setP(null);
       setReading(false);
       return;
     }
     setReading(true);
     timer.current = setTimeout(() => {
-      const res = parseQuickNote(novoTexto, {
+      const n = ++seq.current;
+      const state = useStore.getState();
+      const dealAtual = openDealOf(state, alvo.id);
+      const local = parseQuickNote(novoTexto, {
         company: alvo,
-        deal: openDealOf(s, alvo.id),
-        contacts: s.contacts.filter((c) => c.companyId === alvo.id),
+        deal: dealAtual,
+        contacts: state.contacts.filter((c) => c.companyId === alvo.id),
       });
-      setP(res);
+      if (n !== seq.current) return;
+      setP(local);
       if (!edited.current) {
-        setApplyStage(Boolean(res.etapaSugerida));
-        setApplyData(Object.keys(res.dadosExtraidos).length > 0);
+        setApplyStage(Boolean(local.etapaSugerida));
+        setApplyData(Object.keys(local.dadosExtraidos).length > 0);
       }
-      setReading(false);
+      const ctx = companyContext(state, alvo.id);
+      void (async () => {
+        let res = local;
+        try {
+          if (ctx) res = await aiQuickNote({ note: novoTexto, context: ctx, stages: funnelStages(dealAtual), fallback: local });
+        } catch {
+          res = local;
+        }
+        if (n !== seq.current) return;
+        if (!edited.current) {
+          setP(res);
+          setApplyStage(Boolean(res.etapaSugerida));
+          setApplyData(Object.keys(res.dadosExtraidos).length > 0);
+        }
+        setReading(false);
+      })();
     }, 900);
   };
 

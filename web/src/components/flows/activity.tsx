@@ -7,6 +7,7 @@ import { TypeIcon } from "@/components/crm/crm";
 import { Modal } from "@/components/ui/overlay";
 import { Badge, Button, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { inferStage, parseQuickNote } from "@/lib/ai";
+import { companyContext } from "@/lib/ai-context";
 import { ACTIVITY_TYPES, getStage } from "@/lib/constants";
 import { addDays, fmtDue, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { openDealOf, stageOf } from "@/lib/selectors";
@@ -14,6 +15,7 @@ import { useStore, type ActivityDraft } from "@/lib/store";
 import type { ActivityType, Prioridade } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 import { cn } from "@/lib/utils";
+import { aiNextStep } from "@/server/ai/actions";
 
 const RESULT_CHIPS = ["Contato realizado", "Sem resposta — tentar novamente", "Cliente pediu retorno", "Material enviado", "Visita realizada"];
 
@@ -35,18 +37,30 @@ export function CompleteActivityModal({ activityId }: { activityId: string }) {
   const [due, setDue] = useState(toInputDate(rel(suggested?.prazoDias ?? 3)));
   const [prio, setPrio] = useState<Prioridade>("Média");
   const [fromAI, setFromAI] = useState(false);
+  const [suggesting, setSuggesting] = useState(false);
 
   if (!a || !company) return null;
 
   const stageHint = deal && resultado.length > 8 ? inferStage(resultado, deal).etapa : undefined;
 
   const suggest = () => {
-    const p = parseQuickNote(resultado || a.titulo, { company, deal, contacts: s.contacts.filter((c) => c.companyId === company.id) });
-    setTitulo(p.proximoPasso.titulo);
-    setTipo(p.proximoPasso.tipo);
-    setDue(toInputDate(p.proximoPasso.dueAt));
-    setPrio(p.proximoPasso.prioridade);
-    setFromAI(true);
+    setSuggesting(true);
+    void (async () => {
+      const local = parseQuickNote(resultado || a.titulo, { company, deal, contacts: s.contacts.filter((c) => c.companyId === company.id) });
+      const ctx = companyContext(s, company.id);
+      let p = local.proximoPasso;
+      try {
+        if (ctx) p = await aiNextStep({ resultado: resultado || a.titulo, context: ctx, fallback: local.proximoPasso });
+      } catch {
+        p = local.proximoPasso;
+      }
+      setTitulo(p.titulo);
+      setTipo(p.tipo);
+      setDue(toInputDate(p.dueAt));
+      setPrio(p.prioridade);
+      setFromAI(true);
+      setSuggesting(false);
+    })();
   };
 
   const confirm = () => {
@@ -135,8 +149,8 @@ export function CompleteActivityModal({ activityId }: { activityId: string }) {
           <div className="rounded-[6px] border border-line bg-soft/40 p-3.5">
             <div className="mb-2 flex items-center justify-between">
               <div className="label">Próximo passo {fromAI && <AIBadge className="ml-1" />}</div>
-              <Button size="xs" variant="subtle" onClick={suggest}>
-                <Sparkles size={13} /> Sugerir com IA
+              <Button size="xs" variant="subtle" onClick={suggest} disabled={suggesting}>
+                <Sparkles size={13} /> {suggesting ? "sugerindo…" : "Sugerir com IA"}
               </Button>
             </div>
             <Input value={titulo} onChange={(e) => { setTitulo(e.target.value); setFromAI(false); }} className="font-semibold" />

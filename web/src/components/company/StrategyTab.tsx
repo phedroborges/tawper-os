@@ -6,10 +6,12 @@ import { AIBadge, AIPanel, AIThinking } from "@/components/ai/ai";
 import { TypeIcon, userName } from "@/components/crm/crm";
 import { Badge, Button, Card, CardHeader, Checkbox, Field, Input, Textarea } from "@/components/ui/primitives";
 import { copilotFor } from "@/lib/ai";
+import { companyContext } from "@/lib/ai-context";
 import { fmtDate, fmtDue, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { useStore } from "@/lib/store";
 import type { AISuggestion, Company } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
+import { aiCopilot } from "@/server/ai/actions";
 
 /** Copiloto estratégico (seção 9.2) com aprovação humana (RN-11). */
 export function CopilotCard({ company, compact }: { company: Company; compact?: boolean }) {
@@ -21,12 +23,19 @@ export function CopilotCard({ company, compact }: { company: Company; compact?: 
 
   const generate = () => {
     setThinking(true);
-    setTimeout(() => {
+    void (async () => {
       const fresh = useStore.getState();
-      const c = copilotFor(fresh, company.id);
-      fresh.addSuggestion({ companyId: company.id, tipo: "estrategia", titulo: c.titulo, texto: c.texto, detalhes: c.detalhes, base: c.base, faltantes: c.faltantes });
+      const fallback = copilotFor(fresh, company.id);
+      const ctx = companyContext(fresh, company.id);
+      let c = fallback;
+      try {
+        if (ctx) c = await aiCopilot({ context: ctx, fallback });
+      } catch {
+        c = fallback;
+      }
+      useStore.getState().addSuggestion({ companyId: company.id, tipo: "estrategia", titulo: c.titulo, texto: c.texto, detalhes: c.detalhes, base: c.base, faltantes: c.faltantes });
       setThinking(false);
-    }, 2200);
+    })();
   };
 
   const decide = (sg: AISuggestion, d: "aprovada" | "descartada") => {
