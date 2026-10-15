@@ -111,7 +111,8 @@ export async function sendProofText(to: string, text: string, agent?: Agent) {
   }
   checkAgent(agent);
   const peer = peerOf(to);
-  const conversation = await getLiveConversation(peer);
+  // Banco fora do ar não pode impedir o atendente de responder.
+  const conversation = await getLiveConversation(peer).catch(() => null);
   if (conversation?.ownerId && conversation.ownerId !== agent.id) {
     throw new Error(`Esta conversa está com ${conversation.ownerName || "outro atendente"}. Assuma ou peça a transferência para responder.`);
   }
@@ -142,9 +143,9 @@ export async function markProofRead(peerRaw: string, agent: Agent) {
   assertProofEnabled();
   checkAgent(agent);
   const peer = peerOf(peerRaw);
-  const conversation = await getLiveConversation(peer);
+  const conversation = await getLiveConversation(peer).catch(() => null);
   if (conversation && conversation.ownerId && conversation.ownerId !== agent.id) return;
-  await markLiveRead(peer);
+  await markLiveRead(peer).catch(() => undefined);
 }
 
 export async function registerProofWebhook() {

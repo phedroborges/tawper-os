@@ -18,7 +18,7 @@ let ready: Promise<void> | null = null;
 function db() {
   const url = process.env.DATABASE_URL;
   if (!url) return null;
-  if (!sql) sql = postgres(url, { max: 1, ssl: "require", idle_timeout: 20 });
+  if (!sql) sql = postgres(url, { max: 1, ssl: "require", idle_timeout: 20, connect_timeout: 10 });
   return sql;
 }
 

@@ -30,7 +30,7 @@ NEXT_PUBLIC_TAWPER_USE_SUPABASE=true
 
 ```
 SUPABASE_SERVICE_ROLE_KEY
-DATABASE_URL=postgresql://postgres:SENHA_CODIFICADA@db.SEU-PROJETO.supabase.co:5432/postgres
+DATABASE_URL=postgresql://postgres.SEU-PROJETO:SENHA_CODIFICADA@aws-0-us-east-1.pooler.supabase.com:5432/postgres
 STEVO_PROOF_ENABLED=true
 STEVO_API_URL=https://sm-cavalo.stevo.chat
 STEVO_INSTANCE=tawper-os
@@ -43,7 +43,7 @@ STEVO_SIGN_MESSAGES=true   # opcional; false tira o "*Nome:*" das mensagens dos 
 
 `DATABASE_URL` é obrigatória para o atendimento com vários atendentes: o responsável de cada conversa fica no banco.
 
-O host do Postgres é `db.<ref>.supabase.co`. Se a senha tiver `#` ou `@`, esses caracteres vão codificados na URL (`#` = `%23`, `@` = `%40`). Sem isso o host vira inválido.
+Use o pooler (modo sessão, porta 5432), com usuário `postgres.<ref>`. O host direto `db.<ref>.supabase.co` só tem IPv6 e a VPS do EasyPanel não alcança: o app parece funcionar, mas nada é gravado no banco e o envio falha. Se a senha tiver `#` ou `@`, esses caracteres vão codificados na URL (`#` = `%23`, `@` = `%40`). Sem isso o host vira inválido.
 
 A API Key da Stevo, a service role e o token de webhook ficam só no EasyPanel. O domínio público deste teste já é `https://metricz-tawper-os.dedobd.easypanel.host`.
 
