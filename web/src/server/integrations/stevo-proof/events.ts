@@ -1,5 +1,6 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
+import { clearStevoStatusCache } from "./client";
 import { listLiveMessages, saveLiveMessage } from "./live-store";
 
 export type ProofEventView = {
@@ -12,6 +13,8 @@ export type ProofEventView = {
   direction?: "in" | "out" | "note";
   peer?: string;
   name?: string;
+  authorId?: string;
+  authorName?: string;
 };
 
 const MAX = 200;
@@ -149,6 +152,7 @@ export async function recordInbound(payload: unknown, accepted = true): Promise<
     "";
   const text = messageText(data);
   const session = /connected|disconnected|loggedout|pairsuccess|qrcode|offlinesync/i.test(event);
+  if (session) clearStevoStatusCache();
   const preview = text || (event === "Connected" ? "WhatsApp conectado." : event === "Disconnected" ? "WhatsApp desconectado." : "");
   const direction = !accepted || session || !text ? "note" : fromMe ? "out" : "in";
   const item: ProofEventView = {
@@ -165,19 +169,29 @@ export async function recordInbound(payload: unknown, accepted = true): Promise<
   return keep(item, externalIdOf(info, data, key));
 }
 
-export async function recordSent(peer: string, text: string): Promise<ProofEventView> {
+export async function recordSent(
+  peer: string,
+  text: string,
+  author?: { id: string; name: string },
+  externalId = "",
+): Promise<ProofEventView> {
   const digits = phoneOf(peer) || peer.replace(/\D/g, "");
-  return keep({
-    id: `out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    receivedAt: new Date().toISOString(),
-    event: "SendMessage",
-    from: digits,
-    preview: text.slice(0, 4000),
-    accepted: true,
-    direction: "out",
-    peer: digits,
-    name: "",
-  });
+  return keep(
+    {
+      id: `out-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+      receivedAt: new Date().toISOString(),
+      event: "SendMessage",
+      from: digits,
+      preview: text.slice(0, 4000),
+      accepted: true,
+      direction: "out",
+      peer: digits,
+      name: "",
+      authorId: author?.id,
+      authorName: author?.name,
+    },
+    externalId,
+  );
 }
 
 export async function listMessages(): Promise<ProofEventView[]> {

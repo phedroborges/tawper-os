@@ -12,3 +12,18 @@ Plano de teste: aplicar em projeto Supabase vazio e conferir funis/etapas/regiõ
 Plano de rollback: não aplicar em produção; se o Gate G0 alterar funis ou campos, novas migrations corrigem (as já aplicadas não são reescritas).
 Aprovador: autorização explícita do solicitante nesta sessão.
 ```
+
+```text
+ID: SM-2026-10-14-001
+Data: 14/10/2026
+Solicitante: Carlos Lisboa
+Problema observado: o plano da Stevo tem uma única instância (um QR, um número). Vários atendentes precisam usar o mesmo WhatsApp, cada um com seu perfil, respondendo pelas próprias conversas. A Central de Conversas (commit a870abc, já em uso sem SM registrada) mostra tudo para todos e não grava quem respondeu.
+Decisão anterior afetada: PLANO_IMPLEMENTACAO.md, seção 23 — não iniciar integração real antes do G0; Fase 7 (WhatsApp não oficial) depende de G6. Regulariza também a Central de Conversas ao vivo.
+Fases e dados afetados: F0 continua ativa. Antecipa parte da F7 (atribuição por vendedor). Tabelas operacionais whatsapp_live_messages (autor) e whatsapp_live_conversations (responsável, fila, não lidas), migration 0013. Decisão em docs/adr/ADR-003-whatsapp-stevo-instancia-unica.md.
+Alternativas avaliadas: esperar a F7; uma instância por atendente; API oficial.
+Opção escolhida: uma instância Stevo, atribuição de conversa por atendente (carteira, fila, assumir, liberar, transferir), autor gravado e assinatura opcional na mensagem. Tudo sobre a camada operacional temporária, sem tocar no modelo canônico.
+Plano de migration/backfill: 0013 só adiciona colunas e tabela (if not exists) e cria uma conversa sem responsável para cada telefone já existente. O app aplica o mesmo schema ao subir.
+Plano de teste: lint, typecheck e build; em homologação, dois perfis no app: mensagem nova cai na fila, um assume, o outro deixa de poder responder, transferência muda o responsável, mensagem de contato cadastrado cai na carteira do dono da empresa.
+Plano de rollback: publicar a versão anterior; as colunas e a tabela novas são ignoradas por ela. Nenhum dado existente é alterado.
+Aprovador: autorização explícita do solicitante nesta sessão ("preciso que faça funcionar").
+```

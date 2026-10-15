@@ -38,6 +38,11 @@ export function webhookPublicUrl() {
   return `${base}/api/whatsapp/webhook?token=${encodeURIComponent(token)}`;
 }
 
+/** Prefixa `*Nome:*` nas mensagens do atendente. Desligar com STEVO_SIGN_MESSAGES=false. */
+export function signMessages() {
+  return process.env.STEVO_SIGN_MESSAGES !== "false";
+}
+
 export function testNumber() {
   return (process.env.STEVO_TEST_NUMBER ?? "").replace(/\D/g, "");
 }

@@ -3,16 +3,19 @@
 import {
   getStevoQr,
   getStevoStatus,
+  getStevoStatusCached,
   ensureLiveWebhook,
   refreshStevoQr,
   registerStevoWebhook,
   requestStevoPairing,
   sendStevoText,
+  toStevoNumber,
   type StevoQr,
   type StevoStatus,
 } from "./client";
-import { appPublicUrl, assertProofEnabled, proofEnabled, stevoConfigured, stevoInstance, testNumber, webhookPublicUrl } from "./config";
+import { appPublicUrl, assertProofEnabled, proofEnabled, signMessages, stevoConfigured, stevoInstance, testNumber, webhookPublicUrl } from "./config";
 import { listMessages, recordSent, type ProofEventView } from "./events";
+import { getLiveConversation, listLiveConversations, markLiveRead, setLiveOwner, type LiveConversation } from "./live-store";
 
 export type ProofSnapshot = {
   enabled: boolean;
@@ -25,9 +28,30 @@ export type ProofSnapshot = {
   testNumber: string;
   webhook: unknown;
   events: ProofEventView[];
+  conversations: LiveConversation[];
 };
 
+/**
+ * Atendente que está usando a tela. Sem login (Fase 3) o perfil vem do seletor do app:
+ * organiza o atendimento, não é controle de acesso (ADR-003).
+ */
+export type Agent = { id: string; name: string; role: string };
+
 const emptyQr: StevoQr = { image: null, pairingCode: null, code: null };
+
+function isManagerRole(role: string) {
+  return role === "admin" || role === "gestor";
+}
+
+function checkAgent(agent: Agent) {
+  if (!agent?.id || !agent.name) throw new Error("Escolha seu perfil de atendente no topo da tela.");
+}
+
+function peerOf(raw: string) {
+  const peer = toStevoNumber(raw);
+  if (!peer) throw new Error("Informe um celular brasileiro com DDD.");
+  return peer;
+}
 
 export async function loadProofSnapshot(): Promise<ProofSnapshot> {
   const enabled = proofEnabled();
@@ -44,11 +68,13 @@ export async function loadProofSnapshot(): Promise<ProofSnapshot> {
       testNumber: testNumber(),
       webhook: null,
       events: [],
+      conversations: [],
     };
   }
-  const status = await getStevoStatus();
+  const status = await getStevoStatusCached();
   const qr = status.loggedIn ? emptyQr : await getStevoQr().catch(() => emptyQr);
   if (status.loggedIn) ensureLiveWebhook().catch(() => undefined);
+  const [events, conversations] = await Promise.all([listMessages(), listLiveConversations().catch(() => null)]);
   return {
     enabled,
     configured,
@@ -59,7 +85,8 @@ export async function loadProofSnapshot(): Promise<ProofSnapshot> {
     instance: stevoInstance(),
     testNumber: testNumber(),
     webhook: null,
-    events: await listMessages(),
+    events,
+    conversations: conversations ?? [],
   };
 }
 
@@ -73,13 +100,51 @@ export async function pairProofPhone(phone: string) {
   return requestStevoPairing(phone);
 }
 
-export async function sendProofText(to: string, text: string) {
+export async function sendProofText(to: string, text: string, agent?: Agent) {
   assertProofEnabled();
   const body = text.trim();
   if (!body) throw new Error("Mensagem vazia.");
-  const sent = await sendStevoText(to, body);
-  await recordSent(sent.number, body);
+  if (!agent) {
+    const sent = await sendStevoText(to, body);
+    await recordSent(sent.number, body, undefined, sent.messageId);
+    return sent;
+  }
+  checkAgent(agent);
+  const peer = peerOf(to);
+  const conversation = await getLiveConversation(peer);
+  if (conversation?.ownerId && conversation.ownerId !== agent.id) {
+    throw new Error(`Esta conversa está com ${conversation.ownerName || "outro atendente"}. Assuma ou peça a transferência para responder.`);
+  }
+  const outgoing = signMessages() ? `*${agent.name}:*\n${body}` : body;
+  const sent = await sendStevoText(peer, outgoing);
+  await recordSent(sent.number, outgoing, { id: agent.id, name: agent.name }, sent.messageId);
   return sent;
+}
+
+/** Assumir (target = o próprio agente), transferir (target = outro) ou liberar para a fila (target = null). */
+export async function assignProofConversation(peerRaw: string, target: { id: string; name: string } | null, agent: Agent) {
+  assertProofEnabled();
+  checkAgent(agent);
+  const peer = peerOf(peerRaw);
+  const conversation = await getLiveConversation(peer);
+  const owner = conversation?.ownerId ?? null;
+  const manager = isManagerRole(agent.role);
+  const mine = owner === agent.id;
+  const claimingFree = !owner && target?.id === agent.id;
+  if (!manager && !mine && !claimingFree) {
+    throw new Error(owner ? `Esta conversa está com ${conversation?.ownerName || "outro atendente"}. Só o responsável ou um gestor pode mudar.` : "Assuma a conversa antes de transferir.");
+  }
+  await setLiveOwner(peer, target);
+  return { peer, owner: target };
+}
+
+export async function markProofRead(peerRaw: string, agent: Agent) {
+  assertProofEnabled();
+  checkAgent(agent);
+  const peer = peerOf(peerRaw);
+  const conversation = await getLiveConversation(peer);
+  if (conversation && conversation.ownerId && conversation.ownerId !== agent.id) return;
+  await markLiveRead(peer);
 }
 
 export async function registerProofWebhook() {

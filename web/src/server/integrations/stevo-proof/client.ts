@@ -113,6 +113,24 @@ export async function getStevoStatus(): Promise<StevoStatus> {
   };
 }
 
+const STATUS_TTL_MS = 10_000;
+let statusCache: { at: number; value: Promise<StevoStatus> } | null = null;
+
+/** Vários atendentes com a tela aberta compartilham a mesma consulta à Stevo. */
+export function getStevoStatusCached(): Promise<StevoStatus> {
+  if (statusCache && Date.now() - statusCache.at < STATUS_TTL_MS) return statusCache.value;
+  const value = getStevoStatus();
+  statusCache = { at: Date.now(), value };
+  value.catch(() => {
+    if (statusCache?.value === value) statusCache = null;
+  });
+  return value;
+}
+
+export function clearStevoStatusCache() {
+  statusCache = null;
+}
+
 export async function getStevoQr(): Promise<StevoQr> {
   return parseQr(await stevoFetch("/instance/qr"));
 }
@@ -156,11 +174,12 @@ function pairingCodeOf(body: unknown) {
 export async function sendStevoText(to: string, text: string) {
   const number = toStevoNumber(to);
   if (!number) throw new Error("Informe um celular brasileiro com DDD.");
-  await stevoFetch("/send/text", {
+  const body = await stevoFetch("/send/text", {
     method: "POST",
     body: JSON.stringify({ number, text }),
   });
-  return { number };
+  const messageId = findString(body, ["ID", "Id", "id", "messageId", "MessageID", "message_id", "key"]) ?? "";
+  return { number, messageId };
 }
 
 const subscribedFlag = "/tmp/tawper-stevo-subscribed";
@@ -192,6 +211,7 @@ export async function registerStevoWebhook() {
       immediate: true,
     }),
   })) as Json;
+  clearStevoStatusCache();
   return { url, result };
 }
 

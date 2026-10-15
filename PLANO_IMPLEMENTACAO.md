@@ -369,7 +369,7 @@ As estimativas medem duração provável, não substituem os gates. Uma fase atr
 - [x] Nomeação do responsável por aprovar cada gate. Decisão de Phedro Borges em 10/10/2026: a própria equipe de implementação aprova, com registro simples de nome e data no gate.
 - [x] ADR-001: stack e hospedagem aprovadas. `docs/adr/ADR-001-stack-e-hospedagem.md`, aprovada por Phedro Borges em 10/10/2026.
 - [ ] ADR-002: estratégia de autenticação aprovada.
-- [ ] ADR-003: estratégia temporária e futura do WhatsApp aprovada. Ainda não redigida; a prova usou a Stevo.
+- [ ] ADR-003: estratégia temporária e futura do WhatsApp aprovada. Redigida em 14/10/2026 em `docs/adr/ADR-003-whatsapp-stevo-instancia-unica.md` (Stevo, uma instância, vários atendentes); aceita para o ambiente de teste, falta aprovação no gate.
 - [x] Painel visual do plano mestre disponível em `/implementacao`.
 
 #### Testes e validações
@@ -1390,6 +1390,7 @@ Atualizar esta tabela sempre que uma fase mudar de estado.
 | 10/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Ágato (Brain) | Revisão do estado real. Nenhum entregável novo pôde ser marcado: os rascunhos existentes (funis, dicionário, prova da Stevo, ADR-001) aguardam aprovação ou evidência. Trabalho fora da F0 encontrado no repositório: schema da F2 (coberto pela `supabase/SOLICITACAO_MUDANCA.md`, SM-2026-10-07-001); app ligado ao Supabase (commit `2c7e798`) e Central de Conversas com WhatsApp real (commit `a870abc`), ambos sem solicitação de mudança registrada |
 | 10/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Ágato (Brain) | Phedro Borges confirmou `docs/adr/talper-especificacao-fluxos.md` como fonte das regras de produto e decidiu: sistema começa do zero, sem migração do Moskit agora; inventário de números do piloto dispensado; prova da Stevo dada como feita; indicadores do primeiro dashboard são os da especificação. Fechados 9 entregáveis, 1 validação e 10 decisões pendentes. A decisão de não migrar afeta a Fase 6 (migração piloto) e o item "importação validada" do Marco A, a rever antes do G5 |
 | 10/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Ágato (Brain) | Decisões de Phedro Borges: usuário inicial único `dev@tawper.com.br` (administrador); regra de urgência por calor e tempo sem contato (especificação 6.4); fonte oficial de venda e faturamento é o próprio sistema (11.3); gates aprovados pela própria equipe. ADR-001 aprovada. Fechados mais 5 entregáveis e 3 decisões pendentes |
+| 14/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Carlos Lisboa | SM-2026-10-14-001 e ADR-003: um número Stevo para vários atendentes. Central de Conversas ganhou responsável por conversa, fila, assumir/liberar/transferir, atribuição pela carteira, autor e assinatura nas mensagens enviadas e cache do status da Stevo. Migration 0013. Lint e build aprovados; teste com a Stevo real pendente no EasyPanel. Regulariza a Central de Conversas ao vivo (commit `a870abc`) |
 
 ---
 

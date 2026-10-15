@@ -38,7 +38,10 @@ STEVO_API_KEY=
 STEVO_TEST_NUMBER=5564999394890
 STEVO_WEBHOOK_TOKEN=
 APP_PUBLIC_URL=https://metricz-tawper-os.dedobd.easypanel.host
+STEVO_SIGN_MESSAGES=true   # opcional; false tira o "*Nome:*" das mensagens dos atendentes
 ```
+
+`DATABASE_URL` é obrigatória para o atendimento com vários atendentes: o responsável de cada conversa fica no banco.
 
 O host do Postgres é `db.<ref>.supabase.co`. Se a senha tiver `#` ou `@`, esses caracteres vão codificados na URL (`#` = `%23`, `@` = `%40`). Sem isso o host vira inválido.
 
@@ -54,6 +57,19 @@ A API Key da Stevo, a service role e o token de webhook ficam só no EasyPanel. 
 
 Se o Cloudflare estiver na frente, crie exceção de bot para `POST /api/whatsapp/webhook`. Sem isso a Stevo é bloqueada e a mensagem não chega.
 
+## Atendimento: um número, vários atendentes (ADR-003)
+
+A instância Stevo é uma só (um QR, um número). Em `/conversas` cada atendente usa o próprio perfil (seletor no topo):
+
+- **Minhas:** conversas sob sua responsabilidade. Só o responsável responde.
+- **Sem responsável:** fila. **Assumir** ou responder torna a conversa sua.
+- **Todas:** só administrador e gestor.
+- **Liberar** devolve para a fila; **Transferir** passa para outro atendente (responsável, administrador ou gestor).
+- Mensagem de um telefone cadastrado como WhatsApp de contato vai direto para o responsável da empresa.
+- Cada mensagem enviada grava o autor e, por padrão, sai como `*Nome:*` para o cliente.
+
+Teste de aceite: abra duas abas com perfis diferentes, mande uma mensagem de outro celular, confira que ela cai na fila, assuma numa aba e verifique que a outra não consegue responder; depois transfira.
+
 ## O que esta prova não faz
 
-Não substitui a Fase 7. `/conversas` continua simulada. Histórico comercial não é gravado a partir da Stevo.
+Não substitui a Fase 7. Sem login (Fase 3), o perfil é escolhido no seletor: a atribuição organiza o atendimento, mas não impede alguém de trocar de perfil. Histórico comercial não é gravado a partir da Stevo.
