@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Drawer } from "@/components/ui/overlay";
 import { ASSISTANT_SUGGESTIONS, assistantAnswer, type AssistantAnswer } from "@/lib/ai";
-import { portfolioContext } from "@/lib/ai-context";
+import { systemContext } from "@/lib/ai-context";
 import { isManager } from "@/lib/constants";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
@@ -19,7 +19,7 @@ interface Msg {
   answer?: AssistantAnswer;
 }
 
-/** "Pergunte à Tawper IA": gpt-4o-mini sobre a carteira visível; regras locais se o modelo falhar. */
+/** "Pergunte à Tawper IA": gpt-4o-mini com a base inteira visível; regras locais se o modelo falhar. */
 export function AssistantPanel() {
   const { assistantOpen, setAssistant } = useUI();
   const user = useCurrentUser();
@@ -48,15 +48,21 @@ export function AssistantPanel() {
     void (async () => {
       const state = useStore.getState();
       const fallback = assistantAnswer(state, user, q);
-      const allowedCompanyIds = state.companies.filter((c) => isManager(user) || c.ownerId === user.id).map((c) => c.id);
+      const gestor = isManager(user);
+      const allowedCompanyIds = state.companies.filter((c) => gestor || c.ownerId === user.id).map((c) => c.id);
+      const permitidas = new Set(allowedCompanyIds);
       let answer = fallback;
       try {
         answer = await aiAssistant({
           question: q,
           history,
-          portfolio: portfolioContext(state, user),
+          sistema: systemContext(state, user),
           fallback,
           allowedCompanyIds,
+          escopo: {
+            gestor,
+            telefones: state.contacts.filter((c) => permitidas.has(c.companyId) && c.whatsapp).map((c) => c.whatsapp!),
+          },
         });
       } catch {
         answer = fallback;
@@ -78,7 +84,7 @@ export function AssistantPanel() {
                 <Sparkles size={15} className="text-ai" /> Olá, {user.short}.
               </div>
               <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-                Respondo com base no que está registrado no Tawper OS — quando falta dado, eu digo o que falta em vez de inventar. {user.role === "vendedor" ? "Você vê apenas a sua carteira." : "Você vê a carteira inteira."}
+                Leio a base inteira do Tawper OS: cadastro, funil, tarefas, orçamentos, histórico, catálogo e WhatsApp. Se o dado não estiver registrado, eu digo. {user.role === "vendedor" ? "Você vê apenas a sua carteira." : "Você vê a operação inteira."}
               </p>
             </div>
           )}
@@ -93,7 +99,7 @@ export function AssistantPanel() {
                 {m.text}
                 {m.answer?.itens && m.answer.itens.length > 0 && (
                   <ul className="mt-2 divide-y divide-line/70 overflow-hidden rounded-[6px] border border-line bg-white">
-                    {m.answer.itens.slice(0, 8).map((it) => (
+                    {m.answer.itens.slice(0, 12).map((it) => (
                       <li key={it.label + it.meta}>
                         <Link href={it.href} onClick={() => setAssistant(false)} className="flex items-start gap-2 px-2.5 py-2 hover:bg-soft">
                           <span className="min-w-0 flex-1">
@@ -111,7 +117,7 @@ export function AssistantPanel() {
           ))}
           {busy && (
             <div className="flex items-center gap-2 text-[12.5px] text-ai">
-              <Sparkles size={13} className="animate-pulse" /> consultando a carteira
+              <Sparkles size={13} className="animate-pulse" /> lendo a base da Tawper
               <span className="flex gap-1">
                 {[0, 1, 2].map((d) => (
                   <span key={d} className="size-1.5 rounded-full bg-ai animate-pulse-dot" style={{ animationDelay: `${d * 0.18}s` }} />
@@ -139,7 +145,7 @@ export function AssistantPanel() {
             <input
               value={text}
               onChange={(e) => setText(e.target.value)}
-              placeholder="Pergunte sobre clientes, prazos, time…"
+              placeholder="Pergunte qualquer coisa sobre a Tawper…"
               className="h-10 flex-1 rounded-[5px] border border-line px-3 text-[13px] outline-none focus:border-ai"
             />
             <button type="submit" className="grid size-10 place-items-center rounded-[5px] bg-ai text-white hover:bg-[#23488f]" aria-label="Enviar">

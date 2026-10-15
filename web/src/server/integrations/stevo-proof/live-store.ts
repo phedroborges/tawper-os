@@ -478,6 +478,28 @@ export async function getLiveMedia(id: string): Promise<{ kind: MediaKind; mime:
   return { kind: row.media_kind, mime: row.media_mime, fileName: row.media_file_name, payload: row.media_payload };
 }
 
+/** Mensagens reais do WhatsApp, da mais nova para a mais antiga, para a leitura da IA. */
+export async function listLiveCorpus(limit = 4000): Promise<{ peer: string; direction: "in" | "out"; body: string; name: string; at: string; author: string }[] | null> {
+  const client = db();
+  if (!client) return null;
+  await ensure();
+  const rows = await client<{ peer: string; direction: "in" | "out"; body: string; contact_name: string; sent_at: Date; author_name: string }[]>`
+    select peer, direction, body, contact_name, sent_at, author_name
+    from public.whatsapp_live_messages
+    where hidden_at is null and revoked_at is null
+    order by sent_at desc
+    limit ${limit}
+  `;
+  return rows.map((row) => ({
+    peer: canonicalWhatsApp(row.peer),
+    direction: row.direction,
+    body: row.body,
+    name: row.contact_name,
+    at: new Date(row.sent_at).toISOString(),
+    author: row.author_name,
+  }));
+}
+
 export async function listLiveConversations(): Promise<LiveConversation[] | null> {
   const client = db();
   if (!client) return null;

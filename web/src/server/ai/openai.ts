@@ -16,7 +16,7 @@ export type ChatTurn = { role: "user" | "assistant"; content: string };
  * Uma chamada ao modelo com resposta em JSON. Devolve `null` quando a chave não está configurada,
  * a OpenAI falha ou o JSON vem inválido: quem chama cai na regra local, a tela nunca trava.
  */
-export async function askJSON<T>(opts: { system: string; user: string; history?: ChatTurn[]; maxTokens?: number; temperature?: number }): Promise<T | null> {
+export async function askJSON<T>(opts: { system: string; user: string; history?: ChatTurn[]; maxTokens?: number; temperature?: number; timeoutMs?: number }): Promise<T | null> {
   const key = process.env.OPENAI_API_KEY;
   if (!key) return null;
   try {
@@ -30,7 +30,7 @@ export async function askJSON<T>(opts: { system: string; user: string; history?:
         response_format: { type: "json_object" },
         messages: [{ role: "system", content: opts.system }, ...(opts.history ?? []), { role: "user", content: opts.user }],
       }),
-      signal: AbortSignal.timeout(45_000),
+      signal: AbortSignal.timeout(opts.timeoutMs ?? 45_000),
       cache: "no-store",
     });
     if (!res.ok) {

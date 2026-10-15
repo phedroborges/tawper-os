@@ -1,8 +1,10 @@
 "use server";
 
 import type { AssistantAnswer, CopilotResult, DailyBriefing, ExtractedLead, ManagerDigest, QuickProposal } from "@/lib/ai";
+import { canonicalWhatsApp } from "@/lib/br-ids";
 import { ACTIVITY_TYPES, MARCAS, PAPEIS, PRENSAS, UFS } from "@/lib/constants";
 import type { ActivityType, Canal, ConversationSummary, Papel, Prensa, Prioridade } from "@/lib/types";
+import { listLiveCorpus } from "@/server/integrations/stevo-proof/live-store";
 import { askJSON, type ChatTurn } from "./openai";
 
 const TAWPER = `Você é o copiloto comercial da Tawper, fabricante de mangueiras hidráulicas para usinas de cana no Brasil.
@@ -111,7 +113,7 @@ function asAssistantItems(raw: unknown, fallback: AssistantAnswer["itens"], allo
   const src = Array.isArray(raw) ? raw : fallback;
   if (!src?.length) return fallback;
   const items: NonNullable<AssistantAnswer["itens"]> = [];
-  for (const it of src.slice(0, 10)) {
+  for (const it of src.slice(0, 12)) {
     if (!it || typeof it !== "object") continue;
     const row = it as { label?: unknown; meta?: unknown; href?: unknown; companyId?: unknown };
     const label = str(row.label, "", 80);
@@ -131,28 +133,60 @@ function asAssistantItems(raw: unknown, fallback: AssistantAnswer["itens"], allo
   return items.length ? items : fallback;
 }
 
+async function whatsappDaBase(escopo?: { gestor: boolean; telefones: string[] }) {
+  try {
+    const rows = await listLiveCorpus(4000);
+    if (!rows) return { aviso: "O WhatsApp ao vivo não está disponível nesta leitura." };
+    const permitidos = escopo?.gestor ? null : new Set((escopo?.telefones ?? []).map((tel) => canonicalWhatsApp(tel)));
+    const filtradas = permitidos ? rows.filter((row) => permitidos.has(row.peer)) : rows;
+    const mensagens: { quando: string; numero: string; quem: string; texto: string }[] = [];
+    for (const row of filtradas) {
+      mensagens.push({
+        quando: row.at.slice(0, 16).replace("T", " "),
+        numero: row.peer,
+        quem: row.direction === "in" ? row.name || "cliente" : row.author || "Tawper",
+        texto: row.body.length > 500 ? `${row.body.slice(0, 500)}…` : row.body,
+      });
+      if (JSON.stringify(mensagens).length > 45_000) {
+        mensagens.pop();
+        return { cobertura: `WhatsApp: as ${mensagens.length} mensagens mais recentes de ${filtradas.length}. As mais antigas ficaram de fora.`, mensagens };
+      }
+    }
+    return { cobertura: `WhatsApp: ${filtradas.length} mensagens, todas incluídas.`, mensagens: mensagens.reverse() };
+  } catch {
+    return { aviso: "Não foi possível ler o WhatsApp agora." };
+  }
+}
+
 export async function aiAssistant(input: {
   question: string;
   history?: ChatTurn[];
-  portfolio: unknown;
+  sistema: unknown;
   fallback: AssistantAnswer;
   allowedCompanyIds: string[];
+  escopo?: { gestor: boolean; telefones: string[] };
 }): Promise<AssistantAnswer> {
   const allowed = new Set(input.allowedCompanyIds);
+  const whatsapp = await whatsappDaBase(input.escopo);
   const raw = await askJSON<{ texto?: unknown; itens?: unknown }>({
     system: `${TAWPER}
-Você responde perguntas livres sobre a carteira comercial. Cite contas pelo nome e use o id exatamente como veio no contexto.
+Você responde qualquer pergunta sobre a Tawper e sobre a operação comercial, usando a base completa enviada.
+A base traz cadastro, contatos, negócios, atividades, histórico, orçamentos, estratégias, rotas, alertas, indicadores, funis, catálogo de produtos e as mensagens de WhatsApp.
+Conte, filtre, compare e explique a partir desses registros. Se o dado está na base, responda com ele. Se não está, diga que não está registrado.
+Leia o campo "cobertura": se algo foi encurtado, avise só quando a pergunta depender desse trecho.
+Cite a empresa pelo nome. Em "itens", use o empresaId exatamente como veio na base.
 JSON: { "texto": string, "itens": [{ "label": string, "meta": string, "companyId": string }] }
-"itens" é opcional. Só use companyId que exista no contexto. Sem inventar contas.`,
-    user: `Pergunta: ${str(input.question, "", 400)}\n\nCarteira:\n${dump(input.portfolio)}\n\nRascunho das regras locais (pode reescrever, sem contradizer os fatos):\n${dump(input.fallback)}`,
+"itens" é opcional e só para contas que existem na base. "texto" pode ser longo quando a pergunta pede lista, conta ou explicação.`,
+    user: `Pergunta: ${str(input.question, "", 2000)}\n\nBase do Tawper OS:\n${dump(input.sistema)}\n\nWhatsApp:\n${dump(whatsapp)}`,
     history: (input.history ?? []).slice(-6),
-    maxTokens: 800,
-    temperature: 0.35,
+    maxTokens: 1800,
+    temperature: 0.2,
+    timeoutMs: 90_000,
   });
   if (!raw) return input.fallback;
   return {
-    texto: str(raw.texto, input.fallback.texto, 1200),
-    itens: asAssistantItems(raw.itens, input.fallback.itens, allowed),
+    texto: str(raw.texto, input.fallback.texto, 4000),
+    itens: asAssistantItems(raw.itens, undefined, allowed),
   };
 }
 
