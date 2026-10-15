@@ -270,16 +270,16 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
     });
   };
 
-  const removeConversation = () => {
-    if (!active) return;
-    if (!window.confirm("Apagar esta conversa do Tawper? As mensagens somem para todos os atendentes. No celular a conversa continua.")) return;
-    const peer = active.peer;
+  const canEraseThread = (thread: { ownerId: string | null }) => manager || !thread.ownerId || thread.ownerId === agent.id;
+
+  const removeConversation = (peer: string, label: string) => {
+    if (!window.confirm(`Apagar a conversa com ${label}? Todas as mensagens somem do Tawper para todos os atendentes.`)) return;
     setError("");
     start(async () => {
       try {
         await deleteProofConversation(peer, agent);
         setNotice("Conversa apagada.");
-        select("");
+        if (sameChat(peer, selected)) select("");
         show(await loadProofSnapshot());
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Não foi possível apagar a conversa.");
@@ -402,7 +402,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
   const title = active ? labelOf(active.name, active.peer) : "";
   const ownerLabel = active?.ownerId ? (active.ownerId === agent.id ? "Você" : active.ownerName || "Outro atendente") : "Sem responsável";
   const canTransfer = Boolean(active && (manager || active.ownerId === agent.id));
-  const canErase = Boolean(active && (manager || !active.ownerId || active.ownerId === agent.id));
+  const canErase = Boolean(active && canEraseThread(active));
   const tabs: { id: Tab; label: string }[] = [
     { id: "minhas", label: "Minhas" },
     { id: "fila", label: "Sem responsável" },
@@ -451,7 +451,19 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
               const last = thread.messages.at(-1);
               const when = last?.at ?? "";
               return (
-                <li key={thread.peer}>
+                <li key={thread.peer} className="group relative">
+                  {thread.messages.length > 0 && canEraseThread(thread) && (
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={() => removeConversation(thread.peer, labelOf(thread.name, thread.peer))}
+                      className="absolute right-2 bottom-2 z-10 grid size-7 place-items-center rounded-full bg-white text-muted opacity-0 shadow-sm group-hover:opacity-100 hover:text-brand focus:opacity-100 disabled:opacity-40"
+                      aria-label="Apagar conversa"
+                      title="Apagar conversa"
+                    >
+                      <Trash2 size={14} />
+                    </button>
+                  )}
                   <button type="button" onClick={() => select(thread.peer)} className={cn("flex w-full items-start gap-2.5 border-b border-line/70 px-3 py-2.5 text-left hover:bg-soft/40", selected === thread.peer && "bg-soft")}>
                     <span className="grid size-10 shrink-0 place-items-center rounded-full bg-[#e7f6ee] text-[13px] font-bold text-ok">{badge(thread.name, thread.peer)}</span>
                     <span className="min-w-0 flex-1">
@@ -524,17 +536,10 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
                       ))}
                     </Select>
                   )}
-                  {canErase && (
-                    <button
-                      type="button"
-                      disabled={pending}
-                      onClick={removeConversation}
-                      className="grid size-8 place-items-center rounded-[5px] text-muted hover:bg-brand-soft hover:text-brand disabled:opacity-40"
-                      aria-label="Apagar conversa"
-                      title="Apagar conversa"
-                    >
-                      <Trash2 size={15} />
-                    </button>
+                  {canErase && active && (
+                    <Button size="sm" disabled={pending} onClick={() => removeConversation(active.peer, title || formatWhatsApp(active.peer))} className="gap-1.5 text-brand">
+                      <Trash2 size={14} /> Apagar conversa
+                    </Button>
                   )}
                 </div>
               </div>
