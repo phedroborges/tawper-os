@@ -182,6 +182,26 @@ export async function sendStevoText(to: string, text: string) {
   return { number, messageId };
 }
 
+export type StevoMediaType = "image" | "video" | "audio" | "document";
+
+/** `POST /send/media`: a Stevo só aceita `url` http(s) e baixa o arquivo dali. */
+export async function sendStevoMedia(to: string, media: { type: StevoMediaType; url: string; caption?: string; filename?: string }) {
+  const number = toStevoNumber(to);
+  if (!number) throw new Error("Informe um celular brasileiro com DDD.");
+  const body = await stevoFetch("/send/media", {
+    method: "POST",
+    body: JSON.stringify({
+      number,
+      type: media.type,
+      url: media.url,
+      ...(media.caption ? { caption: media.caption } : {}),
+      ...(media.filename ? { filename: media.filename } : {}),
+    }),
+  });
+  const messageId = findString(body, ["ID", "Id", "id", "messageId", "MessageID", "message_id"]) ?? "";
+  return { number, messageId };
+}
+
 const subscribedFlag = "/tmp/tawper-stevo-subscribed";
 let subscribing: Promise<void> | null = null;
 

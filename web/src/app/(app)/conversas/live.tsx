@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { ArrowLeft, FileText, MessageCircle, Search, Send } from "lucide-react";
+import { ArrowLeft, FileText, Loader2, MessageCircle, Mic, Paperclip, Search, Send, Square, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   assignProofConversation,
@@ -128,8 +128,17 @@ function withPending(next: Snapshot, pending: PendingOut[], author: string): Sna
 
 /** A assinatura `*Nome:*` vai para o cliente; na tela o autor já aparece no rodapé do balão. */
 function withoutSignature(text: string, author: string) {
-  const prefix = `*${author}:*\n`;
-  return author && text.startsWith(prefix) ? text.slice(prefix.length) : text;
+  if (!author) return text;
+  const signature = `*${author}:*`;
+  if (text === signature) return "";
+  return text.startsWith(`${signature}\n`) ? text.slice(signature.length + 1) : text;
+}
+
+function visibleText(message: { text: string; author: string; media?: MediaKind }) {
+  const text = withoutSignature(message.text, message.author);
+  if (!message.media) return text;
+  if (PLACEHOLDER.test(text) || (message.media === "document" && text.startsWith("[documento]"))) return "";
+  return text;
 }
 
 function labelOf(name: string, peer: string) {
@@ -160,6 +169,11 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
   const pendingOut = useRef<PendingOut[]>([]);
   const localSeq = useRef(0);
   const endRef = useRef<HTMLDivElement>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const [attachment, setAttachment] = useState<File | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const recorder = useRef<MediaRecorder | null>(null);
   const selected = params.get("c") ?? "";
 
   const show = (next: Snapshot) => {
@@ -231,22 +245,97 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
     });
   };
 
-  const send = () => {
-    const text = draft.trim();
-    const target = selected || active?.peer || "";
-    if (!text) return;
+  const canSendNow = (target: string) => {
     if (!target) {
       setError("Abra o número do cliente antes de enviar.");
-      return;
+      return false;
     }
     if (!snap.status.loggedIn) {
       setError("O WhatsApp está offline. Espere a sessão voltar ou atualize o QR.");
-      return;
+      return false;
     }
     if (!canReply) {
       setError(`Esta conversa está com ${active?.ownerName || "outro atendente"}.`);
+      return false;
+    }
+    return true;
+  };
+
+  const sendFile = async (file: File, caption: string) => {
+    const target = selected || active?.peer || "";
+    if (!canSendNow(target)) return;
+    if (file.size > 16 * 1024 * 1024) {
+      setError("Arquivo maior que 16 MB.");
       return;
     }
+    const form = new FormData();
+    form.set("file", file);
+    form.set("to", target);
+    form.set("caption", caption);
+    form.set("agentId", agent.id);
+    form.set("agentName", agent.name);
+    form.set("agentRole", agent.role);
+    setUploading(true);
+    setError("");
+    try {
+      const res = await fetch("/api/whatsapp/send-media", { method: "POST", body: form });
+      const body = (await res.json().catch(() => ({}))) as { error?: string; number?: string };
+      if (!res.ok) throw new Error(body.error || "Não foi possível enviar o arquivo.");
+      setAttachment(null);
+      setDraft("");
+      if (body.number && body.number !== selected) select(body.number);
+      show(await loadProofSnapshot());
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Não foi possível enviar o arquivo.");
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const toggleRecording = async () => {
+    if (recording) {
+      recorder.current?.stop();
+      return;
+    }
+    if (!canSendNow(selected || active?.peer || "")) return;
+    if (typeof MediaRecorder === "undefined" || !navigator.mediaDevices?.getUserMedia) {
+      setError("Este navegador não grava áudio. Anexe um arquivo de áudio.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const type = ["audio/ogg;codecs=opus", "audio/webm;codecs=opus", "audio/webm", "audio/mp4"].find((t) => MediaRecorder.isTypeSupported(t)) ?? "";
+      const rec = new MediaRecorder(stream, type ? { mimeType: type } : undefined);
+      const chunks: Blob[] = [];
+      rec.ondataavailable = (e) => {
+        if (e.data.size) chunks.push(e.data);
+      };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        setRecording(false);
+        const mime = (rec.mimeType || type || "audio/webm").split(";")[0];
+        const ext = mime.includes("ogg") ? "ogg" : mime.includes("mp4") ? "m4a" : "webm";
+        const blob = new Blob(chunks, { type: mime });
+        if (blob.size) void sendFile(new File([blob], `audio.${ext}`, { type: mime }), "");
+      };
+      recorder.current = rec;
+      rec.start();
+      setRecording(true);
+      setError("");
+    } catch {
+      setError("Permita o uso do microfone para gravar áudio.");
+    }
+  };
+
+  const send = () => {
+    const text = draft.trim();
+    const target = selected || active?.peer || "";
+    if (attachment) {
+      void sendFile(attachment, text);
+      return;
+    }
+    if (!text) return;
+    if (!canSendNow(target)) return;
     localSeq.current += 1;
     const item: PendingOut = { id: `local-${localSeq.current}`, peer: target, text, at: new Date().toISOString() };
     pendingOut.current = [item, ...pendingOut.current];
@@ -414,9 +503,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
                           <div className={cn("my-1 flex", message.out ? "justify-end" : "justify-start")}>
                             <div className={cn("max-w-[78%] rounded-[8px] px-2.5 pt-1.5 pb-1 text-[13px] leading-snug shadow-[0_1px_0.5px_#0000001f]", message.out ? "rounded-tr-[2px] bg-[#d9fdd3]" : "rounded-tl-[2px] bg-white")}>
                               {message.media && <MediaView id={message.id} kind={message.media} text={message.text} />}
-                              {(!message.media || (message.media !== "document" && !PLACEHOLDER.test(message.text))) && (
-                                <span className="whitespace-pre-wrap text-ink">{withoutSignature(message.text, message.author)}</span>
-                              )}
+                              {visibleText(message) && <span className="whitespace-pre-wrap text-ink">{visibleText(message)}</span>}
                               <span className="float-right mt-1 ml-2 text-[10.5px] text-muted">
                                 {message.out && <span className="mr-1 font-medium">{message.author || "pelo aparelho"} ·</span>}
                                 {fmtTime(message.at)}
@@ -430,6 +517,16 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
                 )}
                 <div ref={endRef} />
               </div>
+              {attachment && (
+                <div className="flex items-center gap-2 border-t border-line bg-white px-4 py-2 text-[12.5px]">
+                  <Paperclip size={14} className="text-muted" />
+                  <span className="min-w-0 flex-1 truncate font-medium text-ink">{attachment.name}</span>
+                  <span className="text-muted">{(attachment.size / 1024 / 1024).toFixed(1)} MB · o texto vira legenda</span>
+                  <button type="button" onClick={() => setAttachment(null)} disabled={uploading} className="grid size-6 place-items-center rounded-full text-muted hover:bg-soft hover:text-ink" aria-label="Remover anexo">
+                    <X size={14} />
+                  </button>
+                </div>
+              )}
               <form
                 onSubmit={(e) => {
                   e.preventDefault();
@@ -438,15 +535,62 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
                 className="flex items-center gap-2 border-t border-line bg-[#f6f6f4] px-3 py-2.5"
               >
                 <input
+                  ref={fileRef}
+                  type="file"
+                  className="hidden"
+                  onChange={(e) => {
+                    const file = e.target.files?.[0] ?? null;
+                    e.target.value = "";
+                    if (file && file.size > 16 * 1024 * 1024) {
+                      setError("Arquivo maior que 16 MB.");
+                      return;
+                    }
+                    setAttachment(file);
+                  }}
+                />
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={!canReply || uploading || recording}
+                  className="grid size-10 shrink-0 place-items-center rounded-full text-muted hover:bg-white hover:text-ink disabled:opacity-40"
+                  aria-label="Anexar arquivo"
+                  title="Anexar documento, imagem, vídeo ou áudio"
+                >
+                  <Paperclip size={18} />
+                </button>
+                <input
                   value={draft}
                   onChange={(e) => setDraft(e.target.value)}
-                  disabled={!canReply}
-                  placeholder={canReply ? (active?.ownerId ? "Digite uma mensagem" : "Digite uma mensagem (ao enviar, a conversa fica com você)") : `Conversa com ${active?.ownerName || "outro atendente"}. Assuma para responder.`}
+                  disabled={!canReply || recording}
+                  placeholder={
+                    recording
+                      ? "Gravando áudio… clique no quadrado para enviar"
+                      : !canReply
+                        ? `Conversa com ${active?.ownerName || "outro atendente"}. Assuma para responder.`
+                        : attachment
+                          ? "Legenda (opcional)"
+                          : active?.ownerId
+                            ? "Digite uma mensagem"
+                            : "Digite uma mensagem (ao enviar, a conversa fica com você)"
+                  }
                   className="h-10 min-w-0 flex-1 rounded-full border border-transparent bg-white px-4 text-[13.5px] outline-none disabled:bg-soft"
                 />
-                <button type="submit" disabled={pending || !draft.trim() || !canReply} className="grid size-10 shrink-0 place-items-center rounded-full bg-navy text-white disabled:opacity-40" aria-label="Enviar">
-                  <Send size={16} />
-                </button>
+                {draft.trim() || attachment ? (
+                  <button type="submit" disabled={pending || uploading || !canReply} className="grid size-10 shrink-0 place-items-center rounded-full bg-navy text-white disabled:opacity-40" aria-label="Enviar">
+                    {uploading ? <Loader2 size={16} className="animate-spin" /> : <Send size={16} />}
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void toggleRecording()}
+                    disabled={!canReply || uploading}
+                    className={cn("grid size-10 shrink-0 place-items-center rounded-full text-white disabled:opacity-40", recording ? "animate-pulse bg-brand" : "bg-navy")}
+                    aria-label={recording ? "Parar e enviar áudio" : "Gravar áudio"}
+                    title={recording ? "Parar e enviar" : "Gravar áudio"}
+                  >
+                    {uploading ? <Loader2 size={16} className="animate-spin" /> : recording ? <Square size={14} /> : <Mic size={17} />}
+                  </button>
+                )}
               </form>
             </>
           ) : (

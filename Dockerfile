@@ -28,6 +28,8 @@ ENV NODE_ENV=production
 ENV NEXT_TELEMETRY_DISABLED=1
 ENV HOSTNAME=0.0.0.0
 ENV PORT=4100
+# Converte o áudio gravado no navegador (WebM) para OGG/Opus, o formato de mensagem de voz do WhatsApp.
+RUN apk add --no-cache ffmpeg
 COPY PLANO_IMPLEMENTACAO.md /repo/PLANO_IMPLEMENTACAO.md
 COPY web/package.json ./
 COPY --from=deps /repo/web/node_modules ./node_modules

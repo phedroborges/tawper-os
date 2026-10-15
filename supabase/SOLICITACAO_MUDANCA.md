@@ -27,4 +27,6 @@ Plano de teste: lint, typecheck e build; em homologação, dois perfis no app: m
 Plano de rollback: publicar a versão anterior; as colunas e a tabela novas são ignoradas por ela. Nenhum dado existente é alterado.
 Aprovador: autorização explícita do solicitante nesta sessão ("preciso que faça funcionar").
 Complemento 14/10/2026: mídia recebida (áudio, imagem, vídeo, documento, figurinha) servida em /api/whatsapp/media/[id] a partir do `base64` que a Stevo já entrega no webhook (a rota `POST /message/downloadimage` do SDK responde 404 neste servidor); grupos, canais e status ficam fora do atendimento. Migration 0014 (colunas de mídia e remoção das conversas de grupo já gravadas).
+
+Complemento 14/10/2026 (envio): o atendente envia documento, imagem, vídeo e áudio gravado pela Central de Conversas (`POST /api/whatsapp/send-media`, até 16 MB). O arquivo é gravado em `whatsapp_live_messages` e a Stevo o busca em `APP_PUBLIC_URL/api/whatsapp/media/[id]`, porque `/send/media` só aceita URL http(s). Áudio gravado no navegador é convertido para OGG/Opus com ffmpeg, instalado na imagem Docker.
 ```

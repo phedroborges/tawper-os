@@ -208,6 +208,37 @@ export async function saveLiveMessage(item: ProofEventView, externalId = "", med
   if (inserted.length) await touchConversation(item);
 }
 
+/** Mídia enviada pelo Tawper: gravada antes do envio porque a Stevo busca o arquivo pela URL pública. */
+export async function insertOutboundMedia(item: ProofEventView, media: InboundMedia) {
+  const client = requireDb();
+  await ensure();
+  await client`
+    insert into public.whatsapp_live_messages
+      (id, peer, direction, body, contact_name, sent_at, author_id, author_name, media_kind, media_mime, media_file_name, media_payload)
+    values (
+      ${item.id}, ${item.peer!}, 'out', ${item.preview}, '', ${item.receivedAt},
+      ${item.authorId ?? null}, ${item.authorName ?? ""},
+      ${media.kind}, ${media.mime}, ${media.fileName}, ${client.json(media.payload as Parameters<typeof client.json>[0])}
+    )
+  `;
+  await touchConversation(item);
+}
+
+export async function setLiveExternalId(id: string, externalId: string) {
+  if (!externalId) return;
+  const client = requireDb();
+  await client`
+    update public.whatsapp_live_messages set external_id = ${externalId}
+    where id = ${id} and external_id is null
+      and not exists (select 1 from public.whatsapp_live_messages where external_id = ${externalId})
+  `;
+}
+
+export async function deleteLiveMessage(id: string) {
+  const client = requireDb();
+  await client`delete from public.whatsapp_live_messages where id = ${id}`;
+}
+
 export async function listLiveMessages(): Promise<ProofEventView[] | null> {
   const client = db();
   if (!client) return null;
