@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { ArrowLeft, Ban, ChevronDown, FileText, Loader2, MessageCircle, Mic, Paperclip, Search, Send, Square, Trash2, X } from "lucide-react";
+import { ArrowLeft, Ban, ChevronDown, Loader2, MessageCircle, Mic, Paperclip, Search, Send, Square, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   assignProofConversation,
@@ -15,10 +15,11 @@ import {
   type Agent,
 } from "@/server/integrations/stevo-proof/actions";
 import type { MediaKind, ProofEventView } from "@/server/integrations/stevo-proof/events";
+import { MediaView, REVOKED_TEXT, visibleText, withoutSignature } from "@/components/chat/live-message";
 import { Badge, Button, Card, Empty, Field, Input, Select } from "@/components/ui/primitives";
 import { isManager } from "@/lib/constants";
 import { dayDiff, fmtDateShort, fmtTime } from "@/lib/dates";
-import { formatWhatsApp, normalizeWhatsApp } from "@/lib/br-ids";
+import { canonicalWhatsApp, formatWhatsApp, normalizeWhatsApp } from "@/lib/br-ids";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { cn, normalize } from "@/lib/utils";
 
@@ -35,11 +36,9 @@ type Thread = {
   messages: { id: string; at: string; text: string; out: boolean; author: string; media?: MediaKind; revoked?: boolean; revocable?: boolean }[];
 };
 
-const REVOKED_TEXT = "Mensagem apagada";
-
 function chatOf(event: ProofEventView) {
   if (event.direction !== "in" && event.direction !== "out") return null;
-  const peer = event.peer || "";
+  const peer = event.peer ? canonicalWhatsApp(event.peer) : "";
   if (!peer || (!event.preview && !event.revoked)) return null;
   return {
     peer,
@@ -55,29 +54,8 @@ function chatOf(event: ProofEventView) {
   };
 }
 
-const PLACEHOLDER = /^\[(imagem|áudio|vídeo|documento|figurinha)\]$/;
-
-function MediaView({ id, kind, text }: { id: string; kind: MediaKind; text: string }) {
-  const src = `/api/whatsapp/media/${encodeURIComponent(id)}`;
-  if (kind === "image" || kind === "sticker") {
-    return (
-      <a href={src} target="_blank" rel="noreferrer" className="block">
-        {/* eslint-disable-next-line @next/next/no-img-element */}
-        <img src={src} alt={kind === "sticker" ? "Figurinha" : "Imagem recebida"} loading="lazy" className={cn("rounded-[6px] bg-white/60 object-contain", kind === "sticker" ? "h-28 w-28" : "max-h-72 w-full max-w-[280px]")} />
-      </a>
-    );
-  }
-  if (kind === "audio") return <audio controls preload="none" src={src} className="h-10 w-[260px] max-w-full" />;
-  if (kind === "video") return <video controls preload="none" src={src} className="max-h-72 w-full max-w-[280px] rounded-[6px] bg-black" />;
-  return (
-    <a href={src} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-[6px] bg-white/70 px-2 py-1.5 font-medium text-navy underline-offset-2 hover:underline">
-      <FileText size={15} /> {text.replace(/^\[documento\]\s*/, "") || "Abrir documento"}
-    </a>
-  );
-}
-
 function threadsOf(snap: Snapshot): Thread[] {
-  const owners = new Map(snap.conversations.map((c) => [c.peer, c]));
+  const owners = new Map(snap.conversations.map((c) => [canonicalWhatsApp(c.peer), c]));
   const map = new Map<string, Thread>();
   for (const event of [...snap.events].reverse()) {
     const chat = chatOf(event);
@@ -132,21 +110,6 @@ function withPending(next: Snapshot, pending: PendingOut[], author: string): Sna
   return { ...next, events: [...extras, ...next.events] };
 }
 
-/** A assinatura `*Nome:*` vai para o cliente; na tela o autor já aparece no rodapé do balão. */
-function withoutSignature(text: string, author: string) {
-  if (!author) return text;
-  const signature = `*${author}:*`;
-  if (text === signature) return "";
-  return text.startsWith(`${signature}\n`) ? text.slice(signature.length + 1) : text;
-}
-
-function visibleText(message: { text: string; author: string; media?: MediaKind }) {
-  const text = withoutSignature(message.text, message.author);
-  if (!message.media) return text;
-  if (PLACEHOLDER.test(text) || (message.media === "document" && text.startsWith("[documento]"))) return "";
-  return text;
-}
-
 function labelOf(name: string, peer: string) {
   return name.trim() || formatWhatsApp(peer) || peer;
 }
@@ -181,7 +144,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
   const [recording, setRecording] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
   const [menuFor, setMenuFor] = useState<string | null>(null);
-  const selected = params.get("c") ?? "";
+  const selected = canonicalWhatsApp(params.get("c") ?? "");
 
   const show = (next: Snapshot) => {
     pendingOut.current = pendingOut.current.filter((item) => !alreadySaved(next.events, item));
@@ -325,7 +288,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
       if (!res.ok) throw new Error(body.error || "Não foi possível enviar o arquivo.");
       setAttachment(null);
       setDraft("");
-      if (body.number && body.number !== selected) select(body.number);
+      if (body.number && canonicalWhatsApp(body.number) !== selected) select(canonicalWhatsApp(body.number));
       show(await loadProofSnapshot());
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível enviar o arquivo.");
@@ -387,7 +350,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
     start(async () => {
       try {
         const sent = await sendProofText(target, text, agent);
-        if (sent.number !== selected) select(sent.number);
+        if (canonicalWhatsApp(sent.number) !== selected) select(canonicalWhatsApp(sent.number));
         show(await loadProofSnapshot());
       } catch (cause) {
         pendingOut.current = pendingOut.current.filter((row) => row.id !== item.id);

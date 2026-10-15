@@ -22,8 +22,11 @@ import {
   getLiveMessage,
   hideLiveMessage,
   listLiveConversations,
+  listLiveConversationsFor,
+  listLiveMessagesFor,
   markLiveRead,
   markLiveRevoked,
+  peerVariants,
   setLiveOwner,
   type LiveConversation,
 } from "./live-store";
@@ -99,6 +102,29 @@ export async function loadProofSnapshot(): Promise<ProofSnapshot> {
     events,
     conversations: conversations ?? [],
   };
+}
+
+export type CompanyChatSnapshot = {
+  live: boolean;
+  status: StevoStatus;
+  events: ProofEventView[];
+  conversations: LiveConversation[];
+};
+
+/** Conversas do WhatsApp real dos contatos de uma empresa, casadas pelo número (com e sem o 9º dígito). */
+export async function loadCompanyChat(phones: string[]): Promise<CompanyChatSnapshot> {
+  if (!proofEnabled() || !stevoConfigured()) {
+    return { live: false, status: await getStevoStatus(), events: [], conversations: [] };
+  }
+  const peers = [...new Set(phones.map((phone) => toStevoNumber(phone)).filter((peer): peer is string => Boolean(peer)).flatMap(peerVariants))];
+  const status = await getStevoStatusCached();
+  const [stored, conversations] = await Promise.all([
+    listLiveMessagesFor(peers).catch(() => null),
+    listLiveConversationsFor(peers).catch(() => null),
+  ]);
+  const wanted = new Set(peers);
+  const events = stored ?? (await listMessages()).filter((event) => wanted.has(event.peer ?? ""));
+  return { live: true, status, events, conversations: conversations ?? [] };
 }
 
 export async function refreshProofQr() {

@@ -67,6 +67,16 @@ export function normalizeWhatsApp(value?: string | null): string {
   return national ? `55${national}` : "";
 }
 
+/**
+ * O WhatsApp entrega celular brasileiro antigo sem o 9º dígito (55 64 9943-0898) mesmo quando
+ * a mensagem foi enviada com ele. A chave da conversa é sempre a forma com o 9.
+ */
+export function canonicalWhatsApp(value?: string | null): string {
+  const digits = onlyDigits(value);
+  if (digits.length === 12 && digits.startsWith("55") && /[6-9]/.test(digits[4])) return `${digits.slice(0, 4)}9${digits.slice(4)}`;
+  return digits || (value ?? "");
+}
+
 export function formatWhatsApp(value?: string | null): string {
   const d = nationalPhone(value);
   if (!d) return "";

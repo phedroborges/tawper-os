@@ -23,6 +23,7 @@ import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
 import { ChatThread, ConversationAI } from "@/components/chat/Chat";
+import { CompanyLiveChat, useCompanyChat } from "@/components/chat/CompanyLiveChat";
 import { DealTab } from "@/components/company/DealTab";
 import { CopilotCard, StrategyTab } from "@/components/company/StrategyTab";
 import { CompanyLink, NextStepCard, QualityMeter, StagePill, StageStepper, StatusBadge, TaskRow, Timeline, UrgencyBadge, UserAvatar, userName } from "@/components/crm/crm";
@@ -61,6 +62,9 @@ function EmpresaView() {
   const dependents = company ? s.companies.filter((c) => c.influenciadoraId === company.id) : [];
   const pendingSug = company ? s.suggestions.find((x) => x.companyId === company.id && x.status === "pendente") : undefined;
   const wins = company ? s.deals.filter((d) => d.companyId === company.id && d.status === "ganha") : [];
+  const liveChat = useCompanyChat(contacts);
+  const live = Boolean(liveChat.data?.live);
+  const [liveContactId, setLiveContactId] = useState<string | null>(null);
 
   if (!company) return <Empty title="Empresa não encontrada" text="Talvez a demo tenha sido reiniciada." action={<Link href="/carteira" className="font-semibold text-navy-3">Voltar para a carteira</Link>} />;
   if (!canSeeCompany(user, company))
@@ -90,11 +94,12 @@ function EmpresaView() {
 
   const startConversation = () => {
     const contact = contacts.find((c) => c.whatsapp) ?? contacts[0];
-    if (!contact) {
+    if (!contact || (live && !contact.whatsapp)) {
       open({ kind: "contact", companyId: company.id });
       return;
     }
-    s.startConversation(company.id, contact.id);
+    if (live) setLiveContactId(contact.id);
+    else s.startConversation(company.id, contact.id);
     setTab("conversa");
   };
 
@@ -107,7 +112,7 @@ function EmpresaView() {
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "timeline", label: "Histórico" },
-    { id: "conversa", label: "Conversa", count: conv?.unread || undefined },
+    { id: "conversa", label: "Conversa", count: (live ? liveChat.unread : conv?.unread) || undefined },
     { id: "atividades", label: "Tarefas", count: pending.length },
     { id: "negocio", label: "Negócio" },
     { id: "estrategia", label: "Estratégia" },
@@ -310,7 +315,15 @@ function EmpresaView() {
           )}
 
           {tab === "conversa" &&
-            (conv ? (
+            (liveChat.loading || live ? (
+              <CompanyLiveChat
+                company={company}
+                chat={liveChat}
+                contactId={liveContactId}
+                onSelectContact={setLiveContactId}
+                onAddContact={() => open({ kind: "contact", companyId: company.id })}
+              />
+            ) : conv ? (
               <div className="grid lg:grid-cols-[1fr_300px]">
                 <ChatThread conv={conv} className="h-[560px]" />
                 <div className="border-t border-line p-3 lg:border-t-0 lg:border-l">
@@ -390,7 +403,8 @@ function EmpresaView() {
                         variant="success"
                         className="mt-2.5"
                         onClick={() => {
-                          s.startConversation(company.id, c.id);
+                          if (live) setLiveContactId(c.id);
+                          else s.startConversation(company.id, c.id);
                           setTab("conversa");
                         }}
                       >

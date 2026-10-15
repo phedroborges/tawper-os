@@ -12,7 +12,7 @@ import { dayDiff, fmtDateShort, fmtDue, fmtTime, rel } from "@/lib/dates";
 import { openDealOf } from "@/lib/selectors";
 import { simulateClientReply } from "@/lib/sim";
 import { useStore } from "@/lib/store";
-import type { Company, Conversation } from "@/lib/types";
+import type { Company, Conversation, ConversationSummary } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 import { formatWhatsApp } from "@/lib/br-ids";
 import { cn, money, quoteTotals } from "@/lib/utils";
@@ -209,14 +209,21 @@ export function ConversationAI({ conv, compact }: { conv: Conversation; compact?
   const [thinking, setThinking] = useState(false);
   const [createdFor, setCreatedFor] = useState<string | null>(null);
   const [appliedFor, setAppliedFor] = useState<string | null>(null);
+  const [liveSummary, setLiveSummary] = useState<ConversationSummary>();
   const company = s.companies.find((c) => c.id === conv.companyId);
   const deal = company ? openDealOf(s, company.id) : undefined;
-  const sum = conv.summary;
+  const stored = s.conversations.some((c) => c.id === conv.id);
+  const sum = stored ? conv.summary : liveSummary;
   const stale = sum && conv.messages.length && conv.messages.at(-1)!.at > sum.geradoEm;
 
   const generate = () => {
     setThinking(true);
     setTimeout(() => {
+      if (!stored) {
+        setLiveSummary(summarizeConversation(conv, deal));
+        setThinking(false);
+        return;
+      }
       const fresh = useStore.getState();
       const c2 = fresh.conversations.find((c) => c.id === conv.id)!;
       const d2 = c2.companyId ? openDealOf(fresh, c2.companyId) : undefined;

@@ -1,6 +1,7 @@
 import "server-only";
 
 import postgres from "postgres";
+import { canonicalWhatsApp } from "@/lib/br-ids";
 import { TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import type { InboundMedia, MediaKind, ProofEventView } from "./events";
 
@@ -73,7 +74,23 @@ async function ensure() {
           select peer, max(sent_at) from public.whatsapp_live_messages group by peer
           on conflict (peer) do nothing;
         alter table public.whatsapp_live_messages enable row level security;
-        alter table public.whatsapp_live_conversations enable row level security;`,
+        alter table public.whatsapp_live_conversations enable row level security;
+        update public.whatsapp_live_messages
+          set peer = substr(peer, 1, 4) || '9' || substr(peer, 5)
+          where length(peer) = 12 and peer like '55%' and substr(peer, 5, 1) between '6' and '9';
+        insert into public.whatsapp_live_conversations as c (peer, owner_id, owner_name, assigned_at, unread, last_message_at)
+          select substr(peer, 1, 4) || '9' || substr(peer, 5), owner_id, owner_name, assigned_at, unread, last_message_at
+          from public.whatsapp_live_conversations
+          where length(peer) = 12 and peer like '55%' and substr(peer, 5, 1) between '6' and '9'
+          on conflict (peer) do update set
+            owner_id = coalesce(c.owner_id, excluded.owner_id),
+            owner_name = case when c.owner_id is null then excluded.owner_name else c.owner_name end,
+            assigned_at = coalesce(c.assigned_at, excluded.assigned_at),
+            unread = c.unread + excluded.unread,
+            last_message_at = greatest(c.last_message_at, excluded.last_message_at),
+            updated_at = now();
+        delete from public.whatsapp_live_conversations
+          where length(peer) = 12 and peer like '55%' and substr(peer, 5, 1) between '6' and '9';`,
       )
       .then(() => undefined)
       .catch((error: unknown) => {
@@ -120,7 +137,7 @@ async function assignFromPortfolio(peer: string) {
   const client = requireDb();
   const open = await client`select 1 from public.whatsapp_live_conversations where peer = ${peer} and owner_id is null`;
   if (!open.length) return;
-  const candidates = peer.length === 12 && peer.startsWith("55") ? [peer, `${peer.slice(0, 4)}9${peer.slice(4)}`] : [peer];
+  const candidates = peerVariants(peer);
   try {
     const rows = await client<{ owner_id: string; name: string }[]>`
       select co.owner_id::text as owner_id, coalesce(p.short_name, p.full_name, '') as name
@@ -156,9 +173,10 @@ async function setMedia(id: string, media: InboundMedia | null) {
   `;
 }
 
-export async function saveLiveMessage(item: ProofEventView, externalId = "", media: InboundMedia | null = null) {
-  if (item.direction !== "in" && item.direction !== "out") return;
-  if (!item.peer || !item.preview) return;
+export async function saveLiveMessage(raw: ProofEventView, externalId = "", media: InboundMedia | null = null) {
+  if (raw.direction !== "in" && raw.direction !== "out") return;
+  if (!raw.peer || !raw.preview) return;
+  const item = { ...raw, direction: raw.direction, peer: canonicalWhatsApp(raw.peer) };
   const client = requireDb();
   await ensure();
   if (externalId) {
@@ -216,7 +234,8 @@ export async function saveLiveMessage(item: ProofEventView, externalId = "", med
 }
 
 /** Mídia enviada pelo Tawper: gravada antes do envio porque a Stevo busca o arquivo pela URL pública. */
-export async function insertOutboundMedia(item: ProofEventView, media: InboundMedia) {
+export async function insertOutboundMedia(raw: ProofEventView, media: InboundMedia) {
+  const item = { ...raw, peer: canonicalWhatsApp(raw.peer) };
   const client = requireDb();
   await ensure();
   await client`
@@ -276,7 +295,7 @@ export async function loadLiveMediaFile(id: string): Promise<CachedMedia | null>
   return entry;
 }
 
-function peerVariants(peer: string) {
+export function peerVariants(peer: string) {
   const digits = peer.replace(/\D/g, "");
   if (!digits.startsWith("55")) return [digits];
   if (digits.length === 12) return [digits, `${digits.slice(0, 4)}9${digits.slice(4)}`];
@@ -339,25 +358,25 @@ export async function deleteLiveConversation(peer: string) {
   return rows.length;
 }
 
+type LiveMessageRow = {
+  id: string;
+  peer: string;
+  direction: "in" | "out";
+  body: string;
+  contact_name: string;
+  sent_at: Date;
+  author_id: string | null;
+  author_name: string;
+  media_kind: MediaKind | null;
+  revoked_at: Date | null;
+  has_external: boolean;
+};
+
 export async function listLiveMessages(): Promise<ProofEventView[] | null> {
   const client = db();
   if (!client) return null;
   await ensure();
-  const rows = await client<
-    {
-      id: string;
-      peer: string;
-      direction: "in" | "out";
-      body: string;
-      contact_name: string;
-      sent_at: Date;
-      author_id: string | null;
-      author_name: string;
-      media_kind: MediaKind | null;
-      revoked_at: Date | null;
-      has_external: boolean;
-    }[]
-  >`
+  const rows = await client<LiveMessageRow[]>`
     select id, peer, direction, body, contact_name, sent_at, author_id, author_name, media_kind,
       revoked_at, external_id is not null as has_external
     from public.whatsapp_live_messages
@@ -365,22 +384,85 @@ export async function listLiveMessages(): Promise<ProofEventView[] | null> {
     order by sent_at desc
     limit 500
   `;
-  return rows.map((row) => ({
+  return rows.map(toEventView);
+}
+
+/** Histórico completo dos números de uma empresa (sem o corte de 500 da central). */
+export async function listLiveMessagesFor(peers: string[]): Promise<ProofEventView[] | null> {
+  const client = db();
+  if (!client) return null;
+  if (!peers.length) return [];
+  await ensure();
+  const rows = await client<LiveMessageRow[]>`
+    select id, peer, direction, body, contact_name, sent_at, author_id, author_name, media_kind,
+      revoked_at, external_id is not null as has_external
+    from public.whatsapp_live_messages
+    where hidden_at is null and peer in ${client(peers)}
+    order by sent_at desc
+    limit 2000
+  `;
+  return rows.map(toEventView);
+}
+
+export async function listLiveConversationsFor(peers: string[]): Promise<LiveConversation[] | null> {
+  const client = db();
+  if (!client) return null;
+  if (!peers.length) return [];
+  await ensure();
+  const rows = await client<ConversationRow[]>`
+    select peer, owner_id, owner_name, unread, last_message_at
+    from public.whatsapp_live_conversations
+    where peer in ${client(peers)}
+  `;
+  return mergeConversations(rows);
+}
+
+type ConversationRow = { peer: string; owner_id: string | null; owner_name: string; unread: number; last_message_at: Date };
+
+/**
+ * Uma instância com código antigo ainda pode gravar o número sem o 9º dígito;
+ * na leitura as duas linhas viram uma conversa só (dono preferido: o da forma canônica).
+ */
+function mergeConversations(rows: ConversationRow[]): LiveConversation[] {
+  const merged = new Map<string, LiveConversation>();
+  for (const row of rows) {
+    const peer = canonicalWhatsApp(row.peer);
+    const at = new Date(row.last_message_at).toISOString();
+    const current = merged.get(peer);
+    if (!current) {
+      merged.set(peer, { peer, ownerId: row.owner_id, ownerName: row.owner_name, unread: row.unread, lastMessageAt: at });
+      continue;
+    }
+    const takeOwner = row.owner_id && (!current.ownerId || row.peer === peer);
+    merged.set(peer, {
+      peer,
+      ownerId: takeOwner ? row.owner_id : current.ownerId,
+      ownerName: takeOwner ? row.owner_name : current.ownerName,
+      unread: current.unread + row.unread,
+      lastMessageAt: at > current.lastMessageAt ? at : current.lastMessageAt,
+    });
+  }
+  return [...merged.values()].sort((a, b) => b.lastMessageAt.localeCompare(a.lastMessageAt));
+}
+
+function toEventView(row: LiveMessageRow): ProofEventView {
+  const peer = canonicalWhatsApp(row.peer);
+  return {
     id: row.id,
     receivedAt: new Date(row.sent_at).toISOString(),
     event: row.direction === "out" ? "SendMessage" : "Message",
-    from: row.peer,
+    from: peer,
     preview: row.body,
     accepted: true,
     direction: row.direction,
-    peer: row.peer,
+    peer,
     name: row.contact_name,
     authorId: row.author_id ?? undefined,
     authorName: row.author_name || undefined,
     mediaKind: row.revoked_at ? undefined : (row.media_kind ?? undefined),
     revoked: row.revoked_at ? true : undefined,
     revocable: row.direction === "out" && row.has_external && !row.revoked_at ? true : undefined,
-  }));
+  };
 }
 
 export async function getLiveMedia(id: string): Promise<{ kind: MediaKind; mime: string; fileName: string; payload: Record<string, unknown> } | null> {
@@ -400,35 +482,28 @@ export async function listLiveConversations(): Promise<LiveConversation[] | null
   const client = db();
   if (!client) return null;
   await ensure();
-  const rows = await client<{ peer: string; owner_id: string | null; owner_name: string; unread: number; last_message_at: Date }[]>`
+  const rows = await client<ConversationRow[]>`
     select peer, owner_id, owner_name, unread, last_message_at
     from public.whatsapp_live_conversations
     order by last_message_at desc
     limit 500
   `;
-  return rows.map((row) => ({
-    peer: row.peer,
-    ownerId: row.owner_id,
-    ownerName: row.owner_name,
-    unread: row.unread,
-    lastMessageAt: new Date(row.last_message_at).toISOString(),
-  }));
+  return mergeConversations(rows);
 }
 
-export async function getLiveConversation(peer: string): Promise<LiveConversation | null> {
+export async function getLiveConversation(raw: string): Promise<LiveConversation | null> {
   const client = db();
   if (!client) return null;
   await ensure();
-  const rows = await client<{ peer: string; owner_id: string | null; owner_name: string; unread: number; last_message_at: Date }[]>`
+  const rows = await client<ConversationRow[]>`
     select peer, owner_id, owner_name, unread, last_message_at
-    from public.whatsapp_live_conversations where peer = ${peer}
+    from public.whatsapp_live_conversations where peer in ${client(peerVariants(raw))}
   `;
-  const row = rows[0];
-  if (!row) return null;
-  return { peer: row.peer, ownerId: row.owner_id, ownerName: row.owner_name, unread: row.unread, lastMessageAt: new Date(row.last_message_at).toISOString() };
+  return mergeConversations(rows)[0] ?? null;
 }
 
-export async function setLiveOwner(peer: string, owner: { id: string; name: string } | null) {
+export async function setLiveOwner(raw: string, owner: { id: string; name: string } | null) {
+  const peer = canonicalWhatsApp(raw);
   const client = requireDb();
   await ensure();
   await client`
@@ -440,11 +515,16 @@ export async function setLiveOwner(peer: string, owner: { id: string; name: stri
       assigned_at = excluded.assigned_at,
       updated_at = now()
   `;
+  await client`
+    update public.whatsapp_live_conversations
+    set owner_id = ${owner?.id ?? null}, owner_name = ${owner?.name ?? ""}, assigned_at = ${owner ? new Date().toISOString() : null}, updated_at = now()
+    where peer in ${client(peerVariants(peer))} and peer <> ${peer}
+  `;
 }
 
-export async function markLiveRead(peer: string) {
+export async function markLiveRead(raw: string) {
   const client = db();
   if (!client) return;
   await ensure();
-  await client`update public.whatsapp_live_conversations set unread = 0, updated_at = now() where peer = ${peer} and unread > 0`;
+  await client`update public.whatsapp_live_conversations set unread = 0, updated_at = now() where peer in ${client(peerVariants(raw))} and unread > 0`;
 }
