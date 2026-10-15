@@ -491,3 +491,31 @@ JSON: { "linhas": string[] }`,
   const linhas = strList(raw?.linhas, input.fallback.linhas, 4, 240);
   return { linhas: linhas.length ? linhas : input.fallback.linhas };
 }
+
+/** Transcreve um áudio curto em português. `null` se a OpenAI falhar. */
+export async function aiTranscribe(form: FormData): Promise<string | null> {
+  const key = process.env.OPENAI_API_KEY;
+  const file = form.get("file");
+  if (!key || !(file instanceof File) || file.size === 0) return null;
+  try {
+    const body = new FormData();
+    body.set("file", file, file.name || "fala.webm");
+    body.set("model", "gpt-4o-mini-transcribe");
+    body.set("language", "pt");
+    const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
+      method: "POST",
+      headers: { Authorization: `Bearer ${key}` },
+      body,
+      signal: AbortSignal.timeout(60_000),
+    });
+    if (!res.ok) {
+      console.error(`[ia] transcrição respondeu ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      return null;
+    }
+    const data = (await res.json()) as { text?: string };
+    return data.text?.trim() || null;
+  } catch (error) {
+    console.error("[ia] falha ao transcrever:", error instanceof Error ? error.message : error);
+    return null;
+  }
+}
