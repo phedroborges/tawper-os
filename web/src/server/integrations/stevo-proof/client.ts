@@ -178,8 +178,16 @@ export async function sendStevoText(to: string, text: string) {
     method: "POST",
     body: JSON.stringify({ number, text }),
   });
-  const messageId = findString(body, ["ID", "Id", "id", "messageId", "MessageID", "message_id", "key"]) ?? "";
-  return { number, messageId };
+  return { number, messageId: messageIdOf(body) };
+}
+
+/** A Stevo devolve a mensagem enviada em `data.Info.ID`; a busca genérica fica de reserva. */
+function messageIdOf(body: unknown) {
+  const data = asRecord(asRecord(body)?.data) ?? asRecord(body);
+  const info = asRecord(data?.Info) ?? asRecord(data?.info);
+  const direct = info?.ID ?? info?.Id ?? info?.id ?? data?.messageId ?? data?.MessageID;
+  if (typeof direct === "string" && direct) return direct;
+  return findString(body, ["ID", "Id", "messageId", "MessageID", "message_id", "id"]) ?? "";
 }
 
 export type StevoMediaType = "image" | "video" | "audio" | "document";
@@ -198,8 +206,7 @@ export async function sendStevoMedia(to: string, media: { type: StevoMediaType; 
       ...(media.filename ? { filename: media.filename } : {}),
     }),
   });
-  const messageId = findString(body, ["ID", "Id", "id", "messageId", "MessageID", "message_id"]) ?? "";
-  return { number, messageId };
+  return { number, messageId: messageIdOf(body) };
 }
 
 function findJid(value: unknown, depth = 0): string | null {

@@ -153,14 +153,35 @@ function idOf(record: Record<string, unknown> | null) {
  * Apagar para mim e apagar conversa são eventos de sincronização (`DeleteForMe`, `DeleteChat`, `ClearChat`),
  * aplicados se a Stevo os repassar.
  */
+function findRecord(value: unknown, key: string, depth = 0): Record<string, unknown> | null {
+  if (depth > 6) return null;
+  const record = asRecord(value);
+  if (!record) return null;
+  const direct = asRecord(record[key]);
+  if (direct) return direct;
+  for (const child of Object.values(record)) {
+    const found = findRecord(child, key, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+function isRevokeType(type: unknown, protocol: Record<string, unknown>) {
+  if (type === 0 || type === "0" || (typeof type === "string" && /^revoke$/i.test(type))) return true;
+  return type === undefined && !protocol.editedMessage;
+}
+
 function deletionOf(event: string, data: Record<string, unknown> | null): Deletion | null {
-  const outer = asRecord(data?.Message) ?? asRecord(data?.message);
-  const protocol = outer ? asRecord(unwrap(outer).protocolMessage) : null;
+  const protocol = findRecord(data, "protocolMessage") ?? findRecord(data, "ProtocolMessage");
   if (protocol) {
     const type = protocol.type ?? protocol.Type;
     const target = idOf(asRecord(protocol.key) ?? asRecord(protocol.Key));
-    if ((type === 0 || type === "REVOKE") && target) return { kind: "revoke", externalId: target };
+    if (isRevokeType(type, protocol) && target) return { kind: "revoke", externalId: target };
     return null;
+  }
+  if (/revoke|delete(d)?(for)?everyone|messages?\.delete/i.test(event) && !/deleteforme|deletechat|clearchat/i.test(event)) {
+    const target = findString(data, ["revokedMessageId", "RevokedMessageID", "MessageID", "messageId"]) || idOf(asRecord(data?.key));
+    if (target) return { kind: "revoke", externalId: target };
   }
   if (/deleteforme/i.test(event) && typeof data?.MessageID === "string" && data.MessageID) {
     return { kind: "hide", externalId: data.MessageID };

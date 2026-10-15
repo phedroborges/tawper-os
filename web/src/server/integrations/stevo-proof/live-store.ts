@@ -172,14 +172,18 @@ export async function saveLiveMessage(item: ProofEventView, externalId = "", med
   if (item.direction === "out") {
     const duplicate = await client<{ id: string }[]>`
       select id from public.whatsapp_live_messages
-      where direction = 'out' and peer = ${item.peer} and body = ${item.preview}
+      where direction = 'out' and peer in ${client(peerVariants(item.peer))} and body = ${item.preview}
         and sent_at > now() - interval '20 seconds'
       limit 1
     `;
     if (duplicate.length) {
       await setAuthor(duplicate[0].id, item);
       if (externalId) {
-        await client`update public.whatsapp_live_messages set external_id = ${externalId} where id = ${duplicate[0].id} and external_id is null`;
+        await client`
+          update public.whatsapp_live_messages set external_id = ${externalId}
+          where id = ${duplicate[0].id}
+            and not exists (select 1 from public.whatsapp_live_messages where external_id = ${externalId})
+        `;
       }
       return;
     }
