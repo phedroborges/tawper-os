@@ -15,6 +15,7 @@ export type ProofEventView = {
   name?: string;
   authorId?: string;
   authorName?: string;
+  mediaKind?: MediaKind;
 };
 
 const MAX = 200;
@@ -85,25 +86,52 @@ function phoneOf(value: string) {
   return digits.length >= 10 ? digits : "";
 }
 
-function messageText(data: Record<string, unknown> | null, depth = 0): string {
-  if (!data || depth > 3) return "";
-  const message = asRecord(data.Message) ?? asRecord(data.message);
-  if (!message) return "";
-  if (typeof message.conversation === "string") return message.conversation;
-  const extended = asRecord(message.extendedTextMessage);
-  if (typeof extended?.text === "string") return extended.text;
-  for (const key of ["imageMessage", "videoMessage", "documentMessage"]) {
-    const media = asRecord(message[key]);
-    if (typeof media?.caption === "string" && media.caption) return media.caption;
-  }
-  if (message.audioMessage) return "[áudio]";
-  if (message.imageMessage) return "[imagem]";
-  if (message.videoMessage) return "[vídeo]";
-  if (message.documentMessage) return "[documento]";
-  const wrapped = asRecord(message.ephemeralMessage) ?? asRecord(message.viewOnceMessage) ?? asRecord(message.documentWithCaptionMessage);
+export type MediaKind = "image" | "audio" | "video" | "document" | "sticker";
+
+/** Dados para baixar a mídia pela Stevo. Contém a chave de decriptação: nunca vai ao navegador. */
+export type InboundMedia = { kind: MediaKind; mime: string; fileName: string; payload: Record<string, unknown> };
+
+const MEDIA_KEYS: [string, MediaKind, string][] = [
+  ["imageMessage", "image", "[imagem]"],
+  ["audioMessage", "audio", "[áudio]"],
+  ["videoMessage", "video", "[vídeo]"],
+  ["documentMessage", "document", "[documento]"],
+  ["stickerMessage", "sticker", "[figurinha]"],
+];
+
+function unwrap(message: Record<string, unknown>, depth = 0): Record<string, unknown> {
+  if (depth > 3) return message;
+  const wrapped =
+    asRecord(message.ephemeralMessage) ??
+    asRecord(message.viewOnceMessage) ??
+    asRecord(message.viewOnceMessageV2) ??
+    asRecord(message.documentWithCaptionMessage);
   const inner = asRecord(wrapped?.message);
-  if (inner) return messageText({ Message: inner }, depth + 1);
-  return "";
+  return inner ? unwrap(inner, depth + 1) : message;
+}
+
+function messageContent(data: Record<string, unknown> | null): { text: string; media: InboundMedia | null } {
+  const outer = asRecord(data?.Message) ?? asRecord(data?.message);
+  if (!outer) return { text: "", media: null };
+  const message = unwrap(outer);
+  if (typeof message.conversation === "string") return { text: message.conversation, media: null };
+  const extended = asRecord(message.extendedTextMessage);
+  if (typeof extended?.text === "string") return { text: extended.text, media: null };
+  for (const [key, kind, placeholder] of MEDIA_KEYS) {
+    const node = asRecord(message[key]);
+    if (!node) continue;
+    const caption = typeof node.caption === "string" ? node.caption : "";
+    const mime = typeof node.mimetype === "string" ? node.mimetype : "";
+    const fileName = typeof node.fileName === "string" ? node.fileName : typeof node.title === "string" ? node.title : "";
+    const text = caption || (kind === "document" && fileName ? `[documento] ${fileName}` : placeholder);
+    return { text, media: { kind, mime, fileName, payload: message } };
+  }
+  return { text: "", media: null };
+}
+
+/** Grupos, canais e status não entram no atendimento. */
+function outsideService(jid: string) {
+  return /@(g\.us|newsletter|broadcast)$/i.test(jid);
 }
 
 function externalIdOf(info: Record<string, unknown> | null, data: Record<string, unknown> | null, key: Record<string, unknown> | null) {
@@ -111,10 +139,10 @@ function externalIdOf(info: Record<string, unknown> | null, data: Record<string,
   return typeof raw === "string" ? raw : "";
 }
 
-async function keep(item: ProofEventView, externalId = "") {
+async function keep(item: ProofEventView, externalId = "", media: InboundMedia | null = null) {
   if (item.direction === "in" || item.direction === "out") {
     try {
-      await saveLiveMessage(item, externalId);
+      await saveLiveMessage(item, externalId, media);
       return item;
     } catch {
       remember(item);
@@ -150,11 +178,12 @@ export async function recordInbound(payload: unknown, accepted = true): Promise<
     (!fromMe && typeof info?.PushName === "string" && info.PushName) ||
     (typeof data?.pushName === "string" ? data.pushName : "") ||
     "";
-  const text = messageText(data);
+  const { text, media } = messageContent(data);
   const session = /connected|disconnected|loggedout|pairsuccess|qrcode|offlinesync/i.test(event);
   if (session) clearStevoStatusCache();
   const preview = text || (event === "Connected" ? "WhatsApp conectado." : event === "Disconnected" ? "WhatsApp desconectado." : "");
-  const direction = !accepted || session || !text ? "note" : fromMe ? "out" : "in";
+  const ignored = outsideService(chatJid) || outsideService(rawFrom);
+  const direction = !accepted || session || !text || ignored ? "note" : fromMe ? "out" : "in";
   const item: ProofEventView = {
     id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
     receivedAt: new Date().toISOString(),
@@ -165,8 +194,9 @@ export async function recordInbound(payload: unknown, accepted = true): Promise<
     direction,
     peer: direction === "note" ? "" : peer,
     name,
+    mediaKind: media?.kind,
   };
-  return keep(item, externalIdOf(info, data, key));
+  return keep(item, externalIdOf(info, data, key), media);
 }
 
 export async function recordSent(

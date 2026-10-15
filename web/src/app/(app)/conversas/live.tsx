@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { ArrowLeft, MessageCircle, Search, Send } from "lucide-react";
+import { ArrowLeft, FileText, MessageCircle, Search, Send } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   assignProofConversation,
@@ -12,7 +12,7 @@ import {
   sendProofText,
   type Agent,
 } from "@/server/integrations/stevo-proof/actions";
-import type { ProofEventView } from "@/server/integrations/stevo-proof/events";
+import type { MediaKind, ProofEventView } from "@/server/integrations/stevo-proof/events";
 import { Badge, Button, Card, Empty, Field, Input, Select } from "@/components/ui/primitives";
 import { isManager } from "@/lib/constants";
 import { dayDiff, fmtDateShort, fmtTime } from "@/lib/dates";
@@ -30,14 +30,44 @@ type Thread = {
   ownerId: string | null;
   ownerName: string;
   unread: number;
-  messages: { id: string; at: string; text: string; out: boolean; author: string }[];
+  messages: { id: string; at: string; text: string; out: boolean; author: string; media?: MediaKind }[];
 };
 
 function chatOf(event: ProofEventView) {
   if (event.direction !== "in" && event.direction !== "out") return null;
   const peer = event.peer || "";
   if (!peer || !event.preview) return null;
-  return { peer, name: event.name ?? "", out: event.direction === "out", text: event.preview, id: event.id, at: event.receivedAt, author: event.authorName ?? "" };
+  return {
+    peer,
+    name: event.name ?? "",
+    out: event.direction === "out",
+    text: event.preview,
+    id: event.id,
+    at: event.receivedAt,
+    author: event.authorName ?? "",
+    media: event.mediaKind,
+  };
+}
+
+const PLACEHOLDER = /^\[(imagem|áudio|vídeo|documento|figurinha)\]$/;
+
+function MediaView({ id, kind, text }: { id: string; kind: MediaKind; text: string }) {
+  const src = `/api/whatsapp/media/${encodeURIComponent(id)}`;
+  if (kind === "image" || kind === "sticker") {
+    return (
+      <a href={src} target="_blank" rel="noreferrer" className="block">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={src} alt={kind === "sticker" ? "Figurinha" : "Imagem recebida"} loading="lazy" className={cn("rounded-[6px] bg-white/60 object-contain", kind === "sticker" ? "h-28 w-28" : "max-h-72 w-full max-w-[280px]")} />
+      </a>
+    );
+  }
+  if (kind === "audio") return <audio controls preload="none" src={src} className="h-10 w-[260px] max-w-full" />;
+  if (kind === "video") return <video controls preload="none" src={src} className="max-h-72 w-full max-w-[280px] rounded-[6px] bg-black" />;
+  return (
+    <a href={src} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1.5 rounded-[6px] bg-white/70 px-2 py-1.5 font-medium text-navy underline-offset-2 hover:underline">
+      <FileText size={15} /> {text.replace(/^\[documento\]\s*/, "") || "Abrir documento"}
+    </a>
+  );
 }
 
 function threadsOf(snap: Snapshot): Thread[] {
@@ -56,7 +86,7 @@ function threadsOf(snap: Snapshot): Thread[] {
       messages: [],
     };
     if (chat.name) thread.name = chat.name;
-    thread.messages.push({ id: chat.id, at: chat.at, text: chat.text, out: chat.out, author: chat.author });
+    thread.messages.push({ id: chat.id, at: chat.at, text: chat.text, out: chat.out, author: chat.author, media: chat.media });
     map.set(chat.peer, thread);
   }
   return [...map.values()].sort((a, b) => (b.messages.at(-1)?.at ?? "").localeCompare(a.messages.at(-1)?.at ?? ""));
@@ -383,7 +413,10 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
                           )}
                           <div className={cn("my-1 flex", message.out ? "justify-end" : "justify-start")}>
                             <div className={cn("max-w-[78%] rounded-[8px] px-2.5 pt-1.5 pb-1 text-[13px] leading-snug shadow-[0_1px_0.5px_#0000001f]", message.out ? "rounded-tr-[2px] bg-[#d9fdd3]" : "rounded-tl-[2px] bg-white")}>
-                              <span className="whitespace-pre-wrap text-ink">{withoutSignature(message.text, message.author)}</span>
+                              {message.media && <MediaView id={message.id} kind={message.media} text={message.text} />}
+                              {(!message.media || (message.media !== "document" && !PLACEHOLDER.test(message.text))) && (
+                                <span className="whitespace-pre-wrap text-ink">{withoutSignature(message.text, message.author)}</span>
+                              )}
                               <span className="float-right mt-1 ml-2 text-[10.5px] text-muted">
                                 {message.out && <span className="mr-1 font-medium">{message.author || "pelo aparelho"} ·</span>}
                                 {fmtTime(message.at)}

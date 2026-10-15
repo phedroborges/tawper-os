@@ -2,7 +2,7 @@ import "server-only";
 
 import postgres from "postgres";
 import { TAWPER_ORG_ID } from "@/lib/supabase/admin";
-import type { ProofEventView } from "./events";
+import type { InboundMedia, MediaKind, ProofEventView } from "./events";
 
 export type LiveConversation = {
   peer: string;
@@ -50,6 +50,11 @@ async function ensure() {
         alter table public.whatsapp_live_messages
           add column if not exists author_id text,
           add column if not exists author_name text not null default '';
+        alter table public.whatsapp_live_messages
+          add column if not exists media_kind text,
+          add column if not exists media_mime text not null default '',
+          add column if not exists media_file_name text not null default '',
+          add column if not exists media_payload jsonb;
         create table if not exists public.whatsapp_live_conversations (
           peer text primary key,
           owner_id text,
@@ -137,7 +142,18 @@ async function assignFromPortfolio(peer: string) {
   }
 }
 
-export async function saveLiveMessage(item: ProofEventView, externalId = "") {
+async function setMedia(id: string, media: InboundMedia | null) {
+  if (!media) return;
+  const client = requireDb();
+  await client`
+    update public.whatsapp_live_messages
+    set media_kind = ${media.kind}, media_mime = ${media.mime}, media_file_name = ${media.fileName},
+        media_payload = ${client.json(media.payload as Parameters<typeof client.json>[0])}
+    where id = ${id} and media_kind is null
+  `;
+}
+
+export async function saveLiveMessage(item: ProofEventView, externalId = "", media: InboundMedia | null = null) {
   if (item.direction !== "in" && item.direction !== "out") return;
   if (!item.peer || !item.preview) return;
   const client = requireDb();
@@ -146,6 +162,7 @@ export async function saveLiveMessage(item: ProofEventView, externalId = "") {
     const found = await client<{ id: string }[]>`select id from public.whatsapp_live_messages where external_id = ${externalId} limit 1`;
     if (found.length) {
       await setAuthor(found[0].id, item);
+      await setMedia(found[0].id, media);
       return;
     }
   }
@@ -180,6 +197,7 @@ export async function saveLiveMessage(item: ProofEventView, externalId = "") {
     on conflict do nothing
     returning id
   `;
+  if (inserted.length) await setMedia(item.id, media);
   if (item.name) {
     await client`
       update public.whatsapp_live_messages
@@ -195,9 +213,19 @@ export async function listLiveMessages(): Promise<ProofEventView[] | null> {
   if (!client) return null;
   await ensure();
   const rows = await client<
-    { id: string; peer: string; direction: "in" | "out"; body: string; contact_name: string; sent_at: Date; author_id: string | null; author_name: string }[]
+    {
+      id: string;
+      peer: string;
+      direction: "in" | "out";
+      body: string;
+      contact_name: string;
+      sent_at: Date;
+      author_id: string | null;
+      author_name: string;
+      media_kind: MediaKind | null;
+    }[]
   >`
-    select id, peer, direction, body, contact_name, sent_at, author_id, author_name
+    select id, peer, direction, body, contact_name, sent_at, author_id, author_name, media_kind
     from public.whatsapp_live_messages
     order by sent_at desc
     limit 500
@@ -214,7 +242,21 @@ export async function listLiveMessages(): Promise<ProofEventView[] | null> {
     name: row.contact_name,
     authorId: row.author_id ?? undefined,
     authorName: row.author_name || undefined,
+    mediaKind: row.media_kind ?? undefined,
   }));
+}
+
+export async function getLiveMedia(id: string): Promise<{ kind: MediaKind; mime: string; fileName: string; payload: Record<string, unknown> } | null> {
+  const client = db();
+  if (!client) return null;
+  await ensure();
+  const rows = await client<{ media_kind: MediaKind | null; media_mime: string; media_file_name: string; media_payload: Record<string, unknown> | null }[]>`
+    select media_kind, media_mime, media_file_name, media_payload
+    from public.whatsapp_live_messages where id = ${id}
+  `;
+  const row = rows[0];
+  if (!row?.media_kind || !row.media_payload) return null;
+  return { kind: row.media_kind, mime: row.media_mime, fileName: row.media_file_name, payload: row.media_payload };
 }
 
 export async function listLiveConversations(): Promise<LiveConversation[] | null> {
