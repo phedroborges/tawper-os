@@ -1,5 +1,4 @@
 import { NextResponse } from "next/server";
-import { downloadStevoMedia } from "@/server/integrations/stevo-proof/client";
 import { proofEnabled } from "@/server/integrations/stevo-proof/config";
 import { getLiveMedia } from "@/server/integrations/stevo-proof/live-store";
 
@@ -10,13 +9,15 @@ const MAX_CACHED = 40;
 const MAX_BYTES = 8 * 1024 * 1024;
 const cache = new Map<string, { bytes: Buffer; mime: string; fileName: string }>();
 
+/** A Stevo entrega o arquivo no próprio webhook, em `base64` dentro da mensagem. */
 async function load(id: string) {
   const hit = cache.get(id);
   if (hit) return hit;
   const media = await getLiveMedia(id);
-  if (!media) return null;
-  const file = await downloadStevoMedia(media.payload, media.mime);
-  const entry = { bytes: file.bytes, mime: file.mime || media.mime || "application/octet-stream", fileName: media.fileName };
+  const raw = typeof media?.payload.base64 === "string" ? media.payload.base64 : "";
+  if (!media || !raw) return null;
+  const bytes = Buffer.from(raw.replace(/^data:[^,]*,/, ""), "base64");
+  const entry = { bytes, mime: media.mime.split(";")[0] || "application/octet-stream", fileName: media.fileName };
   if (entry.bytes.length <= MAX_BYTES) {
     cache.set(id, entry);
     if (cache.size > MAX_CACHED) cache.delete(cache.keys().next().value!);
@@ -29,7 +30,7 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
   const { id } = await params;
   try {
     const file = await load(id);
-    if (!file) return NextResponse.json({ error: "Mídia não encontrada." }, { status: 404 });
+    if (!file) return NextResponse.json({ error: "Mídia indisponível." }, { status: 404 });
     const total = file.bytes.length;
     const headers: Record<string, string> = {
       "Content-Type": file.mime,
@@ -49,6 +50,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
     return new NextResponse(new Uint8Array(file.bytes), { headers: { ...headers, "Content-Length": String(total) } });
   } catch (cause) {
-    return NextResponse.json({ error: cause instanceof Error ? cause.message : "Falha ao baixar a mídia." }, { status: 502 });
+    return NextResponse.json({ error: cause instanceof Error ? cause.message : "Falha ao abrir a mídia." }, { status: 500 });
   }
 }

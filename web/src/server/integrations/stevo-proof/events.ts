@@ -88,7 +88,7 @@ function phoneOf(value: string) {
 
 export type MediaKind = "image" | "audio" | "video" | "document" | "sticker";
 
-/** Dados para baixar a mídia pela Stevo. Contém a chave de decriptação: nunca vai ao navegador. */
+/** Objeto da mensagem como a Stevo entrega, com o arquivo em `base64`. Fica só no servidor. */
 export type InboundMedia = { kind: MediaKind; mime: string; fileName: string; payload: Record<string, unknown> };
 
 const MEDIA_KEYS: [string, MediaKind, string][] = [

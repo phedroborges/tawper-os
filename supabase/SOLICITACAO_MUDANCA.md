@@ -26,5 +26,5 @@ Plano de migration/backfill: 0013 só adiciona colunas e tabela (if not exists) 
 Plano de teste: lint, typecheck e build; em homologação, dois perfis no app: mensagem nova cai na fila, um assume, o outro deixa de poder responder, transferência muda o responsável, mensagem de contato cadastrado cai na carteira do dono da empresa.
 Plano de rollback: publicar a versão anterior; as colunas e a tabela novas são ignoradas por ela. Nenhum dado existente é alterado.
 Aprovador: autorização explícita do solicitante nesta sessão ("preciso que faça funcionar").
-Complemento 14/10/2026: mídia recebida (áudio, imagem, vídeo, documento, figurinha) baixada sob demanda pela Stevo (`POST /message/downloadimage`) em /api/whatsapp/media/[id]; grupos, canais e status ficam fora do atendimento. Migration 0014 (colunas de mídia e remoção das conversas de grupo já gravadas).
+Complemento 14/10/2026: mídia recebida (áudio, imagem, vídeo, documento, figurinha) servida em /api/whatsapp/media/[id] a partir do `base64` que a Stevo já entrega no webhook (a rota `POST /message/downloadimage` do SDK responde 404 neste servidor); grupos, canais e status ficam fora do atendimento. Migration 0014 (colunas de mídia e remoção das conversas de grupo já gravadas).
 ```

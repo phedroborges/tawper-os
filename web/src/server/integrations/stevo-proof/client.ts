@@ -182,29 +182,6 @@ export async function sendStevoText(to: string, text: string) {
   return { number, messageId };
 }
 
-/** Baixa mídia recebida: `POST /message/downloadimage` com o objeto da mensagem do webhook (qualquer tipo de mídia). */
-export async function downloadStevoMedia(message: Record<string, unknown>, fallbackMime: string) {
-  if (!stevoConfigured()) throw new Error("Stevo não configurado.");
-  const res = await fetch(`${stevoBaseUrl()}/message/downloadimage`, {
-    method: "POST",
-    headers: { apikey: stevoApiKey(), "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
-    cache: "no-store",
-  });
-  const type = res.headers.get("content-type") ?? "";
-  if (!res.ok) throw new Error(`Stevo respondeu ${res.status} ao baixar a mídia.`);
-  if (!type.includes("json")) {
-    return { bytes: Buffer.from(await res.arrayBuffer()), mime: type.split(";")[0] || fallbackMime };
-  }
-  const body = (await res.json()) as unknown;
-  const raw = findString(body, ["base64", "data", "media", "file", "content", "Data"]) ?? "";
-  const mime = findString(body, ["mimetype", "mimeType", "Mimetype", "mime"]) ?? fallbackMime;
-  const match = /^data:([^;,]+)?(?:;[^,]*)?,([\s\S]*)$/.exec(raw);
-  const base64 = match ? match[2] : raw;
-  if (!base64) throw new Error("A Stevo não devolveu o arquivo da mídia.");
-  return { bytes: Buffer.from(base64, "base64"), mime: (match?.[1] || mime || "application/octet-stream").split(";")[0] };
-}
-
 const subscribedFlag = "/tmp/tawper-stevo-subscribed";
 let subscribing: Promise<void> | null = null;
 
