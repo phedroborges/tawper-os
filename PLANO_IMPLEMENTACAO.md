@@ -1393,6 +1393,7 @@ Atualizar esta tabela sempre que uma fase mudar de estado.
 | 14/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Carlos Lisboa | SM-2026-10-14-001 e ADR-003: um número Stevo para vários atendentes. Central de Conversas ganhou responsável por conversa, fila, assumir/liberar/transferir, atribuição pela carteira, autor e assinatura nas mensagens enviadas e cache do status da Stevo. Migration 0013. Lint e build aprovados; teste com a Stevo real pendente no EasyPanel. Regulariza a Central de Conversas ao vivo (commit `a870abc`) |
 | 14/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Carlos Lisboa | Envio e atribuição confirmados em produção. `DATABASE_URL` trocada para o pooler IPv4 do Supabase (o host direto só tem IPv6). Complemento da SM-2026-10-14-001: áudio, imagem, vídeo e documento recebidos aparecem na conversa; grupos fora do atendimento. Migration 0014 |
 | 14/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Carlos Lisboa | Complemento da SM-2026-10-14-001: envio de documento, imagem, vídeo e áudio gravado pela Central de Conversas, com ffmpeg na imagem para converter o áudio. Envio de imagem e PDF testado contra a Stevo real; áudio gravado pendente de teste no EasyPanel |
+| 15/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Carlos Lisboa | Complemento da SM-2026-10-14-001: apagar mensagem (para mim e para todos) e apagar conversa na Central de Conversas; "apagar para todos" feito no celular espelhado pelo webhook. Migration 0015. Typecheck e build aprovados; teste contra a Stevo pendente no EasyPanel |
 
 ---
 

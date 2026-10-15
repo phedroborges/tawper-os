@@ -8,6 +8,7 @@ import {
   refreshStevoQr,
   registerStevoWebhook,
   requestStevoPairing,
+  revokeStevoMessage,
   sendStevoText,
   toStevoNumber,
   type StevoQr,
@@ -15,7 +16,17 @@ import {
 } from "./client";
 import { appPublicUrl, assertProofEnabled, proofEnabled, signMessages, stevoConfigured, stevoInstance, testNumber, webhookPublicUrl } from "./config";
 import { listMessages, recordSent, type ProofEventView } from "./events";
-import { getLiveConversation, listLiveConversations, markLiveRead, setLiveOwner, type LiveConversation } from "./live-store";
+import {
+  deleteLiveConversation,
+  getLiveConversation,
+  getLiveMessage,
+  hideLiveMessage,
+  listLiveConversations,
+  markLiveRead,
+  markLiveRevoked,
+  setLiveOwner,
+  type LiveConversation,
+} from "./live-store";
 
 export type ProofSnapshot = {
   enabled: boolean;
@@ -146,6 +157,42 @@ export async function markProofRead(peerRaw: string, agent: Agent) {
   const conversation = await getLiveConversation(peer).catch(() => null);
   if (conversation && conversation.ownerId && conversation.ownerId !== agent.id) return;
   await markLiveRead(peer).catch(() => undefined);
+}
+
+async function checkCanEdit(peer: string, agent: Agent) {
+  checkAgent(agent);
+  const conversation = await getLiveConversation(peer);
+  if (isManagerRole(agent.role) || !conversation?.ownerId || conversation.ownerId === agent.id) return;
+  throw new Error(`Esta conversa está com ${conversation.ownerName || "outro atendente"}. Só o responsável ou um gestor pode apagar.`);
+}
+
+/**
+ * "me": some do Tawper (o celular continua com a mensagem, a Stevo não tem essa rota).
+ * "everyone": apaga no WhatsApp do cliente; só mensagens enviadas pelo número.
+ */
+export async function deleteProofMessage(id: string, scope: "me" | "everyone", agent: Agent) {
+  assertProofEnabled();
+  checkAgent(agent);
+  const message = await getLiveMessage(id);
+  if (!message) throw new Error("Mensagem não encontrada.");
+  await checkCanEdit(message.peer, agent);
+  if (scope === "me") {
+    await hideLiveMessage({ id });
+    return;
+  }
+  if (message.direction !== "out") throw new Error("Só dá para apagar para todos as mensagens enviadas por este número.");
+  if (message.revoked) return;
+  if (!message.externalId) throw new Error("Esta mensagem não tem o código do WhatsApp; só dá para apagar para você.");
+  await revokeStevoMessage(message.peer, message.externalId);
+  await markLiveRevoked({ id });
+}
+
+/** Apaga a conversa no Tawper. No celular ela continua: a Stevo não expõe apagar conversa. */
+export async function deleteProofConversation(peerRaw: string, agent: Agent) {
+  assertProofEnabled();
+  const peer = peerOf(peerRaw);
+  await checkCanEdit(peer, agent);
+  await deleteLiveConversation(peer);
 }
 
 export async function registerProofWebhook() {

@@ -55,6 +55,9 @@ async function ensure() {
           add column if not exists media_mime text not null default '',
           add column if not exists media_file_name text not null default '',
           add column if not exists media_payload jsonb;
+        alter table public.whatsapp_live_messages
+          add column if not exists revoked_at timestamptz,
+          add column if not exists hidden_at timestamptz;
         create table if not exists public.whatsapp_live_conversations (
           peer text primary key,
           owner_id text,
@@ -237,6 +240,99 @@ export async function setLiveExternalId(id: string, externalId: string) {
 export async function deleteLiveMessage(id: string) {
   const client = requireDb();
   await client`delete from public.whatsapp_live_messages where id = ${id}`;
+  forgetMedia([id]);
+}
+
+type CachedMedia = { bytes: Buffer; mime: string; fileName: string };
+const MAX_CACHED = 40;
+const MAX_CACHED_BYTES = 8 * 1024 * 1024;
+const holder = globalThis as typeof globalThis & { __tawperMediaCache?: Map<string, CachedMedia> };
+const mediaCache = (holder.__tawperMediaCache ??= new Map());
+
+function forgetMedia(ids: string[]) {
+  for (const id of ids) mediaCache.delete(id);
+}
+
+/** Arquivo decodificado do `base64` que a Stevo entrega no webhook (ou que o Tawper gravou ao enviar). */
+export async function loadLiveMediaFile(id: string): Promise<CachedMedia | null> {
+  const hit = mediaCache.get(id);
+  if (hit) return hit;
+  const media = await getLiveMedia(id);
+  const raw = typeof media?.payload.base64 === "string" ? media.payload.base64 : "";
+  if (!media || !raw) return null;
+  const entry = {
+    bytes: Buffer.from(raw.replace(/^data:[^,]*,/, ""), "base64"),
+    mime: media.mime.split(";")[0] || "application/octet-stream",
+    fileName: media.fileName,
+  };
+  if (entry.bytes.length <= MAX_CACHED_BYTES) {
+    mediaCache.set(id, entry);
+    if (mediaCache.size > MAX_CACHED) mediaCache.delete(mediaCache.keys().next().value!);
+  }
+  return entry;
+}
+
+function peerVariants(peer: string) {
+  const digits = peer.replace(/\D/g, "");
+  if (!digits.startsWith("55")) return [digits];
+  if (digits.length === 12) return [digits, `${digits.slice(0, 4)}9${digits.slice(4)}`];
+  if (digits.length === 13 && digits[4] === "9") return [digits, `${digits.slice(0, 4)}${digits.slice(5)}`];
+  return [digits];
+}
+
+export type LiveMessageRef = { id: string; peer: string; direction: "in" | "out"; externalId: string | null; authorId: string | null; revoked: boolean };
+
+export async function getLiveMessage(id: string): Promise<LiveMessageRef | null> {
+  const client = requireDb();
+  await ensure();
+  const rows = await client<{ id: string; peer: string; direction: "in" | "out"; external_id: string | null; author_id: string | null; revoked_at: Date | null }[]>`
+    select id, peer, direction, external_id, author_id, revoked_at
+    from public.whatsapp_live_messages where id = ${id} and hidden_at is null
+  `;
+  const row = rows[0];
+  if (!row) return null;
+  return { id: row.id, peer: row.peer, direction: row.direction, externalId: row.external_id, authorId: row.author_id, revoked: Boolean(row.revoked_at) };
+}
+
+/** Apagada para todos: o balão fica como "mensagem apagada" e o arquivo sai do banco. */
+export async function markLiveRevoked(by: { id?: string; externalId?: string }) {
+  const client = requireDb();
+  await ensure();
+  const rows = by.id
+    ? await client<{ id: string }[]>`
+        update public.whatsapp_live_messages set revoked_at = now(), body = '', media_payload = null
+        where id = ${by.id} and revoked_at is null returning id`
+    : await client<{ id: string }[]>`
+        update public.whatsapp_live_messages set revoked_at = now(), body = '', media_payload = null
+        where external_id = ${by.externalId ?? ""} and revoked_at is null returning id`;
+  forgetMedia(rows.map((row) => row.id));
+  return rows.length;
+}
+
+/** Apagada para mim: some do Tawper, que é a conta inteira do número para os atendentes. */
+export async function hideLiveMessage(by: { id?: string; externalId?: string }) {
+  const client = requireDb();
+  await ensure();
+  const rows = by.id
+    ? await client<{ id: string }[]>`
+        update public.whatsapp_live_messages set hidden_at = now(), media_payload = null
+        where id = ${by.id} and hidden_at is null returning id`
+    : await client<{ id: string }[]>`
+        update public.whatsapp_live_messages set hidden_at = now(), media_payload = null
+        where external_id = ${by.externalId ?? ""} and hidden_at is null returning id`;
+  forgetMedia(rows.map((row) => row.id));
+  return rows.length;
+}
+
+/** Apagar conversa: mensagens e responsável saem; se o cliente escrever de novo, ela volta como nova. */
+export async function deleteLiveConversation(peer: string) {
+  const client = requireDb();
+  await ensure();
+  const peers = peerVariants(peer);
+  const rows = await client<{ id: string }[]>`delete from public.whatsapp_live_messages where peer in ${client(peers)} returning id`;
+  await client`delete from public.whatsapp_live_conversations where peer in ${client(peers)}`;
+  forgetMedia(rows.map((row) => row.id));
+  return rows.length;
 }
 
 export async function listLiveMessages(): Promise<ProofEventView[] | null> {
@@ -254,10 +350,14 @@ export async function listLiveMessages(): Promise<ProofEventView[] | null> {
       author_id: string | null;
       author_name: string;
       media_kind: MediaKind | null;
+      revoked_at: Date | null;
+      has_external: boolean;
     }[]
   >`
-    select id, peer, direction, body, contact_name, sent_at, author_id, author_name, media_kind
+    select id, peer, direction, body, contact_name, sent_at, author_id, author_name, media_kind,
+      revoked_at, external_id is not null as has_external
     from public.whatsapp_live_messages
+    where hidden_at is null
     order by sent_at desc
     limit 500
   `;
@@ -273,7 +373,9 @@ export async function listLiveMessages(): Promise<ProofEventView[] | null> {
     name: row.contact_name,
     authorId: row.author_id ?? undefined,
     authorName: row.author_name || undefined,
-    mediaKind: row.media_kind ?? undefined,
+    mediaKind: row.revoked_at ? undefined : (row.media_kind ?? undefined),
+    revoked: row.revoked_at ? true : undefined,
+    revocable: row.direction === "out" && row.has_external && !row.revoked_at ? true : undefined,
   }));
 }
 
@@ -283,7 +385,7 @@ export async function getLiveMedia(id: string): Promise<{ kind: MediaKind; mime:
   await ensure();
   const rows = await client<{ media_kind: MediaKind | null; media_mime: string; media_file_name: string; media_payload: Record<string, unknown> | null }[]>`
     select media_kind, media_mime, media_file_name, media_payload
-    from public.whatsapp_live_messages where id = ${id}
+    from public.whatsapp_live_messages where id = ${id} and revoked_at is null and hidden_at is null
   `;
   const row = rows[0];
   if (!row?.media_kind || !row.media_payload) return null;

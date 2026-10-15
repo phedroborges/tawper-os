@@ -1,7 +1,7 @@
 import { readFileSync, writeFileSync } from "node:fs";
 import path from "node:path";
 import { clearStevoStatusCache } from "./client";
-import { listLiveMessages, saveLiveMessage } from "./live-store";
+import { deleteLiveConversation, hideLiveMessage, listLiveMessages, markLiveRevoked, saveLiveMessage } from "./live-store";
 
 export type ProofEventView = {
   id: string;
@@ -16,6 +16,8 @@ export type ProofEventView = {
   authorId?: string;
   authorName?: string;
   mediaKind?: MediaKind;
+  revoked?: boolean;
+  revocable?: boolean;
 };
 
 const MAX = 200;
@@ -139,6 +141,44 @@ function externalIdOf(info: Record<string, unknown> | null, data: Record<string,
   return typeof raw === "string" ? raw : "";
 }
 
+type Deletion = { kind: "revoke" | "hide"; externalId: string } | { kind: "chat"; peer: string };
+
+function idOf(record: Record<string, unknown> | null) {
+  const raw = record?.ID ?? record?.Id ?? record?.id;
+  return typeof raw === "string" ? raw : "";
+}
+
+/**
+ * Apagar para todos chega como `protocolMessage` REVOKE (tipo 0) apontando para a mensagem original.
+ * Apagar para mim e apagar conversa são eventos de sincronização (`DeleteForMe`, `DeleteChat`, `ClearChat`),
+ * aplicados se a Stevo os repassar.
+ */
+function deletionOf(event: string, data: Record<string, unknown> | null): Deletion | null {
+  const outer = asRecord(data?.Message) ?? asRecord(data?.message);
+  const protocol = outer ? asRecord(unwrap(outer).protocolMessage) : null;
+  if (protocol) {
+    const type = protocol.type ?? protocol.Type;
+    const target = idOf(asRecord(protocol.key) ?? asRecord(protocol.Key));
+    if ((type === 0 || type === "REVOKE") && target) return { kind: "revoke", externalId: target };
+    return null;
+  }
+  if (/deleteforme/i.test(event) && typeof data?.MessageID === "string" && data.MessageID) {
+    return { kind: "hide", externalId: data.MessageID };
+  }
+  if (/deletechat|clearchat/i.test(event)) {
+    const jid = typeof data?.JID === "string" ? data.JID : typeof data?.jid === "string" ? data.jid : "";
+    const peer = outsideService(jid) ? "" : phoneOf(jid);
+    if (peer) return { kind: "chat", peer };
+  }
+  return null;
+}
+
+async function applyDeletion(deletion: Deletion) {
+  if (deletion.kind === "chat") await deleteLiveConversation(deletion.peer);
+  else if (deletion.kind === "revoke") await markLiveRevoked({ externalId: deletion.externalId });
+  else await hideLiveMessage({ externalId: deletion.externalId });
+}
+
 async function keep(item: ProofEventView, externalId = "", media: InboundMedia | null = null) {
   if (item.direction === "in" || item.direction === "out") {
     try {
@@ -178,6 +218,8 @@ export async function recordInbound(payload: unknown, accepted = true): Promise<
     (!fromMe && typeof info?.PushName === "string" && info.PushName) ||
     (typeof data?.pushName === "string" ? data.pushName : "") ||
     "";
+  const deletion = accepted ? deletionOf(event, data) : null;
+  if (deletion && !outsideService(chatJid)) await applyDeletion(deletion).catch(() => undefined);
   const { text, media } = messageContent(data);
   const session = /connected|disconnected|loggedout|pairsuccess|qrcode|offlinesync/i.test(event);
   if (session) clearStevoStatusCache();

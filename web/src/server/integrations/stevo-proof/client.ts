@@ -202,6 +202,37 @@ export async function sendStevoMedia(to: string, media: { type: StevoMediaType; 
   return { number, messageId };
 }
 
+function findJid(value: unknown, depth = 0): string | null {
+  if (depth > 5 || value == null) return null;
+  if (typeof value === "string") return /^\d{10,15}@s\.whatsapp\.net$/.test(value) ? value : null;
+  if (typeof value !== "object") return null;
+  for (const child of Object.values(value as Record<string, unknown>)) {
+    const found = findJid(child, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** O JID do chat pode diferir do número digitado (nono dígito); o `/message/delete` precisa do chat real. */
+async function chatJidOf(number: string) {
+  try {
+    const body = await stevoFetch("/user/check", { method: "POST", body: JSON.stringify({ number: [number], formatJid: true }) });
+    const jid = findJid(body);
+    if (jid) return jid;
+  } catch {
+    // Sem a consulta, tenta com o próprio número.
+  }
+  return `${number}@s.whatsapp.net`;
+}
+
+/** Apagar para todos. A Stevo não expõe "apagar para mim" nem "apagar conversa". */
+export async function revokeStevoMessage(peer: string, messageId: string) {
+  const number = toStevoNumber(peer);
+  if (!number) throw new Error("Conversa sem número válido.");
+  const chat = await chatJidOf(number);
+  await stevoFetch("/message/delete", { method: "POST", body: JSON.stringify({ chat, messageId }) });
+}
+
 const subscribedFlag = "/tmp/tawper-stevo-subscribed";
 let subscribing: Promise<void> | null = null;
 

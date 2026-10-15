@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, useTransition } from "react";
-import { ArrowLeft, FileText, Loader2, MessageCircle, Mic, Paperclip, Search, Send, Square, X } from "lucide-react";
+import { ArrowLeft, Ban, ChevronDown, FileText, Loader2, MessageCircle, Mic, Paperclip, Search, Send, Square, Trash2, X } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import {
   assignProofConversation,
+  deleteProofConversation,
+  deleteProofMessage,
   loadProofSnapshot,
   markProofRead,
   refreshProofQr,
@@ -30,13 +32,15 @@ type Thread = {
   ownerId: string | null;
   ownerName: string;
   unread: number;
-  messages: { id: string; at: string; text: string; out: boolean; author: string; media?: MediaKind }[];
+  messages: { id: string; at: string; text: string; out: boolean; author: string; media?: MediaKind; revoked?: boolean; revocable?: boolean }[];
 };
+
+const REVOKED_TEXT = "Mensagem apagada";
 
 function chatOf(event: ProofEventView) {
   if (event.direction !== "in" && event.direction !== "out") return null;
   const peer = event.peer || "";
-  if (!peer || !event.preview) return null;
+  if (!peer || (!event.preview && !event.revoked)) return null;
   return {
     peer,
     name: event.name ?? "",
@@ -46,6 +50,8 @@ function chatOf(event: ProofEventView) {
     at: event.receivedAt,
     author: event.authorName ?? "",
     media: event.mediaKind,
+    revoked: event.revoked,
+    revocable: event.revocable,
   };
 }
 
@@ -86,7 +92,7 @@ function threadsOf(snap: Snapshot): Thread[] {
       messages: [],
     };
     if (chat.name) thread.name = chat.name;
-    thread.messages.push({ id: chat.id, at: chat.at, text: chat.text, out: chat.out, author: chat.author, media: chat.media });
+    thread.messages.push({ id: chat.id, at: chat.at, text: chat.text, out: chat.out, author: chat.author, media: chat.media, revoked: chat.revoked, revocable: chat.revocable });
     map.set(chat.peer, thread);
   }
   return [...map.values()].sort((a, b) => (b.messages.at(-1)?.at ?? "").localeCompare(a.messages.at(-1)?.at ?? ""));
@@ -174,6 +180,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
   const [uploading, setUploading] = useState(false);
   const [recording, setRecording] = useState(false);
   const recorder = useRef<MediaRecorder | null>(null);
+  const [menuFor, setMenuFor] = useState<string | null>(null);
   const selected = params.get("c") ?? "";
 
   const show = (next: Snapshot) => {
@@ -241,6 +248,41 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
         show(await loadProofSnapshot());
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Não foi possível mudar o responsável.");
+      }
+    });
+  };
+
+  const removeMessage = (id: string, scope: "me" | "everyone") => {
+    setMenuFor(null);
+    const question =
+      scope === "everyone"
+        ? "Apagar para todos? A mensagem some também no WhatsApp do cliente."
+        : "Apagar para mim? Ela some do Tawper para todos os atendentes, mas continua no celular e no WhatsApp do cliente.";
+    if (!window.confirm(question)) return;
+    setError("");
+    start(async () => {
+      try {
+        await deleteProofMessage(id, scope, agent);
+        show(await loadProofSnapshot());
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Não foi possível apagar a mensagem.");
+      }
+    });
+  };
+
+  const removeConversation = () => {
+    if (!active) return;
+    if (!window.confirm("Apagar esta conversa do Tawper? As mensagens somem para todos os atendentes. No celular a conversa continua.")) return;
+    const peer = active.peer;
+    setError("");
+    start(async () => {
+      try {
+        await deleteProofConversation(peer, agent);
+        setNotice("Conversa apagada.");
+        select("");
+        show(await loadProofSnapshot());
+      } catch (cause) {
+        setError(cause instanceof Error ? cause.message : "Não foi possível apagar a conversa.");
       }
     });
   };
@@ -360,6 +402,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
   const title = active ? labelOf(active.name, active.peer) : "";
   const ownerLabel = active?.ownerId ? (active.ownerId === agent.id ? "Você" : active.ownerName || "Outro atendente") : "Sem responsável";
   const canTransfer = Boolean(active && (manager || active.ownerId === agent.id));
+  const canErase = Boolean(active && (manager || !active.ownerId || active.ownerId === agent.id));
   const tabs: { id: Tab; label: string }[] = [
     { id: "minhas", label: "Minhas" },
     { id: "fila", label: "Sem responsável" },
@@ -425,7 +468,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
                       <span className="flex items-center gap-1.5">
                         <span className="block min-w-0 flex-1 truncate text-[12px] text-muted">
                           {last?.out ? `${last.author || "Aparelho"}: ` : ""}
-                          {last ? withoutSignature(last.text, last.author) : "Conversa nova"}
+                          {last ? (last.revoked ? REVOKED_TEXT : withoutSignature(last.text, last.author)) : "Conversa nova"}
                         </span>
                         {thread.unread > 0 && <span className="shrink-0 rounded-full bg-ok px-1.5 text-[10.5px] leading-[18px] font-semibold text-white">{thread.unread}</span>}
                       </span>
@@ -481,6 +524,18 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
                       ))}
                     </Select>
                   )}
+                  {canErase && (
+                    <button
+                      type="button"
+                      disabled={pending}
+                      onClick={removeConversation}
+                      className="grid size-8 place-items-center rounded-[5px] text-muted hover:bg-brand-soft hover:text-brand disabled:opacity-40"
+                      aria-label="Apagar conversa"
+                      title="Apagar conversa"
+                    >
+                      <Trash2 size={15} />
+                    </button>
+                  )}
                 </div>
               </div>
               <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto bg-[#efeae2] px-3 py-3 md:px-6">
@@ -501,9 +556,42 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
                             </div>
                           )}
                           <div className={cn("my-1 flex", message.out ? "justify-end" : "justify-start")}>
-                            <div className={cn("max-w-[78%] rounded-[8px] px-2.5 pt-1.5 pb-1 text-[13px] leading-snug shadow-[0_1px_0.5px_#0000001f]", message.out ? "rounded-tr-[2px] bg-[#d9fdd3]" : "rounded-tl-[2px] bg-white")}>
-                              {message.media && <MediaView id={message.id} kind={message.media} text={message.text} />}
-                              {visibleText(message) && <span className="whitespace-pre-wrap text-ink">{visibleText(message)}</span>}
+                            <div className={cn("group relative max-w-[78%] rounded-[8px] px-2.5 pt-1.5 pb-1 text-[13px] leading-snug shadow-[0_1px_0.5px_#0000001f]", message.out ? "rounded-tr-[2px] bg-[#d9fdd3]" : "rounded-tl-[2px] bg-white")}>
+                              {canErase && !message.id.startsWith("local-") && (
+                                <button
+                                  type="button"
+                                  onClick={() => setMenuFor(menuFor === message.id ? null : message.id)}
+                                  className={cn("absolute top-0.5 right-0.5 z-10 grid size-6 place-items-center rounded-full bg-inherit text-muted hover:text-ink", menuFor === message.id ? "opacity-100" : "opacity-0 group-hover:opacity-100 focus:opacity-100")}
+                                  aria-label="Opções da mensagem"
+                                >
+                                  <ChevronDown size={15} />
+                                </button>
+                              )}
+                              {menuFor === message.id && (
+                                <>
+                                  <div className="fixed inset-0 z-20" onClick={() => setMenuFor(null)} />
+                                  <div className={cn("absolute top-7 z-30 w-44 overflow-hidden rounded-[6px] border border-line bg-white py-1 text-[12.5px] shadow-lg", message.out ? "right-0" : "left-0")}>
+                                    <button type="button" onClick={() => removeMessage(message.id, "me")} className="block w-full px-3 py-1.5 text-left text-ink hover:bg-soft">
+                                      Apagar para mim
+                                    </button>
+                                    {message.out && message.revocable && (
+                                      <button type="button" onClick={() => removeMessage(message.id, "everyone")} className="block w-full px-3 py-1.5 text-left text-brand hover:bg-soft">
+                                        Apagar para todos
+                                      </button>
+                                    )}
+                                  </div>
+                                </>
+                              )}
+                              {message.revoked ? (
+                                <span className="inline-flex items-center gap-1 text-muted italic">
+                                  <Ban size={13} /> {message.out ? "Você apagou esta mensagem" : "Esta mensagem foi apagada"}
+                                </span>
+                              ) : (
+                                <>
+                                  {message.media && <MediaView id={message.id} kind={message.media} text={message.text} />}
+                                  {visibleText(message) && <span className="whitespace-pre-wrap text-ink">{visibleText(message)}</span>}
+                                </>
+                              )}
                               <span className="float-right mt-1 ml-2 text-[10.5px] text-muted">
                                 {message.out && <span className="mr-1 font-medium">{message.author || "pelo aparelho"} ·</span>}
                                 {fmtTime(message.at)}
