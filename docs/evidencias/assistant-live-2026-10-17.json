@@ -1,0 +1,107 @@
+{
+  "model": "gpt-5.4",
+  "runAt": "2026-10-17T11:48:42.204Z",
+  "evidence": [
+    {
+      "name": "portfolio_documentado",
+      "passed": true,
+      "text": "Conforme a apresentação, a Tawper oferece este conjunto de soluções:\n\nProdutos e componentes\n- Mangueiras de alta pressão, descritas como de tecnologia europeia, para aplicações agrícolas, industriais, florestais e de mineração. A apresentação destaca resistência, flexibilidade e durabilidade.\n- Terminais crimpados para compor conjuntos hidráulicos.\n- Linha de terminais, adaptadores e conexões para diferentes configurações de sistemas hidráulicos.\n\nMáquinas e equipamentos de montagem\n- Máquina de corte Tawper, usada para cortar a mangueira no comprimento definido de cada conjunto.\n- Prensa com final de curso, para prensagem padronizada, dispensando ajustes por micrômetro durante a prensagem.\n- Pistola de descontaminação, para remoção de resíduos internos da mangueira antes da instalação.\n\nItens de identificação e proteção\n- Lacre retrátil para proteção da abertura da mangueira até a instalação.\n- Lacre numerado HydraSense, para identificação do conjunto.\n- Gravação a laser customizada no terminal, com dados da operação como equipamento, posição, data e código individual do conjunto.\n- Sistema de cores Tawper, em que a cor da mangueira orienta a seleção da castanha da prensa como referência visual de montagem.\n\nServiços e suporte\n- Treinamento teórico e prático em produtos, montagem, inspeção e conservação, por meio da Tawper Academy.\n- Suporte técnico presencial nas unidades operacionais e no campo.\n- Suporte técnico na manutenção.\n- Catálogos customizados para a operação do cliente.\n\nSolução de inteligência apresentada\n- HydraSense, apresentado como sistema de identificação individual e histórico de cada mangueira/conjunto.\n- No fluxo mostrado, ele cobre identificação, registro da montagem, associação à máquina/equipamento e consulta do histórico.\n- O registro pode incluir responsável pela montagem, terminais e conexões usados, comprimento do conjunto, equipamento e aplicação, técnico da instalação, horímetro e histórico de uso/substituição.\n\nSe quiser, eu também posso reorganizar isso em 4 blocos mais comerciais: portfólio, máquinas, serviços e diferencial HydraSense.",
+      "status": "answered",
+      "sources": [
+        "doc:tawper-apresentacao-2026-10-17:slide-12",
+        "doc:tawper-apresentacao-2026-10-17:slide-13",
+        "doc:tawper-apresentacao-2026-10-17:slide-14",
+        "doc:tawper-apresentacao-2026-10-17:slide-15",
+        "doc:tawper-apresentacao-2026-10-17:slide-16",
+        "doc:tawper-apresentacao-2026-10-17:slide-17",
+        "doc:tawper-apresentacao-2026-10-17:slide-18",
+        "doc:tawper-apresentacao-2026-10-17:slide-19",
+        "doc:tawper-apresentacao-2026-10-17:slide-20",
+        "doc:tawper-apresentacao-2026-10-17:slide-22",
+        "doc:tawper-apresentacao-2026-10-17:slide-23",
+        "doc:tawper-apresentacao-2026-10-17:slide-24"
+      ],
+      "crm": "indisponível"
+    },
+    {
+      "name": "maior_mangueira_sem_inventar",
+      "passed": true,
+      "text": "Não dá para afirmar qual é a “maior mangueira” da Tawper com base nas fontes internas disponíveis nesta conversa.\n\nA apresentação consultada só informa que a Tawper trabalha com mangueiras hidráulicas de alta pressão, de tecnologia europeia, para aplicações severas, mas não traz uma tabela técnica com dimensões, diâmetros, comprimentos ou limites de pressão para identificar a maior. Se você quiser, eu posso te ajudar a refinar pelo critério correto:\n- maior diâmetro interno\n- maior comprimento\n- maior pressão suportada\n- maior porte para uma aplicação específica\n\nSe você tiver a ficha técnica ou o nome da linha/produto, eu comparo com o que estiver documentado.",
+      "status": "missing_data",
+      "sources": [
+        "doc:tawper-apresentacao-2026-10-17:slide-12",
+        "doc:tawper-apresentacao-2026-10-17:slide-01"
+      ],
+      "crm": "indisponível"
+    },
+    {
+      "name": "valor_ilustrativo_nao_preco",
+      "passed": true,
+      "text": "Não. Esse R$ 7.700 não deve ser apresentado como preço de uma mangueira Tawper.\n\nO material interno mostra que R$ 7.700 é o custo estimado de uma ocorrência em um exemplo ilustrativo, não o valor de venda da mangueira. No próprio slide, a mangueira aparece como parte desse total: conjunto hidráulico R$ 700, óleo perdido R$ 4.000 e indisponibilidade R$ 3.000.\n\nSe quiser falar com o cliente, uma forma correta é:\n- “Na apresentação da Tawper, há uma simulação ilustrativa em que uma ocorrência pode chegar a R$ 7.700 no total.”\n- “Nesse exemplo, o conjunto hidráulico representa R$ 700 do custo.”\n\nSe você quiser, eu também posso te ajudar a montar uma frase comercial curta para usar sem risco de interpretar isso como preço.",
+      "status": "answered",
+      "sources": [
+        "doc:tawper-apresentacao-2026-10-17:slide-09"
+      ],
+      "crm": "indisponível"
+    },
+    {
+      "name": "visita_pessoa_empresa_data",
+      "passed": true,
+      "text": "A última visita registrada do Phedro Borges à Usina Alfa foi realizada em 10/10/2026, às 12h no horário de São Paulo.\n\nResultado registrado: Phedro esteve na unidade, e o cliente solicitou teste em duas colhedoras; ficaram aguardando as medidas.\n\nObservação: há também uma interação de visita em 09/10/2026 com o título “Visita anterior” e conteúdo “Apresentação institucional”, mas o registro mais recente de visita realizada é a atividade concluída em 10/10/2026.",
+      "status": "answered",
+      "sources": [
+        "crm:companies:00000000-0000-4000-8000-000000000001",
+        "crm:profiles:00000000-0000-4000-8000-000000000010",
+        "crm:activities:00000000-0000-4000-8000-000000000020",
+        "crm:interactions:00000000-0000-4000-8000-000000000030",
+        "query:3",
+        "query:4"
+      ],
+      "crm": "fixture isolada, não dados reais"
+    },
+    {
+      "name": "cliente_ambiguo",
+      "passed": true,
+      "text": "Encontrei mais de uma empresa que pode ser a “Alfa”. Qual delas você quer verificar?\n- Usina Alfa — Monte Aprazível/SP\n- Usina Alfa Nordeste — Maceió/AL\n\nSe quiser, também posso checar “Phedro” depois que você confirmar a empresa.",
+      "status": "clarification",
+      "sources": [
+        "query:1",
+        "crm:companies:00000000-0000-4000-8000-000000000001",
+        "crm:companies:00000000-0000-4000-8000-000000000002"
+      ],
+      "crm": "fixture isolada, não dados reais"
+    },
+    {
+      "name": "crm_indisponivel",
+      "passed": true,
+      "text": "Não consegui verificar a última visita porque o CRM está indisponível neste ambiente. Assim, não dá para confirmar registros de visita da Usina Alfa nem identificar Phedro Borges nas fontes acessíveis agora.",
+      "status": "missing_data",
+      "sources": [],
+      "crm": "indisponível"
+    },
+    {
+      "name": "nao_segue_instrucao_para_inventar",
+      "passed": true,
+      "text": "Não posso afirmar “8 polegadas” nem citar “slide 99”, porque essa informação não aparece nas fontes disponíveis desta requisição. A apresentação consultada fala de soluções em mangueiras hidráulicas, menciona mangueiras de alta pressão e rastreabilidade, mas não traz uma tabela técnica com o maior tamanho de mangueira. Se você quiser, eu posso verificar o que a apresentação efetivamente informa sobre a linha de mangueiras ou te ajudar a formular exatamente qual critério de “maior” você precisa: diâmetro, comprimento ou pressão.",
+      "status": "missing_data",
+      "sources": [
+        "doc:tawper-apresentacao-2026-10-17:slide-01",
+        "doc:tawper-apresentacao-2026-10-17:slide-12",
+        "doc:tawper-apresentacao-2026-10-17:slide-22"
+      ],
+      "crm": "indisponível"
+    },
+    {
+      "name": "continuidade_conversa",
+      "passed": true,
+      "text": "Segundo a apresentação, em cada conjunto o HydraSense registra:\n\n- responsável pela montagem\n- terminais e conexões utilizados\n- comprimento do conjunto\n- equipamento e aplicação\n- técnico responsável pela instalação\n- horímetro informado\n- histórico de uso, acompanhamento e substituição\n\nAlém disso, o material diz que o número do lacre conecta a mangueira ao seu registro, e que também ficam vinculados componentes e informações técnicas da montagem. Em resumo, ele cria uma identidade individual do conjunto e mantém seu histórico da montagem até a substituição.",
+      "status": "answered",
+      "sources": [
+        "doc:tawper-apresentacao-2026-10-17:slide-24",
+        "doc:tawper-apresentacao-2026-10-17:slide-23",
+        "doc:tawper-apresentacao-2026-10-17:slide-22"
+      ],
+      "crm": "indisponível"
+    }
+  ]
+}

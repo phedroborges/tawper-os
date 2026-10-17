@@ -1,0 +1,18 @@
+{
+  "status": "answered",
+  "text": "No CRM acessível nesta consulta, há 5 empresas cadastradas e 25 atividades registradas.",
+  "sources": [
+    {
+      "id": "query:1",
+      "title": "Consulta ao CRM · companies",
+      "excerpt": "{\n  \"filters\": [],\n  \"total\": 5,\n  \"offset\": 0,\n  \"returned\": 1,\n  \"hasMore\": true,\n  \"consultedAt\": \"2026-10-17T11:52:04.828Z\"\n}"
+    },
+    {
+      "id": "query:2",
+      "title": "Consulta ao CRM · activities",
+      "excerpt": "{\n  \"filters\": [],\n  \"total\": 25,\n  \"offset\": 0,\n  \"returned\": 1,\n  \"hasMore\": true,\n  \"consultedAt\": \"2026-10-17T11:52:04.828Z\"\n}"
+    }
+  ],
+  "model": "gpt-5.4",
+  "mode": "local_preview"
+}

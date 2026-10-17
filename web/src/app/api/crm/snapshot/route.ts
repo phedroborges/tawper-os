@@ -1,6 +1,5 @@
 import { NextResponse } from "next/server";
-import { getDbHealth, loadCrmSnapshot } from "@/server/crm";
-import { ensureOperators } from "@/server/persist";
+import { getDbHealth, loadActorAliases, loadCrmSnapshot } from "@/server/crm";
 
 export const dynamic = "force-dynamic";
 
@@ -10,8 +9,7 @@ export async function GET() {
     return NextResponse.json({ health, snapshot: null, actorMap: null }, { status: 200 });
   }
   try {
-    const actorMap = await ensureOperators();
-    const snapshot = await loadCrmSnapshot();
+    const [actorMap, snapshot] = await Promise.all([loadActorAliases(), loadCrmSnapshot()]);
     return NextResponse.json({ health, snapshot, actorMap });
   } catch (e) {
     return NextResponse.json(

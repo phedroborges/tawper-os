@@ -1,0 +1,94 @@
+{
+  "runAt": "2026-10-17T11:57:36.858Z",
+  "mode": "local_preview",
+  "readOnly": true,
+  "evidence": [
+    {
+      "table": "companies",
+      "ok": true,
+      "total": 5
+    },
+    {
+      "table": "profiles",
+      "ok": true,
+      "total": 5
+    },
+    {
+      "table": "contacts",
+      "ok": true,
+      "total": 6
+    },
+    {
+      "table": "opportunities",
+      "ok": true,
+      "total": 5
+    },
+    {
+      "table": "activities",
+      "ok": true,
+      "total": 25
+    },
+    {
+      "table": "activity_results",
+      "ok": true,
+      "total": 0
+    },
+    {
+      "table": "interactions",
+      "ok": true,
+      "total": 0
+    },
+    {
+      "table": "conversations",
+      "ok": true,
+      "total": 0
+    },
+    {
+      "table": "messages",
+      "ok": true,
+      "total": 0
+    },
+    {
+      "table": "strategies",
+      "ok": true,
+      "total": 0
+    },
+    {
+      "table": "strategy_versions",
+      "ok": true,
+      "total": 0
+    },
+    {
+      "table": "quotes",
+      "ok": true,
+      "total": 0
+    },
+    {
+      "table": "products",
+      "ok": true,
+      "total": 0
+    },
+    {
+      "table": "quote_items",
+      "ok": true,
+      "total": 0
+    },
+    {
+      "table": "sales",
+      "ok": true,
+      "total": 0
+    },
+    {
+      "table": "stages",
+      "ok": true,
+      "total": 16
+    },
+    {
+      "table": "funnels",
+      "ok": true,
+      "total": 2
+    }
+  ],
+  "anonymousCannotReadCompanies": true,
+  "note": "Sem criação ou alteração de registros. Este teste não substitui validação completa de RLS entre usuários autenticados."
+}

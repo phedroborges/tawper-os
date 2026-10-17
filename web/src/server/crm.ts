@@ -231,3 +231,21 @@ export async function loadCrmSnapshot(): Promise<Pick<DemoData, "companies" | "c
   void ownerToDemo;
   return { companies, contacts, deals, activities, users };
 }
+
+/** Only maps existing operators. Opening a page must never create users or grant roles. */
+export async function loadActorAliases(): Promise<Record<string, string>> {
+  const sb = getSupabaseAdmin();
+  const memberships = await sb.from("memberships").select("profile_id").eq("organization_id", TAWPER_ORG_ID).eq("is_active", true);
+  if (memberships.error) throw new Error("Não foi possível consultar os operadores existentes.");
+  const ids = (memberships.data ?? []).map((m) => m.profile_id as string);
+  if (!ids.length) return {};
+  const profiles = await sb.from("profiles").select("id,email").in("id", ids);
+  if (profiles.error) throw new Error("Não foi possível consultar os perfis existentes.");
+  const aliases: Record<string, string> = {};
+  for (const profile of profiles.data ?? []) {
+    aliases[profile.id as string] = profile.id as string;
+    const configured = USERS.find((u) => `${u.id.replace("u-", "")}@usuarios.tawper.local` === profile.email);
+    if (configured) aliases[configured.id] = profile.id as string;
+  }
+  return aliases;
+}

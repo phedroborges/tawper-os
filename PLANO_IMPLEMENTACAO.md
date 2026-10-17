@@ -4,9 +4,9 @@
 >
 > **Versão:** 1.0  
 > **Criado em:** 23/09/2026  
-> **Atualizado em:** 24/09/2026  
+> **Atualizado em:** 17/10/2026
 > **Fase atual:** Fase 0 — Fechamento de produto e riscos  
-> **Estado geral:** EM ANDAMENTO  
+> **Estado geral:** BLOQUEADA
 > **Responsável por aprovar os gates:** a definir na Fase 0
 
 ---
@@ -297,6 +297,8 @@ O caminho crítico do Marco A é:
 
 ### 8.2 Trabalho antecipado permitido
 
+- **Exceção solicitada em 17/10/2026 — CR-001:** implementar e validar antecipadamente apenas o assistente geral do chat lateral com OpenAI e fontes internas, conforme `docs/changes/CR-001-assistente-geral.md` e ADR-004. Não altera a fase ativa, não aprova gates e não autoriza deploy. Demais recursos de IA permanecem na F13.
+
 Somente estas atividades podem ocorrer antes da fase correspondente:
 
 - na Fase 0, realizar prova técnica descartável dos provedores de WhatsApp;
@@ -313,7 +315,7 @@ Protótipos antecipados não podem virar dependência de produção sem passar p
 
 | Fase | Estado | Estimativa | Dependência obrigatória | Marco |
 |---|---|---:|---|---|
-| F0 — Produto e riscos | EM ANDAMENTO | 1–2 semanas | Nenhuma | A |
+| F0 — Produto e riscos | BLOQUEADA | 1–2 semanas | Nenhuma | A |
 | F1 — Fundação de engenharia | NÃO INICIADA | 1 semana | G0 | A |
 | F2 — Banco e modelo canônico | NÃO INICIADA | 2 semanas | G1 | A |
 | F3 — Autenticação e segurança | NÃO INICIADA | 1–2 semanas | G2 | A |
@@ -337,8 +339,10 @@ As estimativas medem duração provável, não substituem os gates. Uma fase atr
 
 ### Fase 0 — Fechamento de produto e riscos
 
-**Estado:** EM ANDAMENTO  
+**Estado:** BLOQUEADA
 **Objetivo:** eliminar decisões ambíguas antes que elas virem schema, permissão ou integração errada.
+
+**Impedimento registrado em 10/10/2026:** faltam insumos reais, decisões comerciais e evidências de aceite para G0. Ver [relatório do pedido da Central](docs/FASES-0-1-IMPEDIMENTOS-2026-10-10.md). F1 permanece NÃO INICIADA. O pedido proíbe publicação, portanto a homologação publicada exigida por G1 também não pode ser comprovada nesta execução. Nenhum gate foi aprovado.
 
 #### Entradas obrigatórias
 
@@ -1099,6 +1103,14 @@ Nenhuma tela ou regra comercial importa o SDK do provedor diretamente.
 
 ### Fase 13 — IA assistiva
 
+**Marco antecipado autorizado:** assistente geral, CR-001 / ADR-004, implementado localmente e em validação, sem aceite funcional. Registro e evidências em `docs/ASSISTENTE-GERAL.md`. Isso não conclui a F13 nem aprova os gates anteriores.
+
+- [x] Chat lateral integrado à OpenAI no servidor, com modelo configurável e sem busca na internet.
+- [x] Apresentação comercial importada por slide, com proveniência e lacunas explícitas.
+- [x] Consultas somente leitura ao CRM real, histórico de diálogo e contexto da conta.
+- [x] Testes determinísticos e avaliação com OpenAI real registrados.
+- [ ] Aceite funcional de Phedro e autorização operacional de produção.
+
 **Estado:** NÃO INICIADA  
 **Objetivo:** adicionar inteligência somente depois de existir contexto real, governado e avaliável.
 
@@ -1387,6 +1399,8 @@ Atualizar esta tabela sempre que uma fase mudar de estado.
 |---|---|---|---|---|---|
 | 23/09/2026 | F0 | NÃO INICIADA | PRONTA PARA INICIAR | — | Plano mestre criado |
 | 24/09/2026 | F0 | PRONTA PARA INICIAR | EM ANDAMENTO | Codex | Painel visual do plano concluído e validado em `/implementacao`; F0 permanece aberta até o Gate G0 |
+| 10/10/2026 | F0 | EM ANDAMENTO | BLOQUEADA | Codex | Pedido Central `20261010-110244-4rh8`: inspeção documental identificou falta de insumos reais e aceites; [impedimentos e evidências](docs/FASES-0-1-IMPEDIMENTOS-2026-10-10.md). F1 não iniciada; sem código, push ou deploy. |
+| 17/10/2026 | F13 — marco antecipado CR-001 | NÃO INICIADA | NÃO INICIADA (marco local em validação) | Codex, por solicitação de Phedro | Chat geral com OpenAI e fontes internas; ADR-004 e `docs/ASSISTENTE-GERAL.md`. F0 continua BLOQUEADA; nenhum gate aprovado, nenhuma publicação ou escrita comercial de teste. |
 
 ---
 
@@ -1450,6 +1464,8 @@ Antes de implementar Next.js, Supabase ou WhatsApp, revisar a documentação e o
 ---
 
 ## 23. Próxima ação autorizada
+
+**Exceção delimitada em vigor:** a CR-001 autoriza o marco antecipado do chat geral descrito na seção 8.2. Seu aceite e suas evidências são separados dos gates do plano. As regras abaixo continuam válidas para o restante da implementação.
 
 A única próxima ação de produção autorizada por este plano é executar a **Fase 0 — Fechamento de produto e riscos**.
 

@@ -1,6 +1,6 @@
 # Tawper OS — demonstração
 
-Base do sistema operacional comercial da Tawper Mangueiras e Conexões. É um app real (Next.js + TypeScript + Tailwind), mas tudo é **simulado**: não há backend, WhatsApp de verdade nem chamadas de IA. Os dados ficam no navegador (localStorage) e são fictícios.
+Base do sistema operacional comercial da Tawper Mangueiras e Conexões (Next.js + TypeScript + Tailwind). O chat lateral geral já usa OpenAI no servidor e consulta documentos internos e Supabase. As demais funções de IA e WhatsApp continuam simuladas; o aplicativo não possui aceite de produção. A origem dos dados das telas depende da configuração de Supabase. Veja [configuração, limites e evidências do assistente](../docs/ASSISTENTE-GERAL.md).
 
 ## Como abrir
 
