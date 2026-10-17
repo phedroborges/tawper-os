@@ -3,6 +3,7 @@ import "server-only";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import type { Activity, Company, Contact, Deal, DemoData, User } from "@/lib/types";
 import { USERS } from "@/lib/constants";
+import { ensureOperators } from "@/server/persist";
 
 export type DbHealth =
   | { ok: true; organization: string; funnels: number; stages: number; companies: number }
@@ -43,7 +44,12 @@ export async function getDbHealth(): Promise<DbHealth> {
   }
   try {
     const sb = getSupabaseAdmin();
-    const org = await sb.from("organizations").select("name").eq("id", TAWPER_ORG_ID).maybeSingle();
+    const [org, funnels, stages, companies] = await Promise.all([
+      sb.from("organizations").select("name").eq("id", TAWPER_ORG_ID).maybeSingle(),
+      sb.from("funnels").select("id", { count: "exact", head: true }).eq("organization_id", TAWPER_ORG_ID),
+      sb.from("stages").select("id", { count: "exact", head: true }).eq("organization_id", TAWPER_ORG_ID),
+      sb.from("companies").select("id", { count: "exact", head: true }).eq("organization_id", TAWPER_ORG_ID).neq("status", "merged"),
+    ]);
     if (org.error) {
       if (org.error.code === "PGRST205" || /schema cache|does not exist/i.test(org.error.message)) {
         return { ok: false, reason: "missing_schema", detail: org.error.message };
@@ -51,11 +57,6 @@ export async function getDbHealth(): Promise<DbHealth> {
       return { ok: false, reason: "error", detail: org.error.message };
     }
     if (!org.data) return { ok: false, reason: "missing_schema", detail: "Organização semente não encontrada." };
-    const [funnels, stages, companies] = await Promise.all([
-      sb.from("funnels").select("id", { count: "exact", head: true }).eq("organization_id", TAWPER_ORG_ID),
-      sb.from("stages").select("id", { count: "exact", head: true }).eq("organization_id", TAWPER_ORG_ID),
-      sb.from("companies").select("id", { count: "exact", head: true }).eq("organization_id", TAWPER_ORG_ID).neq("status", "merged"),
-    ]);
     return {
       ok: true,
       organization: org.data.name,
@@ -70,7 +71,7 @@ export async function getDbHealth(): Promise<DbHealth> {
 
 export async function loadCrmSnapshot(): Promise<Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users">> {
   const sb = getSupabaseAdmin();
-  const [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes, membershipsRes, profilesRes, regionsRes] = await Promise.all([
+  const [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes, membershipsRes, profilesRes, regionsRes, funnelsRes] = await Promise.all([
     sb.from("companies").select("*").eq("organization_id", TAWPER_ORG_ID).neq("status", "merged"),
     sb.from("contacts").select("*").eq("organization_id", TAWPER_ORG_ID),
     sb.from("opportunities").select("*").eq("organization_id", TAWPER_ORG_ID),
@@ -79,6 +80,7 @@ export async function loadCrmSnapshot(): Promise<Pick<DemoData, "companies" | "c
     sb.from("memberships").select("profile_id, role").eq("organization_id", TAWPER_ORG_ID).eq("is_active", true),
     sb.from("profiles").select("id, full_name, short_name, title, phone_e164, avatar_color"),
     sb.from("regions").select("id, name").eq("organization_id", TAWPER_ORG_ID),
+    sb.from("funnels").select("id, key").eq("organization_id", TAWPER_ORG_ID),
   ]);
 
   for (const r of [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes]) {
@@ -173,8 +175,7 @@ export async function loadCrmSnapshot(): Promise<Pick<DemoData, "companies" | "c
   }));
 
   const FUNNEL_KEY: Record<string, Deal["funnel"]> = {};
-  const funnels = await sb.from("funnels").select("id, key").eq("organization_id", TAWPER_ORG_ID);
-  for (const f of funnels.data ?? []) FUNNEL_KEY[f.id as string] = f.key as Deal["funnel"];
+  for (const f of funnelsRes.data ?? []) FUNNEL_KEY[f.id as string] = f.key as Deal["funnel"];
 
   const deals: Deal[] = (oppsRes.data ?? []).map((row) => ({
     id: row.id as string,
@@ -230,4 +231,62 @@ export async function loadCrmSnapshot(): Promise<Pick<DemoData, "companies" | "c
 
   void ownerToDemo;
   return { companies, contacts, deals, activities, users };
+}
+
+export type CrmBootstrap = {
+  health: DbHealth;
+  snapshot: Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users"> | null;
+  actorMap: Record<string, string> | null;
+};
+
+const SNAPSHOT_TTL_MS = 60_000;
+let snapshotGen = 0;
+let snapshotCache: { gen: number; at: number; body: CrmBootstrap } | null = null;
+let snapshotPending: { gen: number; promise: Promise<CrmBootstrap> } | null = null;
+
+export function invalidateCrmReadCache() {
+  snapshotGen += 1;
+  snapshotCache = null;
+}
+
+async function buildCrmBootstrap(): Promise<CrmBootstrap> {
+  const healthPromise = getDbHealth();
+  const operatorsPromise = ensureOperators();
+  const snapshotPromise = loadCrmSnapshot();
+  const health = await healthPromise;
+  if (!health.ok) {
+    void operatorsPromise.catch(() => undefined);
+    void snapshotPromise.catch(() => undefined);
+    return { health, snapshot: null, actorMap: null };
+  }
+  try {
+    const [actorMap, snapshot] = await Promise.all([operatorsPromise, snapshotPromise]);
+    return { health, snapshot, actorMap };
+  } catch (e) {
+    return {
+      health: { ok: false, reason: "error", detail: e instanceof Error ? e.message : String(e) },
+      snapshot: null,
+      actorMap: null,
+    };
+  }
+}
+
+/** Saúde + operadores + snapshot em paralelo, reutilizados por alguns segundos. */
+export function readCrmBootstrap(): Promise<CrmBootstrap> {
+  const now = Date.now();
+  if (snapshotCache && snapshotCache.gen === snapshotGen && now - snapshotCache.at < SNAPSHOT_TTL_MS) {
+    return Promise.resolve(snapshotCache.body);
+  }
+  if (snapshotPending && snapshotPending.gen === snapshotGen) return snapshotPending.promise;
+  const gen = snapshotGen;
+  const promise = buildCrmBootstrap()
+    .then((body) => {
+      if (gen === snapshotGen && body.health.ok) snapshotCache = { gen, at: Date.now(), body };
+      return body;
+    })
+    .finally(() => {
+      if (snapshotPending?.gen === gen) snapshotPending = null;
+    });
+  snapshotPending = { gen, promise };
+  return promise;
 }

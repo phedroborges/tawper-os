@@ -21,11 +21,11 @@ import {
   Sun,
   Tv,
 } from "lucide-react";
+import dynamic from "next/dynamic";
 import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
-import { FlowHost } from "@/components/flows/FlowHost";
 import { Avatar } from "@/components/ui/primitives";
 import { MenuItem, Popover } from "@/components/ui/overlay";
 import { ROLE_LABEL, isManager } from "@/lib/constants";
@@ -36,10 +36,12 @@ import { STORAGE_KEY, useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
 import { digitsQueryMatch } from "@/lib/br-ids";
 import { cn, normalize } from "@/lib/utils";
-import { AssistantPanel } from "./Assistant";
-import { DemoGuide } from "./DemoGuide";
 import { DbStatus, SupabaseBridge } from "./SupabaseBridge";
 import { Toaster } from "./Toaster";
+
+const FlowHost = dynamic(() => import("@/components/flows/FlowHost").then((m) => m.FlowHost), { ssr: false });
+const AssistantPanel = dynamic(() => import("./Assistant").then((m) => m.AssistantPanel), { ssr: false });
+const DemoGuide = dynamic(() => import("./DemoGuide").then((m) => m.DemoGuide), { ssr: false });
 
 interface NavItem {
   href: string;
@@ -53,15 +55,25 @@ function useNav(): NavItem[] {
   const user = useCurrentUser();
   const conversations = useStore((s) => s.conversations);
   const companies = useStore((s) => s.companies);
-  const s = useStore();
-  const unread = conversations.filter((c) => {
+  const contacts = useStore((s) => s.contacts);
+  const deals = useStore((s) => s.deals);
+  const activities = useStore((s) => s.activities);
+  const interactions = useStore((s) => s.interactions);
+  const quotes = useStore((s) => s.quotes);
+  const suggestions = useStore((s) => s.suggestions);
+  const strategies = useStore((s) => s.strategies);
+  const users = useStore((s) => s.users);
+  const unread = useMemo(() => conversations.filter((c) => {
     if (!c.unread) return false;
     if (isManager(user)) return true;
     if (c.ownerId === user.id) return true;
     const co = companies.find((x) => x.id === c.companyId);
     return co ? canSeeCompany(user, co) : false;
-  }).length;
-  const exceptions = useMemo(() => alertsOf(s).filter((a) => a.severidade === "alta").length, [s]);
+  }).length, [conversations, companies, user]);
+  const exceptions = useMemo(
+    () => alertsOf({ companies, contacts, deals, activities, interactions, quotes, suggestions, strategies, users, conversations }).filter((a) => a.severidade === "alta").length,
+    [companies, contacts, deals, activities, interactions, quotes, suggestions, strategies, users, conversations],
+  );
   return [
     { href: "/meu-dia", label: "Meu dia", icon: <Sun size={18} /> },
     { href: "/carteira", label: "Carteira", icon: <Building2 size={18} /> },
@@ -407,33 +419,50 @@ function Splash() {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const mounted = useMounted();
-  const { mobileNav, setMobileNav } = useUI();
-  if (!mounted) return <Splash />;
+  const mobileNav = useUI((s) => s.mobileNav);
+  const setMobileNav = useUI((s) => s.setMobileNav);
+  const flow = useUI((s) => s.flow);
+  const assistantOpen = useUI((s) => s.assistantOpen);
+  const guideOpen = useUI((s) => s.guideOpen);
+  const [extras, setExtras] = useState(false);
+  useEffect(() => {
+    const run = () => setExtras(true);
+    const idle = window.requestIdleCallback?.(run, { timeout: 800 });
+    if (idle !== undefined) return () => window.cancelIdleCallback(idle);
+    const timer = window.setTimeout(run, 250);
+    return () => window.clearTimeout(timer);
+  }, []);
   return (
-    <div className="min-h-dvh bg-paper">
+    <>
       <SupabaseBridge />
-      <CrossTabSync />
-      <aside className="fixed inset-y-0 left-0 z-50 hidden w-[224px] md:block">
-        <Sidebar />
-      </aside>
-      {mobileNav && (
-        <div className="fixed inset-0 z-[75] bg-ink/30 md:hidden" onClick={() => setMobileNav(false)}>
-          <aside className="h-full w-[248px] animate-slide-up" onClick={(e) => e.stopPropagation()}>
-            <Sidebar onNavigate={() => setMobileNav(false)} />
+      {!mounted ? (
+        <Splash />
+      ) : (
+        <div className="min-h-dvh bg-paper">
+          <CrossTabSync />
+          <aside className="fixed inset-y-0 left-0 z-50 hidden w-[224px] md:block">
+            <Sidebar />
           </aside>
+          {mobileNav && (
+            <div className="fixed inset-0 z-[75] bg-ink/30 md:hidden" onClick={() => setMobileNav(false)}>
+              <aside className="h-full w-[248px] animate-slide-up" onClick={(e) => e.stopPropagation()}>
+                <Sidebar onNavigate={() => setMobileNav(false)} />
+              </aside>
+            </div>
+          )}
+          <div className="md:pl-[224px]">
+            <Topbar />
+            <DbStatus />
+            <main className="mx-auto w-full max-w-[1440px] px-4 pt-6 pb-28 md:px-8 md:pt-7 md:pb-14">{children}</main>
+          </div>
+          <MobileTabBar />
+          {(extras || flow) && <FlowHost />}
+          {(extras || assistantOpen) && <AssistantPanel />}
+          {(extras || guideOpen) && <DemoGuide />}
+          <Toaster />
         </div>
       )}
-      <div className="md:pl-[224px]">
-        <Topbar />
-        <DbStatus />
-        <main className="mx-auto w-full max-w-[1440px] px-4 pt-6 pb-28 md:px-8 md:pt-7 md:pb-14">{children}</main>
-      </div>
-      <MobileTabBar />
-      <FlowHost />
-      <AssistantPanel />
-      <DemoGuide />
-      <Toaster />
-    </div>
+    </>
   );
 }
 

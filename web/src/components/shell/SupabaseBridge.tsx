@@ -2,18 +2,39 @@
 
 import { useEffect } from "react";
 import { setActorAliases, useStore } from "@/lib/store";
+import type { DemoData } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 
+type SnapshotBody = {
+  health: { ok: boolean; organization?: string; companies?: number; stages?: number; reason?: string; detail?: string };
+  snapshot: Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users"> | null;
+  actorMap?: Record<string, string> | null;
+};
+
+let snapshotRequest: Promise<SnapshotBody> | null = null;
+
+function loadSnapshot(): Promise<SnapshotBody> {
+  if (!snapshotRequest) {
+    snapshotRequest = fetch("/api/crm/snapshot")
+      .then((r) => r.json() as Promise<SnapshotBody>)
+      .catch((e: unknown) => {
+        snapshotRequest = null;
+        throw e;
+      });
+  }
+  return snapshotRequest;
+}
+
 export function SupabaseBridge() {
+  if (typeof window !== "undefined") loadSnapshot();
   const hydrateCrm = useStore((s) => s.hydrateCrm);
   const setDbHealth = useUI((s) => s.setDbHealth);
 
   useEffect(() => {
     let cancelled = false;
     setDbHealth({ ok: false, label: "Consultando Supabase…" });
-    fetch("/api/crm/snapshot")
-      .then((r) => r.json())
-      .then((body: { health: { ok: boolean; organization?: string; companies?: number; stages?: number; reason?: string; detail?: string }; snapshot: Parameters<typeof hydrateCrm>[0] | null; actorMap?: Record<string, string> | null }) => {
+    loadSnapshot()
+      .then((body) => {
         if (cancelled) return;
         if (body.health?.ok) {
           setDbHealth({

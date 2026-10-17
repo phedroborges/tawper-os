@@ -45,51 +45,72 @@ const CHANNEL_TO_DB: Record<string, string> = {
 };
 
 let operatorCache: Record<string, string> | null = null;
+let operatorInflight: Promise<Record<string, string>> | null = null;
 
-export async function ensureOperators(): Promise<Record<string, string>> {
-  if (operatorCache) return operatorCache;
+async function loadOperators(): Promise<Record<string, string>> {
   const sb = getSupabaseAdmin();
+  const people = USERS.map((user) => ({
+    user,
+    email: `${user.id.replace("u-", "")}@usuarios.tawper.local`,
+  }));
+  const existing = await sb.from("profiles").select("id, email").in(
+    "email",
+    people.map((p) => p.email),
+  );
+  if (existing.error) throw new Error(existing.error.message);
+  const byEmail = new Map((existing.data ?? []).map((row) => [row.email as string, row.id as string]));
   const map: Record<string, string> = {};
 
-  for (const user of USERS) {
-    const email = `${user.id.replace("u-", "")}@usuarios.tawper.local`;
-    const existing = await sb.from("profiles").select("id").eq("email", email).maybeSingle();
-    let id = existing.data?.id as string | undefined;
+  await Promise.all(
+    people.map(async ({ user, email }) => {
+      let id = byEmail.get(email);
 
-    if (!id) {
-      const created = await sb.auth.admin.createUser({
-        email,
-        password: `Tawper#2026.${user.short}`,
-        email_confirm: true,
-        user_metadata: { full_name: user.name, short_name: user.short },
-      });
-      if (created.error || !created.data.user) {
-        const again = await sb.from("profiles").select("id").eq("email", email).maybeSingle();
-        id = again.data?.id as string | undefined;
-        if (!id) throw new Error(created.error?.message ?? "Não foi possível criar o usuário operador.");
-      } else {
-        id = created.data.user.id;
+      if (!id) {
+        const created = await sb.auth.admin.createUser({
+          email,
+          password: `Tawper#2026.${user.short}`,
+          email_confirm: true,
+          user_metadata: { full_name: user.name, short_name: user.short },
+        });
+        if (created.error || !created.data.user) {
+          const again = await sb.from("profiles").select("id").eq("email", email).maybeSingle();
+          id = again.data?.id as string | undefined;
+          if (!id) throw new Error(created.error?.message ?? "Não foi possível criar o usuário operador.");
+        } else {
+          id = created.data.user.id;
+        }
       }
-    }
 
-    await sb.from("profiles").update({
-      full_name: user.name,
-      short_name: user.short,
-      title: user.title,
-      avatar_color: user.color,
-    }).eq("id", id);
+      await Promise.all([
+        sb.from("profiles").update({
+          full_name: user.name,
+          short_name: user.short,
+          title: user.title,
+          avatar_color: user.color,
+        }).eq("id", id),
+        sb.from("memberships").upsert(
+          { organization_id: TAWPER_ORG_ID, profile_id: id, role: user.role, is_active: true },
+          { onConflict: "organization_id,profile_id" },
+        ),
+      ]);
 
-    await sb.from("memberships").upsert(
-      { organization_id: TAWPER_ORG_ID, profile_id: id, role: user.role, is_active: true },
-      { onConflict: "organization_id,profile_id" },
-    );
-
-    map[user.id] = id;
-    map[id] = id;
-  }
+      map[user.id] = id;
+      map[id] = id;
+    }),
+  );
 
   operatorCache = map;
   return map;
+}
+
+export async function ensureOperators(): Promise<Record<string, string>> {
+  if (operatorCache) return operatorCache;
+  if (!operatorInflight) {
+    operatorInflight = loadOperators().finally(() => {
+      operatorInflight = null;
+    });
+  }
+  return operatorInflight;
 }
 
 export async function resolveOwner(ownerId: string | undefined, actors: Record<string, string>): Promise<string> {

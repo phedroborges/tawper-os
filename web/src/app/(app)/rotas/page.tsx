@@ -16,22 +16,37 @@ import { aiRoute } from "@/server/ai/actions";
 
 /** Planejamento de rota (fluxo 7.8): IA prioriza por urgência, potencial, etapa e atraso. */
 export default function RotasPage() {
-  const s = useStore();
+  const companies = useStore((s) => s.companies);
+  const contacts = useStore((s) => s.contacts);
+  const deals = useStore((s) => s.deals);
+  const activities = useStore((s) => s.activities);
+  const interactions = useStore((s) => s.interactions);
+  const quotes = useStore((s) => s.quotes);
+  const suggestions = useStore((s) => s.suggestions);
+  const strategies = useStore((s) => s.strategies);
+  const users = useStore((s) => s.users);
+  const conversations = useStore((s) => s.conversations);
+  const routes = useStore((s) => s.routes);
+  const addActivity = useStore((s) => s.addActivity);
   const user = useCurrentUser();
   const now = useNow();
   const toast = useUI((u) => u.toast);
   const [regiao, setRegiao] = useState(user.regions[0] ?? "Noroeste Paulista");
   const [thinking, setThinking] = useState(false);
   const [picked, setPicked] = useState<string[] | null>(null);
+  const data = useMemo(
+    () => ({ companies, contacts, deals, activities, interactions, quotes, suggestions, strategies, users, conversations }),
+    [companies, contacts, deals, activities, interactions, quotes, suggestions, strategies, users, conversations],
+  );
 
   const candidates = useMemo(() => {
-    const al = alertsOf(s, { now });
-    return s.companies
+    const al = alertsOf(data, { now });
+    return data.companies
       .filter((c) => c.regiao === regiao && (c.status === "ativa" || c.status === "espera"))
       .filter((c) => isManager(user) || c.ownerId === user.id)
       .map((c) => {
-        const deal = openDealOf(s, c.id);
-        const last = lastInteractionAt(s, c.id);
+        const deal = openDealOf(data, c.id);
+        const last = lastInteractionAt(data, c.id);
         const myAlerts = al.filter((a) => a.companyId === c.id);
         let score = 0;
         const motivos: string[] = [];
@@ -44,9 +59,9 @@ export default function RotasPage() {
         return { c, deal, score, motivos };
       })
       .sort((a, b) => b.score - a.score);
-  }, [s, regiao, user, now]);
+  }, [data, regiao, user, now]);
 
-  const route = s.routes.find((r) => r.regiao === regiao && (isManager(user) || r.ownerId === user.id));
+  const route = routes.find((r) => r.regiao === regiao && (isManager(user) || r.ownerId === user.id));
 
   const suggest = () => {
     setThinking(true);
@@ -78,7 +93,7 @@ export default function RotasPage() {
     if (!picked?.length) return;
     picked.forEach((id, i) => {
       const x = candidates.find((k) => k.c.id === id)!;
-      s.addActivity({
+      addActivity({
         companyId: id,
         tipo: "Visita",
         titulo: `Visita na rota ${regiao}: ${x.motivos[0] ?? "relacionamento"}`,
@@ -191,7 +206,7 @@ export default function RotasPage() {
                   <li key={p.companyId} className="flex gap-3 py-1.5">
                     <span className="grid size-6 shrink-0 place-items-center rounded-full bg-navy text-[11px] font-bold text-white">{i + 1}</span>
                     <div className="text-[12.5px]">
-                      <CompanyLink company={s.companies.find((c) => c.id === p.companyId)} className="text-[12.5px]" />
+                      <CompanyLink company={companies.find((c) => c.id === p.companyId)} className="text-[12.5px]" />
                       <div className="text-ink/75">{p.objetivo}</div>
                       <div className="text-[11px] text-muted">{p.motivo}</div>
                     </div>
