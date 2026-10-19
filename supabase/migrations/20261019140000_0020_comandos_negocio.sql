@@ -1,7 +1,7 @@
 -- =============================================================================
 -- Tawper OS — 0020 — Comandos do negócio executados no banco
--- Cada operação composta (mudar etapa, ganho, perda, espera, retomada, reagendar,
--- estratégia) roda numa transação só, aplica as regras do banco e registra quem fez.
+-- Cada operação composta (ganho, perda, espera, retomada, reagendar,
+-- estratégia, interação) roda numa transação só, aplica as regras do banco e registra quem fez.
 -- O servidor chama estas funções com a chave de serviço; a tela nunca decide sozinha.
 -- =============================================================================
 
@@ -110,82 +110,6 @@ begin
   insert into public.interactions (organization_id, company_id, opportunity_id, channel, kind, author_id, actor_type, title, content)
   values (p_org, p_company, p_opportunity, p_channel::public.interaction_channel, p_kind::public.interaction_kind,
           p_actor, app.current_actor_type(), p_title, nullif(trim(coalesce(p_content, '')), ''));
-end $$;
-
--- Marca ou desmarca critérios (checklist) de uma oportunidade.
-create or replace function app.crm_apply_checks(p_opportunity uuid, p_funnel uuid, p_org uuid, p_actor uuid, p_checks jsonb)
-returns void language plpgsql as $$
-declare
-  rec record;
-  req uuid;
-begin
-  for rec in select key, value from jsonb_each_text(coalesce(p_checks, '{}'::jsonb)) loop
-    select r.id into req
-      from public.stage_requirements r
-      join public.stages s on s.id = r.stage_id
-     where s.funnel_id = p_funnel and r.key = rec.key and r.kind = 'check';
-    if req is null then continue; end if;
-    insert into public.opportunity_requirement_values (organization_id, opportunity_id, requirement_id, is_met)
-    values (p_org, p_opportunity, req, rec.value::boolean)
-    on conflict (opportunity_id, requirement_id) do update set is_met = excluded.is_met;
-  end loop;
-end $$;
-
--- -----------------------------------------------------------------------------
--- Mudar de etapa
--- -----------------------------------------------------------------------------
-create or replace function public.crm_move_stage(
-  p_opportunity uuid, p_to_stage text, p_actor uuid,
-  p_checks jsonb default '{}'::jsonb, p_tasks jsonb default '[]'::jsonb, p_note text default null, p_origin text default 'user'
-) returns uuid language plpgsql as $$
-declare
-  o       public.opportunities%rowtype;
-  v_from  public.stages%rowtype;
-  v_to    public.stages%rowtype;
-  t       jsonb;
-begin
-  perform app.crm_begin(p_actor, p_origin);
-  select * into o from public.opportunities where id = p_opportunity for update;
-  if not found then raise exception 'Negócio não encontrado.' using errcode = 'P0001'; end if;
-  if o.status <> 'open' then raise exception 'Este negócio já está encerrado.' using errcode = 'P0001'; end if;
-
-  select * into v_from from public.stages where id = o.stage_id;
-  select * into v_to from public.stages where funnel_id = o.funnel_id and key = p_to_stage and is_active;
-  if not found then raise exception 'Essa etapa não existe neste funil.' using errcode = 'P0001'; end if;
-  if v_to.id = v_from.id then raise exception 'O negócio já está nesta etapa.' using errcode = 'P0001'; end if;
-  if v_to.is_terminal then raise exception 'Para encerrar o negócio use Registrar venda ou Perda.' using errcode = 'P0001'; end if;
-  if v_to.position < v_from.position and length(trim(coalesce(p_note, ''))) < 4 then
-    raise exception 'Informe o motivo para voltar o negócio de etapa.' using errcode = 'P0001';
-  end if;
-
-  perform app.crm_apply_checks(o.id, o.funnel_id, o.organization_id, p_actor, p_checks);
-
-  update public.opportunities set stage_id = v_to.id where id = o.id;
-
-  update public.opportunity_stage_history set note = nullif(trim(coalesce(p_note, '')), '')
-   where opportunity_id = o.id and left_at is null;
-
-  for t in select * from jsonb_array_elements(coalesce(p_tasks, '[]'::jsonb)) loop
-    insert into public.activities (organization_id, company_id, opportunity_id, type, title, description, owner_id, due_at, priority, origin, created_by)
-    values (o.organization_id, o.company_id, o.id, (t ->> 'type')::public.activity_type, t ->> 'title', nullif(t ->> 'description', ''),
-            o.owner_id, (t ->> 'dueAt')::timestamptz, coalesce(nullif(t ->> 'priority', ''), 'medium')::public.level_3, 'rule', p_actor);
-  end loop;
-
-  perform app.crm_interaction(o.organization_id, o.company_id, o.id, 'system', 'stage', p_actor,
-                              'Etapa alterada: ' || v_from.name || ' → ' || v_to.name, p_note);
-  return o.id;
-end $$;
-
--- Marca critérios sem mudar de etapa.
-create or replace function public.crm_set_checks(p_opportunity uuid, p_checks jsonb, p_actor uuid, p_origin text default 'user')
-returns uuid language plpgsql as $$
-declare o public.opportunities%rowtype;
-begin
-  perform app.crm_begin(p_actor, p_origin);
-  select * into o from public.opportunities where id = p_opportunity for update;
-  if not found then raise exception 'Negócio não encontrado.' using errcode = 'P0001'; end if;
-  perform app.crm_apply_checks(o.id, o.funnel_id, o.organization_id, p_actor, p_checks);
-  return o.id;
 end $$;
 
 -- -----------------------------------------------------------------------------
