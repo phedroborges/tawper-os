@@ -10,6 +10,7 @@ export type Flow =
   | { kind: "complete"; activityId: string }
   | { kind: "newActivity"; companyId: string; preset?: Partial<ActivityDraft> }
   | { kind: "move"; dealId: string; toStageId?: string; preChecks?: Record<string, boolean>; nota?: string }
+  | { kind: "viewStage"; dealId: string }
   | { kind: "win"; dealId: string }
   | { kind: "lose"; dealId: string }
   | { kind: "standby"; companyId: string }

@@ -108,6 +108,8 @@ export interface Deal {
   history: StageEntry[];
   ciclo: number;
   objecao?: string;
+  /** Após um retorno de etapa com motivo, o avanço automático não desfaz a volta. */
+  autoAdvanceHold?: boolean;
 }
 
 export interface Strategy {

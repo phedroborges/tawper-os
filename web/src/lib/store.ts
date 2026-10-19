@@ -5,8 +5,10 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { FIELD_LABELS, FUNNELS, getStage, isManager } from "./constants";
+import { FIELD_LABELS, FUNNELS, getStage, isManager, stageIndex } from "./constants";
+import { stageKeyToUi, withRetornoNote } from "./crm-map";
 import { fmtDateShort, rel } from "./dates";
+import { missingCriteria } from "./selectors";
 import { buildSeed, DATA_VERSION } from "./seed";
 import type {
   Activity,
@@ -78,6 +80,7 @@ interface Actions {
     toStageId: string,
     opts?: { checks?: Record<string, boolean>; tarefas?: ActivityDraft[]; nota?: string; origem?: AuditEntry["origem"] },
   ) => void;
+  autoAdvanceDeal: (dealId: string, opts?: { untilStageId?: string; origem?: AuditEntry["origem"]; ignoreHold?: boolean }) => number;
   setChecklist: (dealId: string, checks: Record<string, boolean>, origem?: AuditEntry["origem"]) => void;
   winDeal: (dealId: string, input: { valor: number; obs?: string }) => { recurrenceDealId: string; posVendaId: string };
   loseDeal: (dealId: string, input: { motivo: string; obs?: string }) => void;
@@ -142,10 +145,44 @@ export const DEFAULT_USER_ID = "u-murilo";
 
 const USE_SUPABASE = process.env.NEXT_PUBLIC_TAWPER_USE_SUPABASE === "true";
 
-function mergeById<T extends { id: string }>(server: T[] | undefined, local: T[]): T[] {
+function mergeById<T extends { id: string }>(server: T[] | undefined, local: T[], pick?: (server: T, local: T) => T): T[] {
   if (!server) return local;
+  const localById = new Map(local.map((row) => [row.id, row]));
+  const merged = server.map((row) => {
+    const current = localById.get(row.id);
+    return current && pick ? pick(row, current) : row;
+  });
   const ids = new Set(server.map((row) => row.id));
-  return [...server, ...local.filter((row) => !ids.has(row.id))];
+  return [...merged, ...local.filter((row) => !ids.has(row.id))];
+}
+
+let suppressAdvance = 0;
+
+export function runWithoutAutoAdvance(fn: () => void) {
+  suppressAdvance += 1;
+  try {
+    fn();
+  } finally {
+    suppressAdvance -= 1;
+  }
+}
+
+function queueAdvance(get: () => AppState, dealId?: string) {
+  if (!dealId || suppressAdvance) return;
+  queueMicrotask(() => {
+    const held = get().deals.find((d) => d.id === dealId);
+    if (held?.autoAdvanceHold) return;
+    const hops = get().autoAdvanceDeal(dealId);
+    if (!hops) return;
+    const deal = get().deals.find((d) => d.id === dealId);
+    if (!deal) return;
+    const name = getStage(deal.funnel, deal.stageId).nome;
+    void import("./ui-store").then(({ useUI }) => {
+      useUI.getState().toast(`Etapa alterada para ${name}`, {
+        sub: hops > 1 ? "Etapas já cumpridas foram avançadas automaticamente" : "Critérios de saída cumpridos",
+      });
+    });
+  });
 }
 
 const actorAlias = new Map<string, string>();
@@ -239,9 +276,17 @@ export const useStore = create<AppState>()(
         },
         hydrateCrm: (snapshot) => {
           set((s) => ({
-            companies: mergeById(snapshot.companies, s.companies),
+            companies: mergeById(snapshot.companies, s.companies, (server, local) => ((local.updatedAt ?? "") > (server.updatedAt ?? "") ? local : server)),
             contacts: mergeById(snapshot.contacts, s.contacts),
-            deals: mergeById(snapshot.deals, s.deals),
+            deals: mergeById(snapshot.deals, s.deals, (server, local) => {
+              const newerLocal = (local.stageEnteredAt ?? "") > (server.stageEnteredAt ?? "");
+              const base = newerLocal ? local : server;
+              return {
+                ...base,
+                checklist: { ...server.checklist, ...local.checklist },
+                autoAdvanceHold: newerLocal ? Boolean(local.autoAdvanceHold) : Boolean(server.autoAdvanceHold),
+              };
+            }),
             activities: mergeById(snapshot.activities, s.activities),
             quotes: snapshot.quotes ?? s.quotes,
             users: snapshot.users?.length ? snapshot.users : s.users,
@@ -431,6 +476,7 @@ export const useStore = create<AppState>()(
             audit: [...entries, ...s.audit],
           });
           pushMutation({ action: "updateCompany", id, patch, actorId: me() });
+          queueAdvance(get, s.deals.find((d) => d.companyId === id && d.status === "aberta")?.id);
         },
 
         addContact: (c) => {
@@ -443,6 +489,7 @@ export const useStore = create<AppState>()(
             audit: [auditEntry({ autorId: me(), origem: "usuario", entidade: "Contato", entidadeId: id, companyId: c.companyId, campo: "criado", para: c.nome }), ...s.audit],
           });
           pushMutation({ action: "addContact", contact, actorId: me() });
+          queueAdvance(get, s.deals.find((d) => d.companyId === c.companyId && d.status === "aberta")?.id);
           return id;
         },
 
@@ -503,11 +550,15 @@ export const useStore = create<AppState>()(
         moveDeal: (dealId, toStageId, opts = {}) => {
           const s = get();
           const deal = s.deals.find((d) => d.id === dealId);
-          if (!deal || deal.stageId === toStageId) return;
+          if (!deal || stageKeyToUi(deal.stageId) === stageKeyToUi(toStageId)) return;
           const actor = opts.origem === "ia" ? "ia" : me();
           const now = nowIso();
           const from = getStage(deal.funnel, deal.stageId);
           const to = getStage(deal.funnel, toStageId);
+          const fromIdx = stageIndex(deal.funnel, deal.stageId);
+          const toIdx = stageIndex(deal.funnel, toStageId);
+          const returning = toIdx >= 0 && fromIdx >= 0 && toIdx < fromIdx;
+          const nota = returning ? withRetornoNote(opts.nota) : opts.nota;
           const company = s.companies.find((c) => c.id === deal.companyId)!;
           const checks = { ...deal.checklist, ...(opts.checks ?? {}) };
           const allCriteria = FUNNELS[deal.funnel].stages.flatMap((st) => st.criterios);
@@ -518,6 +569,7 @@ export const useStore = create<AppState>()(
             stageEnteredAt: now,
             probabilidade: to.probabilidade,
             checklist: checks,
+            autoAdvanceHold: returning,
             history: [...deal.history.map((h) => (h.leftAt ? h : { ...h, leftAt: now })), { stageId: toStageId, enteredAt: now, byId: actor }],
           };
           const newActs: Activity[] = (opts.tarefas ?? []).map((t) => ({
@@ -536,7 +588,7 @@ export const useStore = create<AppState>()(
             activities: [...newActs, ...s.activities],
             interactions: [
               ...depInteractions,
-              interaction({ companyId: deal.companyId, dealId, canal: "Sistema", autorId: actor, kind: "stage", titulo: `Etapa alterada: ${from.nome} → ${to.nome}`, conteudo: opts.nota }),
+              interaction({ companyId: deal.companyId, dealId, canal: "Sistema", autorId: actor, kind: "stage", titulo: `Etapa alterada: ${from.nome} → ${to.nome}`, conteudo: nota }),
               ...s.interactions,
             ],
             notifications: [...depNotifs, ...s.notifications],
@@ -549,6 +601,51 @@ export const useStore = create<AppState>()(
               ...s.audit,
             ],
           });
+          pushMutation({
+            action: "moveDeal",
+            dealId,
+            toStageId,
+            actorId: actor === "ia" ? me() : actor,
+            checks,
+            nota,
+            tarefas: opts.tarefas,
+          });
+        },
+
+        autoAdvanceDeal: (dealId, opts = {}) => {
+          const until = opts.untilStageId ? stageKeyToUi(opts.untilStageId) : undefined;
+          let hops = 0;
+          while (hops < 12) {
+            const s = get();
+            const deal = s.deals.find((d) => d.id === dealId);
+            if (!deal || deal.status !== "aberta") break;
+            if (deal.autoAdvanceHold && !opts.ignoreHold) break;
+            const company = s.companies.find((c) => c.id === deal.companyId);
+            if (!company) break;
+            const stages = FUNNELS[deal.funnel].stages;
+            const idx = stageIndex(deal.funnel, deal.stageId);
+            if (idx < 0) break;
+            const next = stages[idx + 1];
+            if (!next || next.terminal) break;
+            const untilIdx = until ? stageIndex(deal.funnel, until) : -1;
+            if (untilIdx >= 0 && idx >= untilIdx) break;
+            if (missingCriteria(s, deal, company).length) break;
+
+            const after = { ...deal, stageId: next.id };
+            const nextAlsoDone = missingCriteria(s, after, company).length === 0;
+            const nextNext = stages[idx + 2];
+            const nextIdx = stageIndex(deal.funnel, next.id);
+            const willContinue = nextAlsoDone && Boolean(nextNext) && !nextNext.terminal && (untilIdx < 0 || nextIdx < untilIdx);
+            const t = willContinue ? undefined : next.tarefas[0];
+            get().moveDeal(dealId, next.id, {
+              origem: opts.origem,
+              tarefas: t
+                ? [{ companyId: company.id, dealId, titulo: t.titulo, tipo: t.tipo, dueAt: rel(t.prazoDias, 10), ownerId: deal.ownerId, origem: "regra" }]
+                : [],
+            });
+            hops += 1;
+          }
+          return hops;
         },
 
         setChecklist: (dealId, checks, origem = "usuario") => {
@@ -567,6 +664,7 @@ export const useStore = create<AppState>()(
               ...s.audit,
             ],
           });
+          queueAdvance(get, dealId);
         },
 
         winDeal: (dealId, { valor, obs }) => {
@@ -822,6 +920,7 @@ export const useStore = create<AppState>()(
             ],
             audit: [auditEntry({ autorId: actor, origem: "usuario", entidade: "Orçamento", entidadeId: q.id, companyId: q.companyId, campo: "status", de: "rascunho", para: `enviado (${now.slice(0, 10)})` }), ...get().audit],
           });
+          queueAdvance(get, q.dealId);
         },
 
         // -------------------------------------------------------------------

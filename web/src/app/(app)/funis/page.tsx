@@ -7,10 +7,11 @@ import { Suspense, useMemo, useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
 import { DaysInStage, DueLabel, UserAvatar } from "@/components/crm/crm";
 import { Badge, PageHeader, Segmented, Select } from "@/components/ui/primitives";
-import { FUNNELS, REGIOES, isManager } from "@/lib/constants";
+import { FUNNELS, REGIOES, isManager, stageIndex } from "@/lib/constants";
+import { stageKeyToUi } from "@/lib/crm-map";
 import { daysSince } from "@/lib/dates";
 import { useNow } from "@/lib/hooks";
-import { canSeeCompany, isStagnant, nextStepOf } from "@/lib/selectors";
+import { canSeeCompany, isStagnant, missingCriteria, nextStepOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { Deal, FunnelId } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
@@ -23,6 +24,7 @@ function Kanban() {
   const user = useCurrentUser();
   const now = useNow();
   const open = useUI((u) => u.open);
+  const toast = useUI((u) => u.toast);
   const [funnel, setFunnel] = useState<FunnelId>((params.get("f") as FunnelId) === "recorrencia" ? "recorrencia" : "aquisicao");
   const [owner, setOwner] = useState("");
   const [regiao, setRegiao] = useState("");
@@ -55,9 +57,44 @@ function Kanban() {
     const d = s.deals.find((x) => x.id === dragId);
     setDragId(null);
     setOver(null);
-    if (!d || d.stageId === stageId || d.status !== "aberta") return;
+    if (!d || stageKeyToUi(d.stageId) === stageId || d.status !== "aberta") return;
     const st = stages.find((x) => x.id === stageId)!;
-    open(st.terminal ? { kind: "win", dealId: d.id } : { kind: "move", dealId: d.id, toStageId: stageId });
+    if (st.terminal) {
+      open({ kind: "win", dealId: d.id });
+      return;
+    }
+    const c = s.companies.find((x) => x.id === d.companyId);
+    const fromIdx = stageIndex(d.funnel, d.stageId);
+    const toIdx = stageIndex(d.funnel, stageId);
+    if (c && toIdx > fromIdx && missingCriteria(s, d, c).length === 0) {
+      const hops = s.autoAdvanceDeal(d.id, { untilStageId: stageId, ignoreHold: true });
+      if (hops) {
+        const fresh = useStore.getState().deals.find((x) => x.id === d.id);
+        const landed = fresh ? FUNNELS[fresh.funnel].stages.find((x) => x.id === stageKeyToUi(fresh.stageId)) : st;
+        toast(`Etapa alterada para ${landed?.nome ?? st.nome}`, { sub: hops > 1 ? "Etapas já cumpridas foram avançadas automaticamente" : undefined });
+        return;
+      }
+    }
+    open({ kind: "move", dealId: d.id, toStageId: stageId });
+  };
+
+  const startMove = (d: Deal) => {
+    const c = s.companies.find((x) => x.id === d.companyId);
+    if (c && missingCriteria(s, d, c).length === 0) {
+      const hops = s.autoAdvanceDeal(d.id, { ignoreHold: true });
+      if (hops) {
+        const fresh = useStore.getState().deals.find((x) => x.id === d.id);
+        const landed = fresh ? FUNNELS[fresh.funnel].stages.find((x) => x.id === stageKeyToUi(fresh.stageId)) : undefined;
+        toast(`Etapa alterada para ${landed?.nome ?? "próxima etapa"}`, { sub: hops > 1 ? "Etapas já cumpridas foram avançadas automaticamente" : undefined });
+        return;
+      }
+      const next = FUNNELS[d.funnel].stages[stageIndex(d.funnel, d.stageId) + 1];
+      if (next?.terminal) {
+        open({ kind: "win", dealId: d.id });
+        return;
+      }
+    }
+    open({ kind: "move", dealId: d.id });
   };
 
   return (
@@ -110,7 +147,7 @@ function Kanban() {
       <div className="scrollbar-thin -mx-4 overflow-x-auto px-4 pb-4 md:-mx-7 md:px-7">
         <div className="flex min-w-max gap-3">
           {stages.map((st) => {
-            const col = deals.filter((d) => d.stageId === st.id && (!onlyRisk || (d.status === "aberta" && risky(d))));
+            const col = deals.filter((d) => stageKeyToUi(d.stageId) === st.id && (!onlyRisk || (d.status === "aberta" && risky(d))));
             const total = col.reduce((a, d) => a + (d.valorRealizado ?? d.valor ?? 0), 0);
             return (
               <section
@@ -214,9 +251,18 @@ function Kanban() {
                           </>
                         )}
                         {d.status === "aberta" && (
-                          <button type="button" onClick={() => open({ kind: "move", dealId: d.id })} className="mt-1.5 w-full rounded-[4px] py-1 text-[11px] font-semibold text-navy-3 opacity-100 hover:bg-soft md:opacity-0 md:group-hover:opacity-100">
-                            Mover etapa →
-                          </button>
+                          <div className="mt-1.5 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100">
+                            <button
+                              type="button"
+                              onClick={() => open({ kind: "viewStage", dealId: d.id })}
+                              className="flex-1 rounded-[4px] py-1 text-[11px] font-semibold text-navy-3 hover:bg-soft"
+                            >
+                              Ver etapa
+                            </button>
+                            <button type="button" onClick={() => startMove(d)} className="flex-1 rounded-[4px] py-1 text-[11px] font-semibold text-navy-3 hover:bg-soft">
+                              Mover etapa →
+                            </button>
+                          </div>
                         )}
                       </article>
                     );

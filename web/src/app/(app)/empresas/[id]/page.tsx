@@ -73,7 +73,7 @@ function EmpresaView() {
   const stage = deal ? getStage(deal.funnel, deal.stageId) : undefined;
   const nextStage = deal ? FUNNELS[deal.funnel].stages[FUNNELS[deal.funnel].stages.findIndex((x) => x.id === deal.stageId) + 1] : undefined;
 
-  /** Se não falta nenhum critério, avança direto e cria a tarefa da nova etapa — sem modal. */
+  /** Se não falta nenhum critério, avança as etapas já cumpridas — sem modal. */
   const avancar = () => {
     if (!deal || !nextStage) return;
     if (nextStage.terminal) {
@@ -83,6 +83,13 @@ function EmpresaView() {
     const falta = missingCriteria(s, deal, company);
     if (falta.length) {
       open({ kind: "move", dealId: deal.id, toStageId: nextStage.id });
+      return;
+    }
+    const hops = s.autoAdvanceDeal(deal.id, { ignoreHold: true });
+    const fresh = useStore.getState().deals.find((d) => d.id === deal.id);
+    const landed = fresh ? getStage(fresh.funnel, fresh.stageId) : nextStage;
+    if (hops) {
+      toast(`Etapa alterada para ${landed.nome}`, { sub: hops > 1 ? "Etapas já cumpridas foram avançadas automaticamente" : undefined });
       return;
     }
     const t = nextStage.tarefas[0];

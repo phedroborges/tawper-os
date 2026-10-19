@@ -5,7 +5,7 @@ import { CompleteActivityModal, NewActivityModal, RescheduleModal } from "./acti
 import { CobrancaModal, ContactModal, DeleteCompanyModal, DrillModal, EditCompanyModal } from "./misc";
 import { QuickRegisterModal } from "./quick";
 import { QuoteModal } from "./quote";
-import { LoseDealModal, MoveStageModal, StandbyModal, WinDealModal } from "./stage";
+import { LoseDealModal, MoveStageModal, StandbyModal, ViewStageModal, WinDealModal } from "./stage";
 
 /** Renderiza o fluxo (modal) ativo. Qualquer tela abre fluxos via useUI().open(...). */
 export function FlowHost() {
@@ -23,6 +23,8 @@ export function FlowHost() {
       return <RescheduleModal key={key} activityId={flow.activityId} />;
     case "move":
       return <MoveStageModal key={key} dealId={flow.dealId} toStageId={flow.toStageId} preChecks={flow.preChecks} nota={flow.nota} />;
+    case "viewStage":
+      return <ViewStageModal key={key} dealId={flow.dealId} />;
     case "win":
       return <WinDealModal key={key} dealId={flow.dealId} />;
     case "lose":

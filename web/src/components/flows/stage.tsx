@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, Check, CircleCheck, FileText, Pause, PartyPopper, Trophy, XCircle } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, CircleCheck, Eye, FileText, Pause, PartyPopper, Trophy, XCircle } from "lucide-react";
 import Link from "next/link";
 import { useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
@@ -8,8 +8,8 @@ import { Modal } from "@/components/ui/overlay";
 import { Badge, Button, Checkbox, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { FUNNELS, getStage, MARCAS, MOTIVOS_ESPERA, MOTIVOS_PERDA, PAPEIS, PRENSAS, RAMOS, REGIOES, stageIndex, UFS, type Criterion } from "@/lib/constants";
 import { addDays, fmtDateShort, fmtDue, fromInputDate, rel, toInputDate } from "@/lib/dates";
-import { criterionMet, pendingOf } from "@/lib/selectors";
-import { useStore, type ActivityDraft } from "@/lib/store";
+import { criterionMet, daysInStage, pendingOf } from "@/lib/selectors";
+import { runWithoutAutoAdvance, useStore, type ActivityDraft } from "@/lib/store";
 import type { Company, Contact, Papel, Potencial, Prensa } from "@/lib/types";
 import { formatWhatsApp, isValidWhatsApp, storedWhatsApp } from "@/lib/br-ids";
 import { useUI } from "@/lib/ui-store";
@@ -51,7 +51,7 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
   const hasPending = pendingOf(s, company.id).length > 0;
   const tasks = targetStage?.tarefas ?? [];
   const selectedTasks = tasks.filter((_, i) => tasksSel[i]);
-  const needsNext = !hasPending && selectedTasks.length === 0 && !targetStage?.terminal;
+  const needsNext = !backwards && !hasPending && selectedTasks.length === 0 && !targetStage?.terminal;
   const canConfirm = targetStage && !targetStage.terminal && missing.length === 0 && !needsNext && (!backwards || nota.trim().length > 3);
 
   const confirm = () => {
@@ -61,13 +61,26 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
       return;
     }
     const patch = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined && v !== ""));
-    if (Object.keys(patch).length) s.updateCompany(company.id, patch);
-    if (newContact.nome.trim()) {
-      s.addContact({ companyId: company.id, nome: newContact.nome, cargo: newContact.cargo || newContact.papel, papel: newContact.papel, influencia: 2, whatsapp: storedWhatsApp(newContact.whatsapp), canal: "WhatsApp", autorizaContato: true, ativo: true });
-    }
     const tarefas: ActivityDraft[] = selectedTasks.map((t, i) => ({ companyId: company.id, dealId: deal.id, titulo: t.titulo, tipo: t.tipo, dueAt: rel(t.prazoDias, 9 + i), ownerId: deal.ownerId, origem: "regra" }));
-    s.moveDeal(deal.id, targetStage.id, { checks, tarefas, nota: nota.trim() || undefined });
-    toast(`Etapa alterada para ${targetStage.nome}`, { sub: tarefas.length ? `${tarefas.length} tarefa(s) criada(s) pela regra da etapa` : `Tempo em ${curStage.nome} registrado` });
+    runWithoutAutoAdvance(() => {
+      if (Object.keys(patch).length) s.updateCompany(company.id, patch);
+      if (newContact.nome.trim()) {
+        s.addContact({ companyId: company.id, nome: newContact.nome, cargo: newContact.cargo || newContact.papel, papel: newContact.papel, influencia: 2, whatsapp: storedWhatsApp(newContact.whatsapp), canal: "WhatsApp", autorizaContato: true, ativo: true });
+      }
+      s.moveDeal(deal.id, targetStage.id, { checks, tarefas, nota: nota.trim() || undefined });
+    });
+    const extra = backwards ? 0 : s.autoAdvanceDeal(deal.id, { ignoreHold: true });
+    const fresh = useStore.getState().deals.find((d) => d.id === deal.id);
+    const landed = fresh ? getStage(fresh.funnel, fresh.stageId) : targetStage;
+    toast(`Etapa alterada para ${landed.nome}`, {
+      sub: backwards
+        ? "Retorno registrado. A empresa permanece nesta etapa até você avançar de novo."
+        : extra > 0
+          ? "Etapas já cumpridas foram avançadas automaticamente"
+          : tarefas.length
+            ? `${tarefas.length} tarefa(s) criada(s) pela regra da etapa`
+            : `Tempo em ${curStage.nome} registrado`,
+    });
     close();
   };
 
@@ -184,7 +197,15 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
         ) : (
           <>
             <span className="mr-auto text-[12px] text-muted">
-              {missing.length ? `${missing.length} critério(s) pendente(s)` : needsNext ? "Defina o próximo passo" : "Tudo certo para avançar"}
+              {backwards
+                ? nota.trim().length > 3
+                  ? "Tudo certo para retornar"
+                  : "Informe o motivo do retorno"
+                : missing.length
+                  ? `${missing.length} critério(s) pendente(s)`
+                  : needsNext
+                    ? "Defina o próximo passo"
+                    : "Tudo certo para avançar"}
             </span>
             <Button variant="ghost" onClick={close}>
               Cancelar
@@ -287,6 +308,95 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
               </Field>
             )}
           </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+/** Consulta a etapa atual sem mover o card. */
+export function ViewStageModal({ dealId }: { dealId: string }) {
+  const s = useStore();
+  const { close, open } = useUI();
+  const deal = s.deals.find((d) => d.id === dealId);
+  const company = s.companies.find((c) => c.id === deal?.companyId);
+  if (!deal || !company) return null;
+  const stage = getStage(deal.funnel, deal.stageId);
+  const status = stage.criterios.map((c) => ({ c, ok: criterionMet(s, deal, company, c) }));
+  const missing = status.filter((x) => !x.ok);
+  const days = daysInStage(deal);
+  const pending = pendingOf(s, company.id);
+
+  return (
+    <Modal
+      onClose={close}
+      size="md"
+      kicker={`${company.nome} · ${FUNNELS[deal.funnel].nome}`}
+      title={stage.nome}
+      icon={<Eye size={18} />}
+      footer={
+        <>
+          <span className="mr-auto text-[12px] text-muted">
+            {missing.length ? `${missing.length} critério(s) pendente(s) para sair` : stage.criterios.length ? "Critérios de saída cumpridos" : "Esta etapa não possui critérios mínimos"}
+          </span>
+          <Button variant="ghost" onClick={close}>
+            Fechar
+          </Button>
+          {deal.status === "aberta" && !stage.terminal && (
+            <Button
+              variant="primary"
+              onClick={() => {
+                close();
+                setTimeout(() => open({ kind: "move", dealId: deal.id }), 100);
+              }}
+            >
+              Mover etapa
+            </Button>
+          )}
+        </>
+      }
+    >
+      <div className="space-y-4">
+        <div className="rounded-[6px] border border-line px-3.5 py-3 text-[13px] text-ink/80">
+          <p>{stage.objetivo}</p>
+          <p className="mt-1.5 text-[12.5px] text-muted">
+            Permanência: <b className="text-ink">{days} de {stage.limiteDias} dias</b>
+            {days > stage.limiteDias ? " · acima do limite" : ""}.
+          </p>
+        </div>
+
+        <div className="rounded-[6px] border border-line">
+          <div className="flex items-center justify-between border-b border-line px-3.5 py-2.5">
+            <div className="text-[13px] font-medium text-ink">Para sair de {stage.nome}</div>
+            <span className={cn("text-[12px]", missing.length ? "text-warn" : "text-ok")}>{missing.length ? `faltam ${missing.length}` : "tudo certo"}</span>
+          </div>
+          {status.length === 0 && <div className="px-3.5 py-3 text-[12.5px] text-muted">Esta etapa não possui critérios mínimos de saída.</div>}
+          <ul>
+            {status.map(({ c, ok }) => (
+              <li key={c.id} className="flex items-center gap-2 border-b border-line/70 px-3.5 py-2.5 last:border-b-0 text-[13px]">
+                {ok ? <CircleCheck size={16} className="text-ok" /> : <AlertTriangle size={16} className="text-warn" />}
+                <span className="font-medium text-ink">{c.label}</span>
+                {c.hint && <span className="text-[11.5px] text-muted">({c.hint})</span>}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        {stage.tarefas.length > 0 && (
+          <div className="rounded-[6px] border border-line">
+            <div className="border-b border-line px-3.5 py-2.5 text-[13px] font-medium text-ink">Tarefas da etapa</div>
+            <ul className="divide-y divide-line/70">
+              {stage.tarefas.map((t) => (
+                <li key={t.titulo} className="px-3.5 py-2.5 text-[13px] text-ink">
+                  {t.titulo}
+                  <div className="text-[11.5px] text-muted">
+                    {t.tipo} · prazo {t.prazoDias} dia{t.prazoDias === 1 ? "" : "s"}
+                  </div>
+                </li>
+              ))}
+            </ul>
+            {pending.length > 0 && <div className="border-t border-line px-3.5 py-2 text-[11.5px] text-muted">A conta já possui {pending.length} atividade(s) aberta(s).</div>}
+          </div>
         )}
       </div>
     </Modal>

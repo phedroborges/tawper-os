@@ -321,7 +321,10 @@ export function QuickRegisterModal({ companyId: initialCompany, text: initialTex
           nota: "Mudança sugerida pela IA a partir do registro do vendedor.",
           tarefas: t ? [{ companyId: company.id, dealId: d2.id, titulo: t.titulo, tipo: t.tipo, dueAt: p.proximoPasso.dueAt, ownerId: d2.ownerId, origem: "regra" }] : [],
         });
-        toast(`Etapa alterada para ${st.nome}`, { tone: "ai", sub: "Sugerida pela IA, confirmada por você" });
+        const extra = useStore.getState().autoAdvanceDeal(d2.id, { ignoreHold: true });
+        const landed = useStore.getState().deals.find((x) => x.id === d2.id);
+        const nome = landed ? FUNNELS[landed.funnel].stages.find((x) => x.id === landed.stageId)?.nome ?? st.nome : st.nome;
+        toast(`Etapa alterada para ${nome}`, { tone: "ai", sub: extra > 0 ? "Etapas já cumpridas foram avançadas automaticamente" : "Sugerida pela IA, confirmada por você" });
       } else {
         setTimeout(() => open({ kind: "move", dealId: deal.id, toStageId: p.etapaSugerida!.stageId, preChecks: p.checks }), 120);
       }

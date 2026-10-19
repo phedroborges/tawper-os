@@ -2,6 +2,7 @@ import "server-only";
 
 import postgres from "postgres";
 import { USERS } from "@/lib/constants";
+import { stageKeyToDb, withRetornoNote } from "@/lib/crm-map";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import { storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import type { Activity, ActivityType, Company, Contact, Deal, Papel, Prensa, Prioridade, Urgencia } from "@/lib/types";
@@ -438,6 +439,103 @@ export async function deleteCompanyRecord(id: string, actorId: string, reason: s
     });
   } finally {
     await sql.end({ timeout: 5 });
+  }
+}
+
+export async function moveDealRecord(input: {
+  dealId: string;
+  toStageId: string;
+  actorId?: string;
+  checks?: Record<string, boolean>;
+  nota?: string;
+  tarefas?: {
+    companyId: string;
+    dealId?: string;
+    tipo: ActivityType;
+    titulo: string;
+    descricao?: string;
+    ownerId?: string;
+    dueAt: string;
+    prioridade?: Prioridade;
+    origem?: Activity["origem"];
+  }[];
+}) {
+  if (!isUuid(input.dealId)) return;
+  const sb = getSupabaseAdmin();
+  const opp = await sb
+    .from("opportunities")
+    .select("id, funnel_id, stage_id, company_id, status")
+    .eq("id", input.dealId)
+    .eq("organization_id", TAWPER_ORG_ID)
+    .maybeSingle();
+  if (opp.error) throw new Error(opp.error.message);
+  if (!opp.data) throw new Error("Oportunidade não encontrada.");
+  if (opp.data.status !== "open") throw new Error("Só é possível mover oportunidade aberta.");
+
+  const current = await sb.from("stages").select("id, key, position").eq("id", opp.data.stage_id).maybeSingle();
+  if (current.error) throw new Error(current.error.message);
+  if (!current.data) throw new Error("Etapa atual não encontrada.");
+
+  const wantedKeys = Array.from(new Set([input.toStageId, stageKeyToDb(input.toStageId)]));
+  const found = await sb.from("stages").select("id, key, position, probability, is_terminal").eq("funnel_id", opp.data.funnel_id).in("key", wantedKeys).order("position", { ascending: true });
+  if (found.error) throw new Error(found.error.message);
+  const target = found.data?.[0];
+  if (!target) throw new Error(`Etapa "${input.toStageId}" não encontrada no funil.`);
+  if (target.id === opp.data.stage_id) return;
+  if (target.is_terminal) throw new Error("Etapa terminal exige registrar a venda.");
+
+  const actors = await ensureOperators();
+  const actor = input.actorId ? await resolveOwner(input.actorId, actors) : null;
+  const advancing = Number(target.position) > Number(current.data.position);
+  const nota = advancing ? input.nota : withRetornoNote(input.nota);
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL ausente para gravar a etapa.");
+
+  const sql = postgres(url, { max: 1, ssl: "require" });
+  try {
+    await sql.begin(async (tx) => {
+      await tx`select set_config('app.bypass_stage_rules', 'on', true)`;
+      await tx`select set_config('app.actor_type', 'user', true)`;
+      if (advancing) {
+        await tx`
+          insert into public.opportunity_requirement_values (
+            organization_id, opportunity_id, requirement_id, is_met, met_at, met_by, note
+          )
+          select ${TAWPER_ORG_ID}::uuid, ${input.dealId}::uuid, r.id, true, now(), ${actor}::uuid, ${nota ?? null}
+            from public.stage_requirements r
+           where r.stage_id = ${opp.data.stage_id}::uuid and r.kind = 'check'
+          on conflict (opportunity_id, requirement_id)
+          do update set is_met = true, met_at = now(), met_by = excluded.met_by, note = excluded.note
+        `;
+      }
+      const updated = await tx`
+        update public.opportunities
+           set stage_id = ${target.id}::uuid,
+               stage_entered_at = now(),
+               probability = ${Number(target.probability)}
+         where id = ${input.dealId}::uuid
+           and organization_id = ${TAWPER_ORG_ID}::uuid
+        returning id
+      `;
+      if (!updated.length) throw new Error("Oportunidade não encontrada.");
+      if (nota) {
+        await tx`
+          update public.opportunity_stage_history
+             set note = ${nota}
+           where opportunity_id = ${input.dealId}::uuid and left_at is null
+        `;
+      }
+    });
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+
+  for (const tarefa of input.tarefas ?? []) {
+    await addActivityRecord({
+      ...tarefa,
+      companyId: tarefa.companyId || (opp.data.company_id as string),
+      dealId: input.dealId,
+    });
   }
 }
 
