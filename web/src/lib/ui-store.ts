@@ -10,6 +10,7 @@ export type Flow =
   | { kind: "complete"; activityId: string }
   | { kind: "newActivity"; companyId: string; preset?: Partial<ActivityDraft> }
   | { kind: "move"; dealId: string; toStageId?: string; preChecks?: Record<string, boolean>; nota?: string }
+  | { kind: "viewStage"; dealId: string }
   | { kind: "win"; dealId: string }
   | { kind: "lose"; dealId: string }
   | { kind: "standby"; companyId: string }
@@ -47,6 +48,9 @@ interface UIState {
   setActiveConversation: (id: string | null) => void;
   dbHealth: { ok: boolean; label: string } | null;
   setDbHealth: (v: { ok: boolean; label: string } | null) => void;
+  conversasLoading: boolean;
+  beginConversasLoad: () => void;
+  endConversasLoad: () => void;
 }
 
 let tid = 0;
@@ -75,4 +79,7 @@ export const useUI = create<UIState>()((set, get) => ({
   setActiveConversation: (activeConversation) => set({ activeConversation }),
   dbHealth: null,
   setDbHealth: (dbHealth) => set({ dbHealth }),
+  conversasLoading: false,
+  beginConversasLoad: () => set({ conversasLoading: true }),
+  endConversasLoad: () => set({ conversasLoading: false }),
 }));

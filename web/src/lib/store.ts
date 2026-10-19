@@ -5,8 +5,10 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { FIELD_LABELS, getStage } from "./constants";
+import { FIELD_LABELS, FUNNELS, getStage, stageIndex } from "./constants";
+import { stageKeyToUi, withRetornoNote } from "./crm-map";
 import { fmtDateShort, rel } from "./dates";
+import { missingCriteria } from "./selectors";
 import { buildSeed, DATA_VERSION } from "./seed";
 import type {
   Activity,
@@ -22,6 +24,7 @@ import type {
   DemoData,
   Interaction,
   Message,
+  Notification,
   Prioridade,
   Quote,
   Standby,
@@ -77,9 +80,10 @@ interface Actions {
   moveDeal: (
     dealId: string,
     toStageId: string,
-    opts?: { checks?: Record<string, boolean>; tarefas?: ActivityDraft[]; nota?: string; origem?: AuditEntry["origem"]; companyPatch?: Partial<Company>; newContact?: Omit<Contact, "id"> },
-  ) => Promise<void>;
-  setChecklist: (dealId: string, checks: Record<string, boolean>, origem?: AuditEntry["origem"]) => Promise<void>;
+    opts?: { checks?: Record<string, boolean>; tarefas?: ActivityDraft[]; nota?: string; origem?: AuditEntry["origem"] },
+  ) => void;
+  autoAdvanceDeal: (dealId: string, opts?: { untilStageId?: string; origem?: AuditEntry["origem"]; ignoreHold?: boolean }) => number;
+  setChecklist: (dealId: string, checks: Record<string, boolean>, origem?: AuditEntry["origem"]) => void;
   winDeal: (dealId: string, input: { valor: number; obs?: string }) => Promise<{ recurrenceDealId: string; posVendaId: string }>;
   loseDeal: (dealId: string, input: { motivo: string; obs?: string }) => Promise<void>;
   setStandby: (companyId: string, s: Omit<Standby, "inicio">) => Promise<void>;
@@ -143,6 +147,35 @@ export const DEFAULT_USER_ID = "u-murilo";
 
 const USE_SUPABASE = process.env.NEXT_PUBLIC_TAWPER_USE_SUPABASE === "true";
 
+let suppressAdvance = 0;
+
+export function runWithoutAutoAdvance(fn: () => void) {
+  suppressAdvance += 1;
+  try {
+    fn();
+  } finally {
+    suppressAdvance -= 1;
+  }
+}
+
+function queueAdvance(get: () => AppState, dealId?: string) {
+  if (!dealId || suppressAdvance) return;
+  queueMicrotask(() => {
+    const held = get().deals.find((d) => d.id === dealId);
+    if (held?.autoAdvanceHold) return;
+    const hops = get().autoAdvanceDeal(dealId);
+    if (!hops) return;
+    const deal = get().deals.find((d) => d.id === dealId);
+    if (!deal) return;
+    const name = getStage(deal.funnel, deal.stageId).nome;
+    void import("./ui-store").then(({ useUI }) => {
+      useUI.getState().toast(`Etapa alterada para ${name}`, {
+        sub: hops > 1 ? "Etapas já cumpridas foram avançadas automaticamente" : "Critérios de saída cumpridos",
+      });
+    });
+  });
+}
+
 const actorAlias = new Map<string, string>();
 
 export function setActorAliases(map: Record<string, string>) {
@@ -156,26 +189,35 @@ export function reportError(e: unknown, prefix = "Não foi possível concluir") 
 }
 
 let refreshSeq = 0;
+/** Gravações em andamento: enquanto houver, a tela não é trocada pelo banco (evita piscar de volta). */
+let inflight = 0;
 
 /** Relê o banco e troca os dados da tela pelo que está gravado. */
 export async function refreshCrm(): Promise<boolean> {
-  if (!USE_SUPABASE || typeof window === "undefined") return false;
+  if (!USE_SUPABASE || typeof window === "undefined" || inflight > 0) return false;
   const mine = ++refreshSeq;
   const res = await fetch("/api/crm/snapshot", { cache: "no-store" });
   const body = (await res.json()) as { health?: { ok: boolean; detail?: string; reason?: string }; snapshot?: Partial<DemoData> | null; actorMap?: Record<string, string> | null };
   if (!body.health?.ok || !body.snapshot) throw new Error(body.health?.detail || "O banco não respondeu.");
   if (body.actorMap) setActorAliases(body.actorMap);
-  if (mine === refreshSeq) useStore.getState().hydrateCrm(body.snapshot);
+  if (mine === refreshSeq && inflight === 0) useStore.getState().hydrateCrm(body.snapshot);
   return true;
 }
 
 /** Executa uma regra de negócio no banco (transação única) e relê o que ficou gravado. */
 async function sendCommand<T = unknown>(body: Record<string, unknown>): Promise<T> {
-  const res = await fetch("/api/crm/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-  const data = (await res.json().catch(() => ({}))) as { error?: string; result?: T };
-  if (!res.ok) throw new Error(data.error || "Não foi possível concluir a operação.");
+  inflight += 1;
+  let result: T;
+  try {
+    const res = await fetch("/api/crm/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = (await res.json().catch(() => ({}))) as { error?: string; result?: T };
+    if (!res.ok) throw new Error(data.error || "Não foi possível concluir a operação.");
+    result = data.result as T;
+  } finally {
+    inflight -= 1;
+  }
   await refreshCrm().catch(() => undefined);
-  return data.result as T;
+  return result;
 }
 
 /**
@@ -185,15 +227,20 @@ async function sendCommand<T = unknown>(body: Record<string, unknown>): Promise<
 function pushMutation(body: unknown) {
   if (!USE_SUPABASE || typeof window === "undefined") return;
   void (async () => {
+    inflight += 1;
+    let failed: unknown = null;
     try {
       const res = await fetch("/api/crm/mutate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
       const data = (await res.json().catch(() => ({}))) as { error?: string };
       if (!res.ok) throw new Error(data.error || "O banco recusou a gravação.");
-      await refreshCrm();
     } catch (e) {
-      reportError(e, "Não foi possível salvar");
-      await refreshCrm().catch(() => undefined);
+      failed = e ?? new Error("Falha de rede ao salvar.");
+    } finally {
+      inflight -= 1;
     }
+    if (failed) reportError(failed, "Não foi possível salvar");
+    // com sucesso, confirma o que ficou gravado; com erro, a tela volta ao que está no banco
+    await refreshCrm().catch(() => undefined);
   })();
 }
 
@@ -258,7 +305,12 @@ export const useStore = create<AppState>()(
           set((s) => ({
             companies: snapshot.companies ?? s.companies,
             contacts: snapshot.contacts ?? s.contacts,
-            deals: snapshot.deals ?? s.deals,
+            deals: snapshot.deals
+              ? snapshot.deals.map((server) => {
+                  const local = s.deals.find((d) => d.id === server.id);
+                  return local ? { ...server, checklist: { ...server.checklist, ...local.checklist } } : server;
+                })
+              : s.deals,
             activities: snapshot.activities ?? s.activities,
             quotes: snapshot.quotes ?? s.quotes,
             interactions: snapshot.interactions ?? s.interactions,
@@ -392,6 +444,7 @@ export const useStore = create<AppState>()(
             audit: [...entries, ...s.audit],
           });
           pushMutation({ action: "updateCompany", id, patch, actorId: me() });
+          queueAdvance(get, s.deals.find((d) => d.companyId === id && d.status === "aberta")?.id);
         },
 
         addContact: (c) => {
@@ -404,6 +457,7 @@ export const useStore = create<AppState>()(
             audit: [auditEntry({ autorId: me(), origem: "usuario", entidade: "Contato", entidadeId: id, companyId: c.companyId, campo: "criado", para: c.nome }), ...s.audit],
           });
           pushMutation({ action: "addContact", contact, actorId: me() });
+          queueAdvance(get, s.deals.find((d) => d.companyId === c.companyId && d.status === "aberta")?.id);
           return id;
         },
 
@@ -455,21 +509,124 @@ export const useStore = create<AppState>()(
         },
 
         // -------------------------------------------------------------------
-        moveDeal: async (dealId, toStageId, opts = {}) => {
-          const deal = get().deals.find((d) => d.id === dealId);
-          if (!deal) throw new Error("Negócio não encontrado.");
-          if (deal.stageId === toStageId) return;
-          await sendCommand({
-            command: "moveStage", dealId, toStageId, actorId: me(), checks: opts.checks, tarefas: opts.tarefas, nota: opts.nota,
-            origem: opts.origem === "ia" ? "ia" : "usuario", companyPatch: opts.companyPatch, newContact: opts.newContact,
+        moveDeal: (dealId, toStageId, opts = {}) => {
+          const s = get();
+          const deal = s.deals.find((d) => d.id === dealId);
+          if (!deal || stageKeyToUi(deal.stageId) === stageKeyToUi(toStageId)) return;
+          const actor = opts.origem === "ia" ? "ia" : me();
+          const now = nowIso();
+          const from = getStage(deal.funnel, deal.stageId);
+          const to = getStage(deal.funnel, toStageId);
+          const fromIdx = stageIndex(deal.funnel, deal.stageId);
+          const toIdx = stageIndex(deal.funnel, toStageId);
+          const returning = toIdx >= 0 && fromIdx >= 0 && toIdx < fromIdx;
+          const nota = returning ? withRetornoNote(opts.nota) : opts.nota;
+          const company = s.companies.find((c) => c.id === deal.companyId)!;
+          const checks = { ...deal.checklist, ...(opts.checks ?? {}) };
+          const allCriteria = FUNNELS[deal.funnel].stages.flatMap((st) => st.criterios);
+          const newlyChecked = Object.entries(opts.checks ?? {}).filter(([k, v]) => v && !deal.checklist[k]);
+          const updated: Deal = {
+            ...deal,
+            stageId: toStageId,
+            stageEnteredAt: now,
+            probabilidade: to.probabilidade,
+            checklist: checks,
+            autoAdvanceHold: returning,
+            history: [...deal.history.map((h) => (h.leftAt ? h : { ...h, leftAt: now })), { stageId: toStageId, enteredAt: now, byId: actor }],
+          };
+          const newActs: Activity[] = (opts.tarefas ?? []).map((t) => ({
+            id: uid("a"), status: "pendente", origem: "regra", prioridade: "Média", createdAt: now, ownerId: deal.ownerId, dealId, ...t,
+          }));
+          const dependents = s.companies.filter((c) => c.influenciadoraId === company.id);
+          const depInteractions = dependents.map((d) =>
+            interaction({ companyId: d.id, canal: "IA", autorId: "ia", kind: "ai", titulo: `Conta influenciadora avançou: ${company.nome}`, conteudo: `${company.nome} passou de ${from.nome} para ${to.nome}. Condição desta conta: ${d.condicaoDependencia ?? "—"} Reavalie a estratégia.` }),
+          );
+          const depNotifs: Notification[] = dependents.map((d) => ({
+            id: uid("n"), userId: d.ownerId, at: now, lida: false, tipo: "alerta", titulo: `Conta influenciadora avançou`,
+            texto: `${company.nome} foi para ${to.nome}. Isso afeta ${d.nome}.`, link: `/empresas/${d.id}`,
+          }));
+          set({
+            deals: s.deals.map((d) => (d.id === dealId ? updated : d)),
+            activities: [...newActs, ...s.activities],
+            interactions: [
+              ...depInteractions,
+              interaction({ companyId: deal.companyId, dealId, canal: "Sistema", autorId: actor, kind: "stage", titulo: `Etapa alterada: ${from.nome} → ${to.nome}`, conteudo: nota }),
+              ...s.interactions,
+            ],
+            notifications: [...depNotifs, ...s.notifications],
+            audit: [
+              auditEntry({ autorId: actor, origem: opts.origem ?? "usuario", entidade: "Oportunidade", entidadeId: dealId, companyId: deal.companyId, campo: "etapa", de: from.nome, para: to.nome }),
+              ...newlyChecked.map(([k]) =>
+                auditEntry({ autorId: actor, origem: opts.origem ?? "usuario", entidade: "Oportunidade", entidadeId: dealId, companyId: deal.companyId, campo: `critério: ${allCriteria.find((c) => c.id === k)?.label ?? k}`, de: "pendente", para: "cumprido" }),
+              ),
+              ...newActs.map((a) => auditEntry({ autorId: "sistema", origem: "automacao", entidade: "Atividade", entidadeId: a.id, companyId: deal.companyId, campo: "criada pela regra da etapa", para: a.titulo })),
+              ...s.audit,
+            ],
+          });
+          pushMutation({
+            action: "moveDeal",
+            dealId,
+            toStageId,
+            actorId: actor === "ia" ? me() : actor,
+            checks,
+            nota,
+            tarefas: opts.tarefas,
           });
         },
 
-        setChecklist: async (dealId, checks, origem = "usuario") => {
-          const deal = get().deals.find((d) => d.id === dealId);
-          if (!deal) throw new Error("Negócio não encontrado.");
-          if (!Object.entries(checks).some(([k, v]) => Boolean(deal.checklist[k]) !== v)) return;
-          await sendCommand({ command: "setChecks", dealId, checks, actorId: me(), origem: origem === "ia" ? "ia" : "usuario" });
+        autoAdvanceDeal: (dealId, opts = {}) => {
+          const until = opts.untilStageId ? stageKeyToUi(opts.untilStageId) : undefined;
+          let hops = 0;
+          while (hops < 12) {
+            const s = get();
+            const deal = s.deals.find((d) => d.id === dealId);
+            if (!deal || deal.status !== "aberta") break;
+            if (deal.autoAdvanceHold && !opts.ignoreHold) break;
+            const company = s.companies.find((c) => c.id === deal.companyId);
+            if (!company) break;
+            const stages = FUNNELS[deal.funnel].stages;
+            const idx = stageIndex(deal.funnel, deal.stageId);
+            if (idx < 0) break;
+            const next = stages[idx + 1];
+            if (!next || next.terminal) break;
+            const untilIdx = until ? stageIndex(deal.funnel, until) : -1;
+            if (untilIdx >= 0 && idx >= untilIdx) break;
+            if (missingCriteria(s, deal, company).length) break;
+
+            const after = { ...deal, stageId: next.id };
+            const nextAlsoDone = missingCriteria(s, after, company).length === 0;
+            const nextNext = stages[idx + 2];
+            const nextIdx = stageIndex(deal.funnel, next.id);
+            const willContinue = nextAlsoDone && Boolean(nextNext) && !nextNext.terminal && (untilIdx < 0 || nextIdx < untilIdx);
+            const t = willContinue ? undefined : next.tarefas[0];
+            get().moveDeal(dealId, next.id, {
+              origem: opts.origem,
+              tarefas: t
+                ? [{ companyId: company.id, dealId, titulo: t.titulo, tipo: t.tipo, dueAt: rel(t.prazoDias, 10), ownerId: deal.ownerId, origem: "regra" }]
+                : [],
+            });
+            hops += 1;
+          }
+          return hops;
+        },
+
+        setChecklist: (dealId, checks, origem = "usuario") => {
+          const s = get();
+          const deal = s.deals.find((d) => d.id === dealId);
+          if (!deal) return;
+          const allCriteria = FUNNELS[deal.funnel].stages.flatMap((st) => st.criterios);
+          const changed = Object.entries(checks).filter(([k, v]) => Boolean(deal.checklist[k]) !== v);
+          if (!changed.length) return;
+          set({
+            deals: s.deals.map((d) => (d.id === dealId ? { ...d, checklist: { ...d.checklist, ...checks } } : d)),
+            audit: [
+              ...changed.map(([k, v]) =>
+                auditEntry({ autorId: origem === "ia" ? "ia" : me(), origem, entidade: "Oportunidade", entidadeId: dealId, companyId: deal.companyId, campo: `critério: ${allCriteria.find((c) => c.id === k)?.label ?? k}`, de: v ? "pendente" : "cumprido", para: v ? "cumprido" : "pendente" }),
+              ),
+              ...s.audit,
+            ],
+          });
+          queueAdvance(get, dealId);
         },
 
         winDeal: async (dealId, { valor, obs }) => {
@@ -609,6 +766,7 @@ export const useStore = create<AppState>()(
             ],
             audit: [auditEntry({ autorId: actor, origem: "usuario", entidade: "Orçamento", entidadeId: q.id, companyId: q.companyId, campo: "status", de: "rascunho", para: `enviado (${now.slice(0, 10)})` }), ...get().audit],
           });
+          queueAdvance(get, q.dealId);
         },
 
         // -------------------------------------------------------------------

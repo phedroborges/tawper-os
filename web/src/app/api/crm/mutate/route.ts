@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { invalidateCrmReadCache } from "@/server/crm";
-import { addActivityRecord, addContactRecord, completeActivityRecord, deleteCompanyRecord, registerCompany, updateCompanyRecord } from "@/server/persist";
+import { addActivityRecord, addContactRecord, completeActivityRecord, deleteCompanyRecord, moveDealRecord, registerCompany, updateCompanyRecord } from "@/server/persist";
 
 export const dynamic = "force-dynamic";
 
@@ -36,6 +36,11 @@ export async function POST(request: Request) {
       }
       case "deleteCompany": {
         await deleteCompanyRecord(body.id, body.actorId, body.reason);
+        response = NextResponse.json({ ok: true });
+        break;
+      }
+      case "moveDeal": {
+        await moveDealRecord(body);
         response = NextResponse.json({ ok: true });
         break;
       }

@@ -9,7 +9,7 @@ export default async function ConversasPage() {
   const initial = await loadProofSnapshot().catch(() => null);
   if (!initial?.enabled || !initial.configured) return <DemoConversas />;
   return (
-    <Suspense>
+    <Suspense fallback={null}>
       <LiveConversas initial={initial} />
     </Suspense>
   );

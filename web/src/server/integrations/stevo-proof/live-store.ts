@@ -3,7 +3,7 @@ import "server-only";
 import postgres from "postgres";
 import { canonicalWhatsApp } from "@/lib/br-ids";
 import { TAWPER_ORG_ID } from "@/lib/supabase/admin";
-import type { InboundMedia, MediaKind, ProofEventView } from "./events";
+import type { InboundMedia, MediaKind, MessageReceipt, ProofEventView } from "./events";
 
 export type LiveConversation = {
   peer: string;
@@ -59,6 +59,10 @@ async function ensure() {
         alter table public.whatsapp_live_messages
           add column if not exists revoked_at timestamptz,
           add column if not exists hidden_at timestamptz;
+        alter table public.whatsapp_live_messages
+          add column if not exists receipt text not null default 'delivered';
+        alter table public.whatsapp_live_messages
+          add column if not exists forwarded boolean not null default false;
         create table if not exists public.whatsapp_live_conversations (
           peer text primary key,
           owner_id text,
@@ -184,6 +188,7 @@ export async function saveLiveMessage(raw: ProofEventView, externalId = "", medi
     if (found.length) {
       await setAuthor(found[0].id, item);
       await setMedia(found[0].id, media);
+      if (item.forwarded) await markForwarded(found[0].id);
       return;
     }
   }
@@ -196,6 +201,7 @@ export async function saveLiveMessage(raw: ProofEventView, externalId = "", medi
     `;
     if (duplicate.length) {
       await setAuthor(duplicate[0].id, item);
+      if (item.forwarded) await markForwarded(duplicate[0].id);
       if (externalId) {
         await client`
           update public.whatsapp_live_messages set external_id = ${externalId}
@@ -207,7 +213,7 @@ export async function saveLiveMessage(raw: ProofEventView, externalId = "", medi
     }
   }
   const inserted = await client`
-    insert into public.whatsapp_live_messages (id, peer, direction, body, contact_name, external_id, sent_at, author_id, author_name)
+    insert into public.whatsapp_live_messages (id, peer, direction, body, contact_name, external_id, sent_at, author_id, author_name, receipt, forwarded)
     values (
       ${item.id},
       ${item.peer},
@@ -217,7 +223,9 @@ export async function saveLiveMessage(raw: ProofEventView, externalId = "", medi
       ${externalId || null},
       ${item.receivedAt},
       ${item.authorId ?? null},
-      ${item.authorName ?? ""}
+      ${item.authorName ?? ""},
+      ${item.direction === "out" ? (item.receipt ?? "sent") : "sent"},
+      ${Boolean(item.forwarded)}
     )
     on conflict do nothing
     returning id
@@ -240,11 +248,12 @@ export async function insertOutboundMedia(raw: ProofEventView, media: InboundMed
   await ensure();
   await client`
     insert into public.whatsapp_live_messages
-      (id, peer, direction, body, contact_name, sent_at, author_id, author_name, media_kind, media_mime, media_file_name, media_payload)
+      (id, peer, direction, body, contact_name, sent_at, author_id, author_name, media_kind, media_mime, media_file_name, media_payload, receipt)
     values (
       ${item.id}, ${item.peer!}, 'out', ${item.preview}, '', ${item.receivedAt},
       ${item.authorId ?? null}, ${item.authorName ?? ""},
-      ${media.kind}, ${media.mime}, ${media.fileName}, ${client.json(media.payload as Parameters<typeof client.json>[0])}
+      ${media.kind}, ${media.mime}, ${media.fileName}, ${client.json(media.payload as Parameters<typeof client.json>[0])},
+      ${item.receipt ?? "sent"}
     )
   `;
   await touchConversation(item);
@@ -370,7 +379,62 @@ type LiveMessageRow = {
   media_kind: MediaKind | null;
   revoked_at: Date | null;
   has_external: boolean;
+  receipt: string;
+  forwarded: boolean;
 };
+
+async function markForwarded(id: string) {
+  const client = requireDb();
+  await client`update public.whatsapp_live_messages set forwarded = true where id = ${id} and forwarded = false`;
+}
+
+/** Marca encaminhada pelo id do WhatsApp ou pelo texto + horário do webhook. */
+export async function markLiveForwarded(hint: { ids?: string[]; body?: string; at?: string; peer?: string }) {
+  const client = db();
+  if (!client) return 0;
+  await ensure();
+  const ids = [...new Set((hint.ids ?? []).map((id) => id.trim()).filter(Boolean))];
+  if (ids.length) {
+    const rows = await client<{ id: string }[]>`
+      update public.whatsapp_live_messages set forwarded = true
+      where forwarded = false and (external_id in ${client(ids)} or id in ${client(ids)})
+      returning id
+    `;
+    if (rows.length) return rows.length;
+  }
+  const body = hint.body?.trim() ?? "";
+  if (!body || !hint.at) return 0;
+  const at = new Date(hint.at);
+  if (Number.isNaN(at.getTime())) return 0;
+  const from = new Date(at.getTime() - 20000).toISOString();
+  const to = new Date(at.getTime() + 20000).toISOString();
+  const peers = hint.peer ? peerVariants(hint.peer) : [];
+  const rows = peers.length
+    ? await client<{ id: string }[]>`
+        update public.whatsapp_live_messages set forwarded = true
+        where forwarded = false and body = ${body} and sent_at between ${from} and ${to}
+          and peer in ${client(peers)}
+        returning id
+      `
+    : await client<{ id: string }[]>`
+        update public.whatsapp_live_messages set forwarded = true
+        where forwarded = false and body = ${body} and sent_at between ${from} and ${to}
+        returning id
+      `;
+  return rows.length;
+}
+
+function asReceipt(value: string, direction: "in" | "out"): MessageReceipt | undefined {
+  if (direction !== "out") return undefined;
+  if (value === "pending" || value === "sent" || value === "delivered" || value === "read") return value;
+  return "sent";
+}
+
+function canUpgradeReceipt(current: string, next: Exclude<MessageReceipt, "pending">) {
+  if (next === "read") return current !== "read";
+  if (next === "delivered") return current === "pending" || current === "sent" || !current;
+  return current === "pending" || !current;
+}
 
 export async function listLiveMessages(): Promise<ProofEventView[] | null> {
   const client = db();
@@ -378,7 +442,7 @@ export async function listLiveMessages(): Promise<ProofEventView[] | null> {
   await ensure();
   const rows = await client<LiveMessageRow[]>`
     select id, peer, direction, body, contact_name, sent_at, author_id, author_name, media_kind,
-      revoked_at, external_id is not null as has_external
+      revoked_at, external_id is not null as has_external, receipt, forwarded
     from public.whatsapp_live_messages
     where hidden_at is null
     order by sent_at desc
@@ -395,7 +459,7 @@ export async function listLiveMessagesFor(peers: string[]): Promise<ProofEventVi
   await ensure();
   const rows = await client<LiveMessageRow[]>`
     select id, peer, direction, body, contact_name, sent_at, author_id, author_name, media_kind,
-      revoked_at, external_id is not null as has_external
+      revoked_at, external_id is not null as has_external, receipt, forwarded
     from public.whatsapp_live_messages
     where hidden_at is null and peer in ${client(peers)}
     order by sent_at desc
@@ -462,7 +526,44 @@ function toEventView(row: LiveMessageRow): ProofEventView {
     mediaKind: row.revoked_at ? undefined : (row.media_kind ?? undefined),
     revoked: row.revoked_at ? true : undefined,
     revocable: row.direction === "out" && row.has_external && !row.revoked_at ? true : undefined,
+    receipt: asReceipt(row.receipt, row.direction),
+    forwarded: row.forwarded || undefined,
   };
+}
+
+/** Sobe o visto da mensagem (enviada → recebida → lida) e nunca volta. Sem IDs, aplica ao chat. */
+export async function markLiveReceipts(ids: string[], status: Exclude<MessageReceipt, "pending">, peer = "") {
+  const client = db();
+  if (!client) return 0;
+  await ensure();
+  const unique = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+  if (unique.length) {
+    const rows = await client<{ id: string; receipt: string }[]>`
+      select id, receipt from public.whatsapp_live_messages
+      where direction = 'out' and hidden_at is null
+        and (external_id in ${client(unique)} or id in ${client(unique)})
+    `;
+    const targets = rows.filter((row) => canUpgradeReceipt(row.receipt, status)).map((row) => row.id);
+    if (targets.length) {
+      await client`
+        update public.whatsapp_live_messages set receipt = ${status}
+        where id in ${client(targets)}
+      `;
+    }
+    return targets.length;
+  }
+  if (!peer) return 0;
+  const rows = await client<{ id: string; receipt: string }[]>`
+    select id, receipt from public.whatsapp_live_messages
+    where direction = 'out' and hidden_at is null and peer in ${client(peerVariants(peer))}
+  `;
+  const targets = rows.filter((row) => canUpgradeReceipt(row.receipt, status)).map((row) => row.id);
+  if (!targets.length) return 0;
+  await client`
+    update public.whatsapp_live_messages set receipt = ${status}
+    where id in ${client(targets)}
+  `;
+  return targets.length;
 }
 
 export async function getLiveMedia(id: string): Promise<{ kind: MediaKind; mime: string; fileName: string; payload: Record<string, unknown> } | null> {

@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, BookOpen, Check, CheckCheck, FileText, Lock, Paperclip, Send, Sparkles, StickyNote, UserPlus } from "lucide-react";
+import { ArrowRight, BookOpen, Check, FileText, Lock, Paperclip, Send, Sparkles, StickyNote, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { AIPanel, AIThinking, Confidence } from "@/components/ai/ai";
@@ -18,6 +18,7 @@ import { useUI } from "@/lib/ui-store";
 import { aiSummarize } from "@/server/ai/actions";
 import { formatWhatsApp } from "@/lib/br-ids";
 import { cn, money, quoteTotals } from "@/lib/utils";
+import { WhatsAppTicks, type MessageReceipt } from "@/components/chat/WhatsAppTicks";
 
 const QUICK_REPLIES = [
   "Atendemos sim! Quantas colhedoras vocês têm e de qual modelo?",
@@ -102,6 +103,8 @@ export function ChatThread({ conv, className, showHeader = true }: { conv: Conve
         {conv.messages.map((m, i) => {
           const divider = i === 0 || conv.messages[i - 1].at.slice(0, 10) !== m.at.slice(0, 10);
           const mine = m.from === "tawper";
+          const laterClient = conv.messages.slice(i + 1).some((row) => row.from === "cliente");
+          const receipt: MessageReceipt | undefined = mine ? (laterClient ? "read" : "delivered") : undefined;
           if (m.from === "nota")
             return (
               <div key={m.id}>
@@ -135,7 +138,7 @@ export function ChatThread({ conv, className, showHeader = true }: { conv: Conve
                   <span className="whitespace-pre-wrap text-ink">{m.text}</span>
                   <span className="float-right mt-1 ml-2 flex items-center gap-0.5 text-[10.5px] text-muted">
                     {fmtTime(m.at)}
-                    {mine && <CheckCheck size={13} className="text-[#53bdeb]" />}
+                    {mine && <WhatsAppTicks receipt={receipt} />}
                   </span>
                 </div>
               </div>

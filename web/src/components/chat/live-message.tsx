@@ -1,8 +1,18 @@
-import { FileText } from "lucide-react";
+import { FileText, Redo2 } from "lucide-react";
 import type { MediaKind } from "@/server/integrations/stevo-proof/events";
 import { cn } from "@/lib/utils";
 
 export const REVOKED_TEXT = "Mensagem apagada";
+
+/** Selo igual ao WhatsApp: seta curva + “Encaminhada” acima do texto. */
+export function ForwardedLabel({ className }: { className?: string }) {
+  return (
+    <span className={cn("mb-0.5 flex items-center gap-1 text-[11.5px] italic text-[#8696a0]", className)}>
+      <Redo2 size={12} strokeWidth={2.2} className="-scale-x-100" aria-hidden />
+      Encaminhada
+    </span>
+  );
+}
 
 const PLACEHOLDER = /^\[(imagem|áudio|vídeo|documento|figurinha)\]$/;
 

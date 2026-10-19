@@ -300,7 +300,7 @@ export function QuickRegisterModal({ companyId: initialCompany, text: initialTex
         .join(" · "),
     }).catch((e) => reportError(e, "Não foi possível salvar o registro da IA"));
     if (applyData && Object.keys(p.dadosExtraidos).length) s.updateCompany(company.id, p.dadosExtraidos as Partial<Company>, "ia");
-    if (deal && Object.keys(p.checks).length) s.setChecklist(deal.id, p.checks, "ia").catch((e) => reportError(e, "Não foi possível marcar os critérios"));
+    if (deal && Object.keys(p.checks).length) s.setChecklist(deal.id, p.checks, "ia");
 
     close();
     toast("Registro salvo", { tone: "ai", sub: `${p.proximoPasso.titulo} · ${fmtDue(p.proximoPasso.dueAt)}` });
@@ -317,13 +317,14 @@ export function QuickRegisterModal({ companyId: initialCompany, text: initialTex
       if (falta.length === 0) {
         const st = FUNNELS[d2.funnel].stages.find((x) => x.id === p.etapaSugerida!.stageId)!;
         const t = st.tarefas[0];
-        fresh
-          .moveDeal(d2.id, st.id, {
-            nota: "Mudança sugerida pela IA a partir do registro do vendedor.",
-            tarefas: t ? [{ companyId: company.id, dealId: d2.id, titulo: t.titulo, tipo: t.tipo, dueAt: p.proximoPasso.dueAt, ownerId: d2.ownerId, origem: "regra" }] : [],
-          })
-          .then(() => toast(`Etapa alterada para ${st.nome}`, { tone: "ai", sub: "Sugerida pela IA, confirmada por você" }))
-          .catch((e) => reportError(e, "Não foi possível mudar a etapa"));
+        fresh.moveDeal(d2.id, st.id, {
+          nota: "Mudança sugerida pela IA a partir do registro do vendedor.",
+          tarefas: t ? [{ companyId: company.id, dealId: d2.id, titulo: t.titulo, tipo: t.tipo, dueAt: p.proximoPasso.dueAt, ownerId: d2.ownerId, origem: "regra" }] : [],
+        });
+        const extra = useStore.getState().autoAdvanceDeal(d2.id, { ignoreHold: true });
+        const landed = useStore.getState().deals.find((x) => x.id === d2.id);
+        const nome = landed ? FUNNELS[landed.funnel].stages.find((x) => x.id === landed.stageId)?.nome ?? st.nome : st.nome;
+        toast(`Etapa alterada para ${nome}`, { tone: "ai", sub: extra > 0 ? "Etapas já cumpridas foram avançadas automaticamente" : "Sugerida pela IA, confirmada por você" });
       } else {
         setTimeout(() => open({ kind: "move", dealId: deal.id, toStageId: p.etapaSugerida!.stageId, preChecks: p.checks }), 120);
       }

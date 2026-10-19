@@ -73,7 +73,7 @@ function EmpresaView() {
   const stage = deal ? getStage(deal.funnel, deal.stageId) : undefined;
   const nextStage = deal ? FUNNELS[deal.funnel].stages[FUNNELS[deal.funnel].stages.findIndex((x) => x.id === deal.stageId) + 1] : undefined;
 
-  /** Se não falta nenhum critério, avança direto e cria a tarefa da nova etapa — sem modal. */
+  /** Se não falta nenhum critério, avança as etapas já cumpridas — sem modal. */
   const avancar = () => {
     if (!deal || !nextStage) return;
     if (nextStage.terminal) {
@@ -85,12 +85,18 @@ function EmpresaView() {
       open({ kind: "move", dealId: deal.id, toStageId: nextStage.id });
       return;
     }
+    const hops = s.autoAdvanceDeal(deal.id, { ignoreHold: true });
+    const fresh = useStore.getState().deals.find((d) => d.id === deal.id);
+    const landed = fresh ? getStage(fresh.funnel, fresh.stageId) : nextStage;
+    if (hops) {
+      toast(`Etapa alterada para ${landed.nome}`, { sub: hops > 1 ? "Etapas já cumpridas foram avançadas automaticamente" : undefined });
+      return;
+    }
     const t = nextStage.tarefas[0];
     s.moveDeal(deal.id, nextStage.id, {
       tarefas: t ? [{ companyId: company.id, dealId: deal.id, titulo: t.titulo, tipo: t.tipo, dueAt: rel(t.prazoDias, 10), ownerId: deal.ownerId, origem: "regra" }] : [],
-    })
-      .then(() => toast(`Etapa alterada para ${nextStage.nome}`, { sub: t ? `Próximo passo criado: ${t.titulo.toLowerCase()}` : undefined }))
-      .catch((e) => reportError(e, "Não foi possível mudar a etapa"));
+    });
+    toast(`Etapa alterada para ${nextStage.nome}`, { sub: t ? `Próximo passo criado: ${t.titulo.toLowerCase()}` : undefined });
   };
 
   const startConversation = () => {

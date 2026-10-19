@@ -4,7 +4,8 @@ import { Ban, ExternalLink, Loader2, MessageCircle, Paperclip, Send, UserPlus, X
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ConversationAI } from "@/components/chat/Chat";
-import { MediaView, REVOKED_TEXT, visibleText } from "@/components/chat/live-message";
+import { ForwardedLabel, MediaView, REVOKED_TEXT, visibleText } from "@/components/chat/live-message";
+import { outgoingReceipt, WhatsAppTicks } from "@/components/chat/WhatsAppTicks";
 import { Badge, Button, Empty } from "@/components/ui/primitives";
 import { isManager } from "@/lib/constants";
 import { dayDiff, fmtDateShort, fmtTime } from "@/lib/dates";
@@ -20,9 +21,9 @@ import {
   type Agent,
   type CompanyChatSnapshot,
 } from "@/server/integrations/stevo-proof/actions";
-import type { MediaKind } from "@/server/integrations/stevo-proof/events";
+import type { MediaKind, MessageReceipt } from "@/server/integrations/stevo-proof/events";
 
-type LiveMessage = { id: string; at: string; text: string; out: boolean; author: string; media?: MediaKind; revoked?: boolean };
+type LiveMessage = { id: string; at: string; text: string; out: boolean; author: string; media?: MediaKind; revoked?: boolean; receipt?: MessageReceipt; forwarded?: boolean };
 
 export type CompanyThread = {
   contact: Contact;
@@ -62,13 +63,43 @@ export function useCompanyChat(contacts: Contact[]) {
     [key],
   );
 
+  const poll = useCallback(() => {
+    if (!phones.length) return Promise.resolve();
+    return fetch(`/api/whatsapp/live?peers=${encodeURIComponent(phones.join(","))}`, { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((feed: { events?: CompanyChatSnapshot["events"]; conversations?: CompanyChatSnapshot["conversations"] } | null) => {
+        if (!feed?.events) return;
+        setFailed(false);
+        setData((current) =>
+          current
+            ? { ...current, events: feed.events ?? [], conversations: feed.conversations ?? current.conversations }
+            : { live: true, status: { configured: true, connected: true, loggedIn: true, proxy: false, name: "", phone: "" }, events: feed.events ?? [], conversations: feed.conversations ?? [] },
+        );
+      })
+      .catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [key]);
+
   useEffect(() => {
     refresh();
-    const timer = setInterval(() => {
-      if (live.current) refresh();
-    }, 4000);
-    return () => clearInterval(timer);
-  }, [refresh]);
+    let busy = false;
+    const tick = () => {
+      if (busy || !live.current || document.visibilityState === "hidden") return;
+      busy = true;
+      poll().finally(() => {
+        busy = false;
+      });
+    };
+    const timer = setInterval(tick, 1000);
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
+  }, [refresh, poll]);
 
   const threads = useMemo<CompanyThread[]>(() => {
     if (!data?.live) return [];
@@ -84,7 +115,7 @@ export function useCompanyChat(contacts: Contact[]) {
           if (event.direction !== "in" && event.direction !== "out") continue;
           if (!event.preview && !event.revoked) continue;
           peer = event.peer!;
-          messages.push({ id: event.id, at: event.receivedAt, text: event.preview, out: event.direction === "out", author: event.authorName ?? "", media: event.mediaKind, revoked: event.revoked });
+          messages.push({ id: event.id, at: event.receivedAt, text: event.preview, out: event.direction === "out", author: event.authorName ?? "", media: event.mediaKind, revoked: event.revoked, receipt: event.receipt, forwarded: event.forwarded });
         }
         const convs = data.conversations.filter((c) => variants.has(c.peer));
         const owned = convs.find((c) => c.ownerId);
@@ -101,7 +132,7 @@ export function useCompanyChat(contacts: Contact[]) {
   }, [data, contacts]);
 
   const loading = !data && !failed;
-  return { data, loading, threads, refresh, unread: threads.reduce((sum, t) => sum + t.unread, 0) };
+  return { data, loading, threads, refresh, poll, unread: threads.reduce((sum, t) => sum + t.unread, 0) };
 }
 
 export function CompanyLiveChat({
@@ -120,7 +151,7 @@ export function CompanyLiveChat({
   const user = useCurrentUser();
   const manager = isManager(user);
   const agent: Agent = useMemo(() => ({ id: user?.id ?? "", name: user?.short || user?.name || "", role: user?.role ?? "vendedor" }), [user]);
-  const { data, threads, refresh } = chat;
+  const { data, threads, refresh, poll } = chat;
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
@@ -212,7 +243,7 @@ export function CompanyLiveChat({
       if (!res.ok) throw new Error(body.error || "Não foi possível enviar o arquivo.");
       setAttachment(null);
       setDraft("");
-      await refresh();
+      await poll();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível enviar o arquivo.");
     } finally {
@@ -232,7 +263,7 @@ export function CompanyLiveChat({
     start(async () => {
       try {
         await sendProofText(active.peer, text, agent);
-        await refresh();
+        await poll();
       } catch (cause) {
         setDraft(text);
         setError(cause instanceof Error ? cause.message : "Não foi possível enviar.");
@@ -245,7 +276,7 @@ export function CompanyLiveChat({
     start(async () => {
       try {
         await assignProofConversation(active.peer, { id: agent.id, name: agent.name }, agent);
-        await refresh();
+        await poll();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Não foi possível assumir a conversa.");
       }
@@ -325,13 +356,15 @@ export function CompanyLiveChat({
                           </span>
                         ) : (
                           <>
+                            {message.forwarded && <ForwardedLabel />}
                             {message.media && <MediaView id={message.id} kind={message.media} text={message.text} />}
                             {text && <span className="whitespace-pre-wrap text-ink">{text}</span>}
                           </>
                         )}
-                        <span className="float-right mt-1 ml-2 text-[10.5px] text-muted">
+                        <span className="float-right mt-1 ml-2 inline-flex items-center gap-0.5 text-[10.5px] text-muted">
                           {message.out && <span className="mr-1 font-medium">{message.author || "pelo aparelho"} ·</span>}
                           {fmtTime(message.at)}
+                          {message.out && <WhatsAppTicks receipt={outgoingReceipt(message)} />}
                         </span>
                       </div>
                     </div>

@@ -1,9 +1,9 @@
 import "server-only";
 
+import { checklistFromRequirements, hasRetornoNote, stageKeyToUi } from "@/lib/crm-map";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import type { Activity, AuditEntry, Canal, Company, Contact, Deal, DemoData, Interaction, InteractionKind, Strategy, User } from "@/lib/types";
-import { FUNNELS, USERS } from "@/lib/constants";
-import { criterionKey } from "@/server/commands";
+import { USERS } from "@/lib/constants";
 import { ensureOperators } from "@/server/persist";
 import { listQuotes } from "@/server/quotes";
 
@@ -88,7 +88,7 @@ export async function getDbHealth(): Promise<DbHealth> {
 
 export async function loadCrmSnapshot(): Promise<CrmSlice> {
   const sb = getSupabaseAdmin();
-  const [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes, membershipsRes, profilesRes, regionsRes, funnelsRes] = await Promise.all([
+  const [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes, membershipsRes, profilesRes, regionsRes, funnelsRes, stageReqsRes, reqValsRes, historyRes] = await Promise.all([
     sb.from("companies").select("*").eq("organization_id", TAWPER_ORG_ID).neq("status", "merged"),
     sb.from("contacts").select("*").eq("organization_id", TAWPER_ORG_ID),
     sb.from("opportunities").select("*").eq("organization_id", TAWPER_ORG_ID),
@@ -98,13 +98,31 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
     sb.from("profiles").select("id, full_name, short_name, title, phone_e164, avatar_color"),
     sb.from("regions").select("id, name").eq("organization_id", TAWPER_ORG_ID),
     sb.from("funnels").select("id, key").eq("organization_id", TAWPER_ORG_ID),
+    sb.from("stage_requirements").select("id, key").eq("organization_id", TAWPER_ORG_ID),
+    sb.from("opportunity_requirement_values").select("opportunity_id, requirement_id, is_met").eq("organization_id", TAWPER_ORG_ID),
+    sb.from("opportunity_stage_history").select("opportunity_id, note").is("left_at", null),
   ]);
 
   for (const r of [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes]) {
     if (r.error) throw new Error(r.error.message);
   }
 
+  const holdByDeal = new Set<string>();
+  for (const row of historyRes.data ?? []) {
+    if (hasRetornoNote(row.note as string | null)) holdByDeal.add(row.opportunity_id as string);
+  }
+
   const stageKey = new Map((stagesRes.data ?? []).map((s) => [s.id as string, s.key as string]));
+  const requirementKey = new Map((stageReqsRes.data ?? []).map((r) => [r.id as string, r.key as string]));
+  const requirementsByDeal = new Map<string, { key: string; isMet: boolean }[]>();
+  for (const row of reqValsRes.data ?? []) {
+    const key = requirementKey.get(row.requirement_id as string);
+    if (!key) continue;
+    const dealId = row.opportunity_id as string;
+    const list = requirementsByDeal.get(dealId) ?? [];
+    list.push({ key, isMet: Boolean(row.is_met) });
+    requirementsByDeal.set(dealId, list);
+  }
   const regionName = new Map((regionsRes.data ?? []).map((r) => [r.id as string, r.name as string]));
   const profileById = new Map((profilesRes.data ?? []).map((p) => [p.id as string, p]));
   const memberships = membershipsRes.data ?? [];
@@ -199,7 +217,7 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
     companyId: row.company_id as string,
     ownerId: row.owner_id as string,
     funnel: FUNNEL_KEY[row.funnel_id as string] ?? "aquisicao",
-    stageId: stageKey.get(row.stage_id as string) ?? "lead",
+    stageId: stageKeyToUi(stageKey.get(row.stage_id as string) ?? "lead"),
     titulo: row.title as string,
     valor: row.estimated_value != null ? Number(row.estimated_value) : undefined,
     probabilidade: Number(row.probability ?? 0),
@@ -210,10 +228,11 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
     stageEnteredAt: row.stage_entered_at as string,
     closedAt: (row.closed_at as string) ?? undefined,
     valorRealizado: row.realized_value != null ? Number(row.realized_value) : undefined,
-    checklist: {},
+    checklist: checklistFromRequirements(requirementsByDeal.get(row.id as string) ?? []),
     history: [],
     ciclo: Number(row.cycle ?? 1),
     objecao: (row.objection as string) ?? undefined,
+    autoAdvanceHold: holdByDeal.has(row.id as string),
   }));
 
   const ACT_TYPE: Record<string, import("@/lib/types").ActivityType> = {
@@ -313,12 +332,11 @@ export function readCrmBootstrap(): Promise<CrmBootstrap> {
 type Row = Record<string, unknown>;
 
 /** O banco devolve no máximo 1000 linhas por consulta: lê em páginas até acabar. */
-async function selectPaged(table: string, columns: string, opts: { order: string; onlyMet?: boolean }): Promise<Row[]> {
+async function selectPaged(table: string, columns: string, opts: { order: string }): Promise<Row[]> {
   const sb = getSupabaseAdmin();
   const out: Row[] = [];
   for (let from = 0; from < 20_000; from += 1000) {
-    let q = sb.from(table).select(columns).eq("organization_id", TAWPER_ORG_ID);
-    if (opts.onlyMet) q = q.eq("is_met", true);
+    const q = sb.from(table).select(columns).eq("organization_id", TAWPER_ORG_ID);
     const res = await q.order(opts.order).range(from, from + 999);
     if (res.error) throw new Error(res.error.message);
     const rows = (res.data ?? []) as unknown as Row[];
@@ -332,44 +350,28 @@ async function selectPaged(table: string, columns: string, opts: { order: string
 async function loadDealDetails(input: { companies: Company[]; deals: Deal[]; users: User[]; stageKey: Map<string, string>; stagesRows: Row[] }) {
   const { stageKey } = input;
   const org = TAWPER_ORG_ID;
-  const [history, values, reqs, standbys, strategies, versions, interactions, audit] = await Promise.all([
+  const [history, standbys, strategies, versions, interactions, audit] = await Promise.all([
     selectPaged("opportunity_stage_history", "opportunity_id, stage_id, entered_at, left_at, entered_by, actor_type", { order: "entered_at" }),
-    selectPaged("opportunity_requirement_values", "opportunity_id, requirement_id, is_met", { order: "opportunity_id", onlyMet: true }),
-    getSupabaseAdmin().from("stage_requirements").select("id, key").eq("organization_id", org),
     getSupabaseAdmin().from("standby_periods").select("*").eq("organization_id", org).is("ended_at", null),
     getSupabaseAdmin().from("strategies").select("id, company_id, current_version_id").eq("organization_id", org),
     getSupabaseAdmin().from("strategy_versions").select("*").eq("organization_id", org).order("version", { ascending: false }),
     getSupabaseAdmin().from("interactions").select("*").eq("organization_id", org).order("occurred_at", { ascending: false }).limit(1500),
     getSupabaseAdmin().from("audit_events").select("*").eq("organization_id", org).order("occurred_at", { ascending: false }).limit(800),
   ]);
-  for (const r of [reqs, standbys, strategies, versions, interactions, audit]) if (r.error) throw new Error(r.error.message);
+  for (const r of [standbys, strategies, versions, interactions, audit]) if (r.error) throw new Error(r.error.message);
 
-  // critério do app (camelCase) a partir da chave do banco (snake_case)
-  const idByKey = new Map<string, string>();
-  for (const f of Object.values(FUNNELS)) for (const st of f.stages) for (const c of st.criterios) idByKey.set(criterionKey(c.id), c.id);
-  const reqKey = new Map((reqs.data ?? []).map((r) => [r.id as string, r.key as string]));
-
-  const checklist = new Map<string, Record<string, boolean>>();
-  for (const v of values) {
-    const key = reqKey.get(v.requirement_id as string);
-    const id = key ? idByKey.get(key) : undefined;
-    if (!id) continue;
-    const cur = checklist.get(v.opportunity_id as string) ?? {};
-    cur[id] = true;
-    checklist.set(v.opportunity_id as string, cur);
-  }
   const historyBy = new Map<string, Deal["history"]>();
   for (const h of history) {
     const list = historyBy.get(h.opportunity_id as string) ?? [];
     list.push({
-      stageId: stageKey.get(h.stage_id as string) ?? "lead",
+      stageId: stageKeyToUi(stageKey.get(h.stage_id as string) ?? "lead"),
       enteredAt: h.entered_at as string,
       leftAt: (h.left_at as string) ?? undefined,
       byId: (h.entered_by as string) ?? (h.actor_type === "ai" ? "ia" : "sistema"),
     });
     historyBy.set(h.opportunity_id as string, list);
   }
-  const deals = input.deals.map((d) => ({ ...d, checklist: checklist.get(d.id) ?? {}, history: historyBy.get(d.id) ?? [] }));
+  const deals = input.deals.map((d) => ({ ...d, history: historyBy.get(d.id) ?? [] }));
 
   const standbyBy = new Map((standbys.data ?? []).map((s) => [s.company_id as string, s]));
   const companies = input.companies.map((c) => {

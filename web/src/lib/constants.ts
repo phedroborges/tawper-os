@@ -1,3 +1,4 @@
+import { stageKeyToUi } from "./crm-map";
 import type { ActivityType, Company, FunnelId, Papel, Prensa, User } from "./types";
 
 export const USERS: User[] = [
@@ -287,6 +288,17 @@ const RECORRENCIA: StageDef[] = [
     tarefas: [{ titulo: "Montar e enviar orçamento de reposição", tipo: "Cotação", prazoDias: 1 }],
   },
   {
+    id: "negociacao_r",
+    funnel: "recorrencia",
+    nome: "Negociação recorrente",
+    curto: "Negoc.",
+    objetivo: "Acompanhar a decisão de recompra e registrar concorrência, objeções e condições.",
+    limiteDias: 15,
+    probabilidade: 80,
+    criterios: [],
+    tarefas: [{ titulo: "Acompanhar decisão de recompra", tipo: "Reunião", prazoDias: 3 }],
+  },
+  {
     id: "recompra",
     funnel: "recorrencia",
     nome: "Recompra",
@@ -309,11 +321,13 @@ const STAGE_INDEX = new Map<string, StageDef>();
 [...AQUISICAO, ...RECORRENCIA].forEach((s) => STAGE_INDEX.set(`${s.funnel}:${s.id}`, s));
 
 export function getStage(funnel: FunnelId, id: string): StageDef {
-  return STAGE_INDEX.get(`${funnel}:${id}`) ?? FUNNELS[funnel].stages[0];
+  const mapped = stageKeyToUi(id);
+  return STAGE_INDEX.get(`${funnel}:${mapped}`) ?? STAGE_INDEX.get(`${funnel}:${id}`) ?? FUNNELS[funnel].stages[0];
 }
 
 export function stageIndex(funnel: FunnelId, id: string) {
-  return FUNNELS[funnel].stages.findIndex((s) => s.id === id);
+  const mapped = stageKeyToUi(id);
+  return FUNNELS[funnel].stages.findIndex((s) => s.id === mapped || s.id === id);
 }
 
 export const REGIOES = [

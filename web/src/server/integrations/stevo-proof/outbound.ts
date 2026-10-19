@@ -106,6 +106,7 @@ export async function sendProofMedia(input: {
     authorId: agent.id,
     authorName: agent.name,
     mediaKind: kind,
+    receipt: "sent",
   };
   await insertOutboundMedia(item, { kind, mime, fileName: name, payload: { base64: bytes.toString("base64") } });
   try {

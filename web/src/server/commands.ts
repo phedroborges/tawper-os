@@ -6,17 +6,10 @@ import { addActivityRecord, addContactRecord, ensureOperators, updateCompanyReco
 
 /** Os comandos de negócio rodam no banco (funções crm_*): cada um é uma transação só. */
 
-const ACTIVITY_TO_DB: Record<string, string> = {
-  Ligação: "call", WhatsApp: "whatsapp", "E-mail": "email", Visita: "visit", Reunião: "meeting", Cotação: "quote", Homologação: "homologation", Cadastro: "registration", Suporte: "support", Outro: "other",
-};
-const PRIORITY_TO_DB: Record<string, string> = { Alta: "high", Média: "medium", Baixa: "low" };
 const CHANNEL_TO_DB: Record<string, string> = { WhatsApp: "whatsapp", Ligação: "phone", "E-mail": "email", Visita: "visit", Reunião: "meeting", Nota: "note", Sistema: "system", IA: "ai" };
 const KIND_TO_DB: Record<string, string> = {
   create: "create", stage: "stage", win: "win", loss: "loss", standby: "standby", quote: "quote", task: "task", note: "note", ai: "ai", contact: "contact", merge: "merge", import: "import", cobranca: "nudge", strategy: "strategy",
 };
-
-/** Os ids dos critérios no app (camelCase) viram chaves snake_case no banco. */
-export const criterionKey = (id: string) => id.replace(/[A-Z]/g, (m) => `_${m.toLowerCase()}`);
 
 function isUuid(id: unknown): id is string {
   return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -68,17 +61,7 @@ function need(cond: unknown, message: string): asserts cond {
   if (!cond) throw new Error(message);
 }
 
-function checksToDb(checks: Record<string, boolean> | undefined) {
-  return Object.fromEntries(Object.entries(checks ?? {}).map(([k, v]) => [criterionKey(k), Boolean(v)]));
-}
-
-type TaskIn = { titulo: string; tipo: ActivityType; dueAt: string; prioridade?: Prioridade; descricao?: string };
-const tasksToDb = (tasks: TaskIn[] | undefined) =>
-  (tasks ?? []).map((t) => ({ title: t.titulo, type: ACTIVITY_TO_DB[t.tipo] ?? "other", dueAt: t.dueAt, priority: PRIORITY_TO_DB[t.prioridade ?? "Média"] ?? "medium", description: t.descricao ?? "" }));
-
 export type Command =
-  | { command: "moveStage"; dealId: string; toStageId: string; actorId: string; checks?: Record<string, boolean>; tarefas?: TaskIn[]; nota?: string; origem?: "ia" | "usuario"; companyPatch?: Partial<Company>; newContact?: Omit<Contact, "id"> }
-  | { command: "setChecks"; dealId: string; checks: Record<string, boolean>; actorId: string; origem?: "ia" | "usuario" }
   | { command: "winDeal"; dealId: string; valor: number; obs?: string; actorId: string }
   | { command: "loseDeal"; dealId: string; motivo: string; obs?: string; actorId: string }
   | { command: "setStandby"; companyId: string; motivo: string; condicao: string; reavaliacao: string; responsavelId: string; actorId: string }
@@ -90,24 +73,6 @@ export type Command =
 
 export async function runCommand(cmd: Command): Promise<unknown> {
   switch (cmd.command) {
-    case "moveStage": {
-      const actor = await actorOf(cmd.actorId);
-      need(isUuid(cmd.dealId), "Este negócio ainda não está no banco.");
-      const deal = await getSupabaseAdmin().from("opportunities").select("company_id").eq("id", cmd.dealId).maybeSingle();
-      if (deal.error) throw new Error(deal.error.message);
-      need(deal.data, "Negócio não encontrado.");
-      // Dados informados na própria janela (campos da empresa, contato) entram antes, para os critérios enxergarem.
-      if (cmd.companyPatch && Object.keys(cmd.companyPatch).length) await updateCompanyRecord(deal.data.company_id as string, cmd.companyPatch, actor);
-      if (cmd.newContact?.nome) await addContactRecord({ ...cmd.newContact, companyId: deal.data.company_id as string }, cmd.actorId);
-      return rpc("crm_move_stage", {
-        p_opportunity: cmd.dealId, p_to_stage: cmd.toStageId, p_actor: actor, p_checks: checksToDb(cmd.checks), p_tasks: tasksToDb(cmd.tarefas),
-        p_note: cmd.nota ?? null, p_origin: cmd.origem === "ia" ? "ai" : "user",
-      });
-    }
-    case "setChecks": {
-      need(isUuid(cmd.dealId), "Este negócio ainda não está no banco.");
-      return rpc("crm_set_checks", { p_opportunity: cmd.dealId, p_checks: checksToDb(cmd.checks), p_actor: await actorOf(cmd.actorId), p_origin: cmd.origem === "ia" ? "ai" : "user" });
-    }
     case "winDeal": {
       need(isUuid(cmd.dealId), "Este negócio ainda não está no banco.");
       return rpc("crm_win_deal", { p_opportunity: cmd.dealId, p_value: cmd.valor, p_note: cmd.obs ?? null, p_actor: await actorOf(cmd.actorId) });

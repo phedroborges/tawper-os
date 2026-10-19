@@ -10,12 +10,13 @@ import {
   loadProofSnapshot,
   markProofRead,
   refreshProofQr,
-  registerProofWebhook,
   sendProofText,
   type Agent,
 } from "@/server/integrations/stevo-proof/actions";
-import type { MediaKind, ProofEventView } from "@/server/integrations/stevo-proof/events";
-import { MediaView, REVOKED_TEXT, visibleText, withoutSignature } from "@/components/chat/live-message";
+import type { MediaKind, MessageReceipt, ProofEventView } from "@/server/integrations/stevo-proof/events";
+import { ConversasReady } from "@/components/chat/ConversasLoading";
+import { ForwardedLabel, MediaView, REVOKED_TEXT, visibleText, withoutSignature } from "@/components/chat/live-message";
+import { outgoingReceipt, WhatsAppTicks } from "@/components/chat/WhatsAppTicks";
 import { Badge, Button, Card, Empty, Field, Input, Select } from "@/components/ui/primitives";
 import { isManager } from "@/lib/constants";
 import { dayDiff, fmtDateShort, fmtTime } from "@/lib/dates";
@@ -24,8 +25,19 @@ import { useCurrentUser, useStore } from "@/lib/store";
 import { cn, normalize } from "@/lib/utils";
 
 type Snapshot = Awaited<ReturnType<typeof loadProofSnapshot>>;
+type LiveFeed = Pick<Snapshot, "events" | "conversations">;
 type PendingOut = { id: string; peer: string; text: string; at: string };
 type Tab = "minhas" | "fila" | "todas";
+
+async function fetchLiveFeed(): Promise<LiveFeed | null> {
+  try {
+    const res = await fetch("/api/whatsapp/live", { cache: "no-store" });
+    if (!res.ok) return null;
+    return (await res.json()) as LiveFeed;
+  } catch {
+    return null;
+  }
+}
 
 type Thread = {
   peer: string;
@@ -33,7 +45,7 @@ type Thread = {
   ownerId: string | null;
   ownerName: string;
   unread: number;
-  messages: { id: string; at: string; text: string; out: boolean; author: string; media?: MediaKind; revoked?: boolean; revocable?: boolean }[];
+  messages: { id: string; at: string; text: string; out: boolean; author: string; media?: MediaKind; revoked?: boolean; revocable?: boolean; receipt?: MessageReceipt; forwarded?: boolean }[];
 };
 
 function chatOf(event: ProofEventView) {
@@ -51,6 +63,8 @@ function chatOf(event: ProofEventView) {
     media: event.mediaKind,
     revoked: event.revoked,
     revocable: event.revocable,
+    receipt: event.receipt,
+    forwarded: event.forwarded,
   };
 }
 
@@ -70,7 +84,7 @@ function threadsOf(snap: Snapshot): Thread[] {
       messages: [],
     };
     if (chat.name) thread.name = chat.name;
-    thread.messages.push({ id: chat.id, at: chat.at, text: chat.text, out: chat.out, author: chat.author, media: chat.media, revoked: chat.revoked, revocable: chat.revocable });
+    thread.messages.push({ id: chat.id, at: chat.at, text: chat.text, out: chat.out, author: chat.author, media: chat.media, revoked: chat.revoked, revocable: chat.revocable, receipt: chat.receipt, forwarded: chat.forwarded });
     map.set(chat.peer, thread);
   }
   return [...map.values()].sort((a, b) => (b.messages.at(-1)?.at ?? "").localeCompare(a.messages.at(-1)?.at ?? ""));
@@ -106,6 +120,7 @@ function withPending(next: Snapshot, pending: PendingOut[], author: string): Sna
     peer: item.peer,
     name: "",
     authorName: author,
+    receipt: "pending",
   }));
   return { ...next, events: [...extras, ...next.events] };
 }
@@ -151,6 +166,16 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
     setSnap(withPending(next, pendingOut.current, agent.name));
   };
 
+  const refreshLive = async () => {
+    const live = await fetchLiveFeed();
+    if (!live) return;
+    setSnap((current) => {
+      const next = { ...current, events: live.events, conversations: live.conversations };
+      pendingOut.current = pendingOut.current.filter((item) => !alreadySaved(next.events, item));
+      return withPending(next, pendingOut.current, agent.name);
+    });
+  };
+
   const threads = useMemo(() => threadsOf(snap), [snap]);
   const allowed = threads.filter((thread) => manager || !thread.ownerId || thread.ownerId === agent.id);
   const counts = {
@@ -171,10 +196,24 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
   const listed = selected && !visible.some((thread) => sameChat(thread.peer, selected)) && !active ? [{ peer: selected, name: "", ownerId: null, ownerName: "", unread: 0, messages: [] }, ...visible] : visible;
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      loadProofSnapshot().then(show).catch(() => undefined);
-    }, 4000);
-    return () => clearInterval(timer);
+    let busy = false;
+    const tick = () => {
+      if (busy || document.visibilityState === "hidden") return;
+      busy = true;
+      refreshLive().finally(() => {
+        busy = false;
+      });
+    };
+    const timer = setInterval(tick, 1000);
+    tick();
+    const onVisible = () => {
+      if (document.visibilityState === "visible") tick();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [agent.name]);
 
@@ -208,7 +247,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
       try {
         await assignProofConversation(selected, target, agent);
         setNotice(message);
-        show(await loadProofSnapshot());
+        await refreshLive();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Não foi possível mudar o responsável.");
       }
@@ -226,7 +265,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
     start(async () => {
       try {
         await deleteProofMessage(id, scope, agent);
-        show(await loadProofSnapshot());
+        await refreshLive();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Não foi possível apagar a mensagem.");
       }
@@ -243,7 +282,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
         await deleteProofConversation(peer, agent);
         setNotice("Conversa apagada.");
         if (sameChat(peer, selected)) select("");
-        show(await loadProofSnapshot());
+        await refreshLive();
       } catch (cause) {
         setError(cause instanceof Error ? cause.message : "Não foi possível apagar a conversa.");
       }
@@ -289,7 +328,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
       setAttachment(null);
       setDraft("");
       if (body.number && canonicalWhatsApp(body.number) !== selected) select(canonicalWhatsApp(body.number));
-      show(await loadProofSnapshot());
+      await refreshLive();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível enviar o arquivo.");
     } finally {
@@ -351,7 +390,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
       try {
         const sent = await sendProofText(target, text, agent);
         if (canonicalWhatsApp(sent.number) !== selected) select(canonicalWhatsApp(sent.number));
-        show(await loadProofSnapshot());
+        await refreshLive();
       } catch (cause) {
         pendingOut.current = pendingOut.current.filter((row) => row.id !== item.id);
         setSnap((current) => ({ ...current, events: current.events.filter((event) => event.id !== item.id) }));
@@ -374,6 +413,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
 
   return (
     <div className="-mt-1">
+      <ConversasReady />
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div>
           <div className="label">Central de conversas</div>
@@ -441,6 +481,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
                         </span>
                       </span>
                       <span className="flex items-center gap-1.5">
+                        {last?.out && <WhatsAppTicks receipt={outgoingReceipt(last)} />}
                         <span className="block min-w-0 flex-1 truncate text-[12px] text-muted">
                           {last?.out ? `${last.author || "Aparelho"}: ` : ""}
                           {last ? (last.revoked ? REVOKED_TEXT : withoutSignature(last.text, last.author)) : "Conversa nova"}
@@ -556,13 +597,15 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
                                 </span>
                               ) : (
                                 <>
+                                  {message.forwarded && <ForwardedLabel />}
                                   {message.media && <MediaView id={message.id} kind={message.media} text={message.text} />}
                                   {visibleText(message) && <span className="whitespace-pre-wrap text-ink">{visibleText(message)}</span>}
                                 </>
                               )}
-                              <span className="float-right mt-1 ml-2 text-[10.5px] text-muted">
+                              <span className="float-right mt-1 ml-2 inline-flex items-center gap-0.5 text-[10.5px] text-muted">
                                 {message.out && <span className="mr-1 font-medium">{message.author || "pelo aparelho"} ·</span>}
                                 {fmtTime(message.at)}
+                                {message.out && <WhatsAppTicks receipt={outgoingReceipt(message)} />}
                               </span>
                             </div>
                           </div>
@@ -670,14 +713,8 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
                 setSnap({ ...snap, qr: await refreshProofQr() });
                 setNotice("QR atualizado.");
               })}>Atualizar QR</Button>
-              {manager && (
-                <Button size="sm" variant="dark" disabled={pending} onClick={() => start(async () => {
-                  await registerProofWebhook();
-                  setNotice("Recebimento reativado. A sessão pode piscar.");
-                  show(await loadProofSnapshot());
-                })}>Reativar recebimento</Button>
-              )}
             </div>
+            {snap.status.loggedIn && <p className="mt-2 text-[11.5px] text-ok">Recebimento automático ativo</p>}
             {selected && (
               <Field label="Cliente" className="mt-3">
                 <Input value={formatWhatsApp(selected)} readOnly />
