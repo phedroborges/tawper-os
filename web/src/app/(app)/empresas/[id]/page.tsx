@@ -32,7 +32,7 @@ import { Badge, Button, Card, CardHeader, Empty } from "@/components/ui/primitiv
 import { FUNNELS, getStage, isManager, isMuriloLouis } from "@/lib/constants";
 import { fmtAgo, fmtDate, fmtDateTime, rel } from "@/lib/dates";
 import { canSeeCompany, currentDealOf, daysInStage, lastInteractionAt, missingCriteria, openDealOf, pendingOf, qualityOf, timelineOf } from "@/lib/selectors";
-import { useCurrentUser, useStore } from "@/lib/store";
+import { reportError, useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
 import { formatCNPJ, formatWhatsApp } from "@/lib/br-ids";
 import { cn, money } from "@/lib/utils";
@@ -88,8 +88,9 @@ function EmpresaView() {
     const t = nextStage.tarefas[0];
     s.moveDeal(deal.id, nextStage.id, {
       tarefas: t ? [{ companyId: company.id, dealId: deal.id, titulo: t.titulo, tipo: t.tipo, dueAt: rel(t.prazoDias, 10), ownerId: deal.ownerId, origem: "regra" }] : [],
-    });
-    toast(`Etapa alterada para ${nextStage.nome}`, { sub: t ? `Próximo passo criado: ${t.titulo.toLowerCase()}` : undefined });
+    })
+      .then(() => toast(`Etapa alterada para ${nextStage.nome}`, { sub: t ? `Próximo passo criado: ${t.titulo.toLowerCase()}` : undefined }))
+      .catch((e) => reportError(e, "Não foi possível mudar a etapa"));
   };
 
   const startConversation = () => {
@@ -105,9 +106,12 @@ function EmpresaView() {
 
   const addNote = () => {
     if (!note.trim()) return;
-    s.addInteraction({ companyId: company.id, dealId: deal?.id, canal: "Nota", autorId: user.id, kind: "note", titulo: "Nota interna", conteudo: note.trim() });
-    setNote("");
-    toast("Nota adicionada ao histórico");
+    s.addInteraction({ companyId: company.id, dealId: deal?.id, canal: "Nota", autorId: user.id, kind: "note", titulo: "Nota interna", conteudo: note.trim() })
+      .then(() => {
+        setNote("");
+        toast("Nota adicionada ao histórico");
+      })
+      .catch((e) => reportError(e, "Não foi possível salvar a nota"));
   };
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
@@ -207,7 +211,7 @@ function EmpresaView() {
                       </MenuItem>
                     )}
                     {company.status === "espera" ? (
-                      <MenuItem icon={<Play size={14} />} onClick={() => { close(); s.resumeStandby(company.id); toast("Conta retomada", { sub: "Saiu da espera e voltou para a operação" }); }}>
+                      <MenuItem icon={<Play size={14} />} onClick={() => { close(); s.resumeStandby(company.id).then(() => toast("Conta retomada", { sub: "Saiu da espera e voltou para a operação" })).catch((e) => reportError(e, "Não foi possível retomar a conta")); }}>
                         Retomar conta
                       </MenuItem>
                     ) : (

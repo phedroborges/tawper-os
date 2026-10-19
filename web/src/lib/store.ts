@@ -5,7 +5,7 @@
 
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
-import { FIELD_LABELS, FUNNELS, getStage, isManager } from "./constants";
+import { FIELD_LABELS, getStage } from "./constants";
 import { fmtDateShort, rel } from "./dates";
 import { buildSeed, DATA_VERSION } from "./seed";
 import type {
@@ -22,7 +22,6 @@ import type {
   DemoData,
   Interaction,
   Message,
-  Notification,
   Prioridade,
   Quote,
   Standby,
@@ -30,6 +29,7 @@ import type {
 } from "./types";
 import { formatCNPJ, storedCNPJ, storedWhatsApp } from "./br-ids";
 import { money, quoteTotals, uid } from "./utils";
+import { useUI } from "./ui-store";
 
 export const STORAGE_KEY = "tawper-os-demo";
 
@@ -65,26 +65,27 @@ interface Actions {
   removeCompany: (id: string) => void;
 
   createCompany: (input: NewCompanyInput) => string;
-  mergeIntoCompany: (existingId: string, input: NewCompanyInput) => string;
+  mergeIntoCompany: (existingId: string, input: NewCompanyInput) => Promise<string>;
   updateCompany: (id: string, patch: Partial<Company>, origem?: AuditEntry["origem"]) => void;
   addContact: (c: Omit<Contact, "id">) => string;
 
   addActivity: (a: ActivityDraft) => string;
   completeActivity: (id: string, input: { resultado: string; next?: ActivityDraft }) => string | undefined;
-  rescheduleActivity: (id: string, dueAt: string) => void;
+  rescheduleActivity: (id: string, dueAt: string) => Promise<void>;
 
+  /** Estas ações rodam no banco e só voltam depois de gravadas; em caso de recusa, lançam o erro. */
   moveDeal: (
     dealId: string,
     toStageId: string,
-    opts?: { checks?: Record<string, boolean>; tarefas?: ActivityDraft[]; nota?: string; origem?: AuditEntry["origem"] },
-  ) => void;
-  setChecklist: (dealId: string, checks: Record<string, boolean>, origem?: AuditEntry["origem"]) => void;
-  winDeal: (dealId: string, input: { valor: number; obs?: string }) => { recurrenceDealId: string; posVendaId: string };
-  loseDeal: (dealId: string, input: { motivo: string; obs?: string }) => void;
-  setStandby: (companyId: string, s: Omit<Standby, "inicio">) => void;
-  resumeStandby: (companyId: string) => void;
+    opts?: { checks?: Record<string, boolean>; tarefas?: ActivityDraft[]; nota?: string; origem?: AuditEntry["origem"]; companyPatch?: Partial<Company>; newContact?: Omit<Contact, "id"> },
+  ) => Promise<void>;
+  setChecklist: (dealId: string, checks: Record<string, boolean>, origem?: AuditEntry["origem"]) => Promise<void>;
+  winDeal: (dealId: string, input: { valor: number; obs?: string }) => Promise<{ recurrenceDealId: string; posVendaId: string }>;
+  loseDeal: (dealId: string, input: { motivo: string; obs?: string }) => Promise<void>;
+  setStandby: (companyId: string, s: Omit<Standby, "inicio">) => Promise<void>;
+  resumeStandby: (companyId: string) => Promise<void>;
 
-  addInteraction: (i: Omit<Interaction, "id" | "at"> & { at?: string }) => void;
+  addInteraction: (i: Omit<Interaction, "id" | "at"> & { at?: string }) => Promise<void>;
 
   sendMessage: (convId: string, text: string, opts?: { nota?: boolean; attachment?: Message["attachment"] }) => void;
   receiveMessage: (convId: string, text: string) => void;
@@ -92,7 +93,7 @@ interface Actions {
   setConversationSummary: (convId: string, summary: ConversationSummary) => void;
   startConversation: (companyId: string, contactId: string) => string;
 
-  saveStrategy: (companyId: string, data: Pick<Strategy, "objetivo" | "diagnostico" | "barreira" | "estrategia" | "resultadoEsperado" | "proximaRevisao">, origem?: Strategy["origem"]) => void;
+  saveStrategy: (companyId: string, data: Pick<Strategy, "objetivo" | "diagnostico" | "barreira" | "estrategia" | "resultadoEsperado" | "proximaRevisao">, origem?: Strategy["origem"]) => Promise<void>;
   addSuggestion: (s: Omit<AISuggestion, "id" | "createdAt" | "status">) => string;
   decideSuggestion: (id: string, decision: "aprovada" | "descartada", opts?: { criarAcoes?: boolean }) => void;
 
@@ -142,38 +143,58 @@ export const DEFAULT_USER_ID = "u-murilo";
 
 const USE_SUPABASE = process.env.NEXT_PUBLIC_TAWPER_USE_SUPABASE === "true";
 
-function mergeById<T extends { id: string }>(server: T[] | undefined, local: T[]): T[] {
-  if (!server) return local;
-  const ids = new Set(server.map((row) => row.id));
-  return [...server, ...local.filter((row) => !ids.has(row.id))];
-}
-
 const actorAlias = new Map<string, string>();
 
 export function setActorAliases(map: Record<string, string>) {
   for (const [from, to] of Object.entries(map)) actorAlias.set(from, to);
 }
 
-/** Replica no banco a decisão do cliente sobre os orçamentos enviados do negócio. */
-function pushQuoteDecisions(quotes: Quote[], dealId: string, status: "aceito" | "recusado") {
-  if (!USE_SUPABASE || typeof window === "undefined") return;
-  for (const q of quotes) {
-    if (q.dealId !== dealId || q.status !== "enviado") continue;
-    void fetch("/api/quotes", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ action: "setStatus", id: q.id, status }),
-    });
-  }
+/** Mostra o erro para quem usou. Nenhuma gravação falha em silêncio. */
+export function reportError(e: unknown, prefix = "Não foi possível concluir") {
+  const message = e instanceof Error ? e.message : String(e);
+  useUI.getState().toast(prefix, { tone: "warn", sub: message });
 }
 
+let refreshSeq = 0;
+
+/** Relê o banco e troca os dados da tela pelo que está gravado. */
+export async function refreshCrm(): Promise<boolean> {
+  if (!USE_SUPABASE || typeof window === "undefined") return false;
+  const mine = ++refreshSeq;
+  const res = await fetch("/api/crm/snapshot", { cache: "no-store" });
+  const body = (await res.json()) as { health?: { ok: boolean; detail?: string; reason?: string }; snapshot?: Partial<DemoData> | null; actorMap?: Record<string, string> | null };
+  if (!body.health?.ok || !body.snapshot) throw new Error(body.health?.detail || "O banco não respondeu.");
+  if (body.actorMap) setActorAliases(body.actorMap);
+  if (mine === refreshSeq) useStore.getState().hydrateCrm(body.snapshot);
+  return true;
+}
+
+/** Executa uma regra de negócio no banco (transação única) e relê o que ficou gravado. */
+async function sendCommand<T = unknown>(body: Record<string, unknown>): Promise<T> {
+  const res = await fetch("/api/crm/command", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = (await res.json().catch(() => ({}))) as { error?: string; result?: T };
+  if (!res.ok) throw new Error(data.error || "Não foi possível concluir a operação.");
+  await refreshCrm().catch(() => undefined);
+  return data.result as T;
+}
+
+/**
+ * Gravações simples (empresa, contato, atividade): a tela mostra na hora, mas se o banco recusar
+ * o usuário é avisado e a tela volta ao que está gravado.
+ */
 function pushMutation(body: unknown) {
   if (!USE_SUPABASE || typeof window === "undefined") return;
-  void fetch("/api/crm/mutate", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  void (async () => {
+    try {
+      const res = await fetch("/api/crm/mutate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const data = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) throw new Error(data.error || "O banco recusou a gravação.");
+      await refreshCrm();
+    } catch (e) {
+      reportError(e, "Não foi possível salvar");
+      await refreshCrm().catch(() => undefined);
+    }
+  })();
 }
 
 function emptyCrm(): DemoData & Session {
@@ -222,11 +243,6 @@ export const useStore = create<AppState>()(
     (set, get) => {
       const me = () => get().currentUserId ?? DEFAULT_USER_ID;
 
-      const notifyManagers = (n: Omit<Notification, "id" | "userId" | "lida" | "at">, exceptId?: string): Notification[] =>
-        get()
-          .users.filter((u) => isManager(u) && u.id !== exceptId)
-          .map((u) => ({ ...n, id: uid("n"), userId: u.id, lida: false, at: nowIso() }));
-
       return {
         ...freshState(),
 
@@ -238,12 +254,17 @@ export const useStore = create<AppState>()(
           set({ ...(USE_SUPABASE ? emptyCrm() : buildSeed()), currentUserId: keepUser });
         },
         hydrateCrm: (snapshot) => {
+          // O banco é a única fonte: o que a tela mostra é substituído pelo que está gravado.
           set((s) => ({
-            companies: mergeById(snapshot.companies, s.companies),
-            contacts: mergeById(snapshot.contacts, s.contacts),
-            deals: mergeById(snapshot.deals, s.deals),
-            activities: mergeById(snapshot.activities, s.activities),
+            companies: snapshot.companies ?? s.companies,
+            contacts: snapshot.contacts ?? s.contacts,
+            deals: snapshot.deals ?? s.deals,
+            activities: snapshot.activities ?? s.activities,
             quotes: snapshot.quotes ?? s.quotes,
+            interactions: snapshot.interactions ?? s.interactions,
+            audit: snapshot.audit ?? s.audit,
+            strategies: snapshot.strategies ?? s.strategies,
+            strategyHistory: snapshot.strategyHistory ?? s.strategyHistory,
             users: snapshot.users?.length ? snapshot.users : s.users,
           }));
         },
@@ -344,68 +365,8 @@ export const useStore = create<AppState>()(
           return id;
         },
 
-        mergeIntoCompany: (existingId, input) => {
-          const s = get();
-          const actor = me();
-          const existing = s.companies.find((c) => c.id === existingId);
-          if (!existing) return existingId;
-          const now = nowIso();
-          const patch: Partial<Company> = {};
-          (Object.keys(input.company) as (keyof Company)[]).forEach((k) => {
-            const v = input.company[k];
-            if (v !== undefined && v !== "" && v !== existing[k]) (patch as Record<string, unknown>)[k] = k === "cnpj" ? storedCNPJ(String(v)) : v;
-          });
-          const merged: Company = { ...existing, ...patch, status: "ativa", importadoDe: existing.importadoDe, updatedAt: now };
-          const contacts: Contact[] = input.contacts.map((c) => ({ ...c, id: uid("ct"), companyId: existingId, whatsapp: storedWhatsApp(c.whatsapp) }));
-          let deals = s.deals;
-          let deal = s.deals.find((d) => d.companyId === existingId && d.status === "aberta");
-          const ownerId = merged.ownerId;
-          if (!deal) {
-            deal = {
-              id: uid("d"), companyId: existingId, ownerId, funnel: "aquisicao", stageId: "lead", titulo: `Prospecção — ${merged.nome}`,
-              status: "aberta", probabilidade: 5, createdAt: now, stageEnteredAt: now, checklist: {}, history: [{ stageId: "lead", enteredAt: now, byId: actor }], ciclo: 1,
-            };
-            deals = [deal, ...deals];
-          } else {
-            // o registro antigo "renasce": reinicia o relógio da etapa e troca o responsável
-            deals = deals.map((d) =>
-              d.id === deal!.id
-                ? { ...d, ownerId, titulo: `Prospecção — ${merged.nome}`, stageEnteredAt: now, history: [...d.history.map((h) => (h.leftAt ? h : { ...h, leftAt: now })), { stageId: d.stageId, enteredAt: now, byId: actor }] }
-                : d,
-            );
-          }
-          const firstAct: Activity = {
-            id: uid("a"), companyId: existingId, dealId: deal.id, ownerId, status: "pendente", origem: "manual", prioridade: "Média", createdAt: now, ...input.firstActivity,
-          };
-          const changes = (Object.keys(patch) as (keyof Company)[])
-            .filter((k) => FIELD_LABELS[k])
-            .map((k) =>
-              auditEntry({
-                autorId: actor, origem: "usuario", entidade: "Empresa", entidadeId: existingId, companyId: existingId, campo: FIELD_LABELS[k]!,
-                de: fmtField(k, existing[k], s.users, s.companies), para: fmtField(k, patch[k], s.users, s.companies),
-              }),
-            );
-          set({
-            companies: s.companies.map((c) => (c.id === existingId ? merged : c)),
-            contacts: [...contacts, ...s.contacts],
-            deals,
-            activities: [firstAct, ...s.activities],
-            conversations: input.conversationId
-              ? s.conversations.map((c) => (c.id === input.conversationId ? { ...c, companyId: existingId, contactId: contacts[0]?.id, contatoNome: contacts[0]?.nome ?? c.contatoNome } : c))
-              : s.conversations,
-            interactions: [
-              interaction({
-                companyId: existingId, canal: "Sistema", autorId: actor, kind: "merge", titulo: `Registros unidos: novo cadastro incorporado ao ${existing.codigo}`,
-                conteudo: `O cadastro antigo "${existing.nome}" (${existing.importadoDe ? `importado do ${existing.importadoDe}` : "existente"}) foi atualizado com os dados novos. Histórico, contatos e vínculos foram preservados.`,
-              }),
-              ...s.interactions,
-            ],
-            audit: [
-              auditEntry({ autorId: actor, origem: "usuario", entidade: "Empresa", entidadeId: existingId, companyId: existingId, campo: "duplicidade", de: "cadastro novo", para: `unido a ${existing.codigo}` }),
-              ...changes,
-              ...s.audit,
-            ],
-          });
+        mergeIntoCompany: async (existingId, input) => {
+          await sendCommand({ command: "mergeCompany", existingId, company: input.company, contacts: input.contacts, firstActivity: input.firstActivity, actorId: me() });
           return existingId;
         },
 
@@ -489,214 +450,47 @@ export const useStore = create<AppState>()(
           return nextId;
         },
 
-        rescheduleActivity: (id, dueAt) => {
-          const s = get();
-          const a = s.activities.find((x) => x.id === id);
-          if (!a) return;
-          set({
-            activities: s.activities.map((x) => (x.id === id ? { ...x, dueAt } : x)),
-            audit: [auditEntry({ autorId: me(), origem: "usuario", entidade: "Atividade", entidadeId: id, companyId: a.companyId, campo: "vencimento", de: fmtDateShort(a.dueAt), para: fmtDateShort(dueAt) }), ...s.audit],
-          });
+        rescheduleActivity: async (id, dueAt) => {
+          await sendCommand({ command: "reschedule", activityId: id, dueAt, actorId: me() });
         },
 
         // -------------------------------------------------------------------
-        moveDeal: (dealId, toStageId, opts = {}) => {
-          const s = get();
-          const deal = s.deals.find((d) => d.id === dealId);
-          if (!deal || deal.stageId === toStageId) return;
-          const actor = opts.origem === "ia" ? "ia" : me();
-          const now = nowIso();
-          const from = getStage(deal.funnel, deal.stageId);
-          const to = getStage(deal.funnel, toStageId);
-          const company = s.companies.find((c) => c.id === deal.companyId)!;
-          const checks = { ...deal.checklist, ...(opts.checks ?? {}) };
-          const allCriteria = FUNNELS[deal.funnel].stages.flatMap((st) => st.criterios);
-          const newlyChecked = Object.entries(opts.checks ?? {}).filter(([k, v]) => v && !deal.checklist[k]);
-          const updated: Deal = {
-            ...deal,
-            stageId: toStageId,
-            stageEnteredAt: now,
-            probabilidade: to.probabilidade,
-            checklist: checks,
-            history: [...deal.history.map((h) => (h.leftAt ? h : { ...h, leftAt: now })), { stageId: toStageId, enteredAt: now, byId: actor }],
-          };
-          const newActs: Activity[] = (opts.tarefas ?? []).map((t) => ({
-            id: uid("a"), status: "pendente", origem: "regra", prioridade: "Média", createdAt: now, ownerId: deal.ownerId, dealId, ...t,
-          }));
-          const dependents = s.companies.filter((c) => c.influenciadoraId === company.id);
-          const depInteractions = dependents.map((d) =>
-            interaction({ companyId: d.id, canal: "IA", autorId: "ia", kind: "ai", titulo: `Conta influenciadora avançou: ${company.nome}`, conteudo: `${company.nome} passou de ${from.nome} para ${to.nome}. Condição desta conta: ${d.condicaoDependencia ?? "—"} Reavalie a estratégia.` }),
-          );
-          const depNotifs: Notification[] = dependents.map((d) => ({
-            id: uid("n"), userId: d.ownerId, at: now, lida: false, tipo: "alerta", titulo: `Conta influenciadora avançou`,
-            texto: `${company.nome} foi para ${to.nome}. Isso afeta ${d.nome}.`, link: `/empresas/${d.id}`,
-          }));
-          set({
-            deals: s.deals.map((d) => (d.id === dealId ? updated : d)),
-            activities: [...newActs, ...s.activities],
-            interactions: [
-              ...depInteractions,
-              interaction({ companyId: deal.companyId, dealId, canal: "Sistema", autorId: actor, kind: "stage", titulo: `Etapa alterada: ${from.nome} → ${to.nome}`, conteudo: opts.nota }),
-              ...s.interactions,
-            ],
-            notifications: [...depNotifs, ...s.notifications],
-            audit: [
-              auditEntry({ autorId: actor, origem: opts.origem ?? "usuario", entidade: "Oportunidade", entidadeId: dealId, companyId: deal.companyId, campo: "etapa", de: from.nome, para: to.nome }),
-              ...newlyChecked.map(([k]) =>
-                auditEntry({ autorId: actor, origem: opts.origem ?? "usuario", entidade: "Oportunidade", entidadeId: dealId, companyId: deal.companyId, campo: `critério: ${allCriteria.find((c) => c.id === k)?.label ?? k}`, de: "pendente", para: "cumprido" }),
-              ),
-              ...newActs.map((a) => auditEntry({ autorId: "sistema", origem: "automacao", entidade: "Atividade", entidadeId: a.id, companyId: deal.companyId, campo: "criada pela regra da etapa", para: a.titulo })),
-              ...s.audit,
-            ],
+        moveDeal: async (dealId, toStageId, opts = {}) => {
+          const deal = get().deals.find((d) => d.id === dealId);
+          if (!deal) throw new Error("Negócio não encontrado.");
+          if (deal.stageId === toStageId) return;
+          await sendCommand({
+            command: "moveStage", dealId, toStageId, actorId: me(), checks: opts.checks, tarefas: opts.tarefas, nota: opts.nota,
+            origem: opts.origem === "ia" ? "ia" : "usuario", companyPatch: opts.companyPatch, newContact: opts.newContact,
           });
         },
 
-        setChecklist: (dealId, checks, origem = "usuario") => {
-          const s = get();
-          const deal = s.deals.find((d) => d.id === dealId);
-          if (!deal) return;
-          const allCriteria = FUNNELS[deal.funnel].stages.flatMap((st) => st.criterios);
-          const changed = Object.entries(checks).filter(([k, v]) => Boolean(deal.checklist[k]) !== v);
-          if (!changed.length) return;
-          set({
-            deals: s.deals.map((d) => (d.id === dealId ? { ...d, checklist: { ...d.checklist, ...checks } } : d)),
-            audit: [
-              ...changed.map(([k, v]) =>
-                auditEntry({ autorId: origem === "ia" ? "ia" : me(), origem, entidade: "Oportunidade", entidadeId: dealId, companyId: deal.companyId, campo: `critério: ${allCriteria.find((c) => c.id === k)?.label ?? k}`, de: v ? "pendente" : "cumprido", para: v ? "cumprido" : "pendente" }),
-              ),
-              ...s.audit,
-            ],
-          });
+        setChecklist: async (dealId, checks, origem = "usuario") => {
+          const deal = get().deals.find((d) => d.id === dealId);
+          if (!deal) throw new Error("Negócio não encontrado.");
+          if (!Object.entries(checks).some(([k, v]) => Boolean(deal.checklist[k]) !== v)) return;
+          await sendCommand({ command: "setChecks", dealId, checks, actorId: me(), origem: origem === "ia" ? "ia" : "usuario" });
         },
 
-        winDeal: (dealId, { valor, obs }) => {
-          pushQuoteDecisions(get().quotes, dealId, "aceito");
-          const s = get();
-          const deal = s.deals.find((d) => d.id === dealId)!;
-          const company = s.companies.find((c) => c.id === deal.companyId)!;
-          const actor = me();
-          const now = nowIso();
-          const terminal = deal.funnel === "aquisicao" ? "ganho" : "recompra";
-          const from = getStage(deal.funnel, deal.stageId);
-          const ciclo = deal.funnel === "aquisicao" ? 1 : deal.ciclo + 1;
-          const closed: Deal = {
-            ...deal, status: "ganha", stageId: terminal, closedAt: now, valorRealizado: valor, valor: deal.valor ?? valor, probabilidade: 100, stageEnteredAt: now,
-            history: [...deal.history.map((h) => (h.leftAt ? h : { ...h, leftAt: now })), { stageId: terminal, enteredAt: now, byId: actor }],
-          };
-          const recurrenceDealId = uid("d");
-          const recurrence: Deal = {
-            id: recurrenceDealId, companyId: deal.companyId, ownerId: deal.ownerId, funnel: "recorrencia", stageId: "posvenda", titulo: `Recorrência — ciclo ${ciclo}`,
-            status: "aberta", probabilidade: getStage("recorrencia", "posvenda").probabilidade, createdAt: now, stageEnteredAt: now, checklist: {},
-            history: [{ stageId: "posvenda", enteredAt: now, byId: "sistema" }], ciclo,
-          };
-          const posVendaId = uid("a");
-          const posVenda: Activity = {
-            id: posVendaId, companyId: deal.companyId, dealId: recurrenceDealId, ownerId: deal.ownerId, tipo: "Ligação",
-            titulo: "Pós-venda: confirmar entrega e aplicação", dueAt: rel(5, 10), prioridade: "Alta", status: "pendente", origem: "regra", createdAt: now,
-          };
-          const cancelled = s.activities.map((a) =>
-            a.companyId === deal.companyId && a.status === "pendente" && a.dealId === dealId ? { ...a, status: "cancelada" as const, resultado: "Encerrada: venda ganha" } : a,
-          );
-          const isFirst = deal.funnel === "aquisicao";
-          const seller = s.users.find((u) => u.id === deal.ownerId);
-          set({
-            deals: [recurrence, ...s.deals.map((d) => (d.id === dealId ? closed : d))],
-            companies: s.companies.map((c) => (c.id === deal.companyId ? { ...c, status: "ativa", standby: undefined, clienteDesde: c.clienteDesde ?? now, updatedAt: now } : c)),
-            quotes: s.quotes.map((q) => (q.dealId === dealId && q.status === "enviado" ? { ...q, status: "aceito" } : q)),
-            activities: [posVenda, ...cancelled],
-            interactions: [
-              interaction({ companyId: deal.companyId, dealId: recurrenceDealId, canal: "IA", autorId: "ia", kind: "ai", titulo: "Previsão de recompra sugerida", conteudo: `Com ${company.colhedoras ?? "—"} colhedoras, o consumo estimado indica nova compra em cerca de 90 dias. A IA vai lembrar o responsável antes da janela, sem cobrar o cliente fora de hora.` }),
-              interaction({ companyId: deal.companyId, dealId: recurrenceDealId, canal: "Sistema", autorId: "sistema", kind: "stage", titulo: `Conta movida para Recorrência · ciclo ${ciclo}`, conteudo: `Pós-venda criado automaticamente para ${fmtDateShort(posVenda.dueAt)}.` }),
-              interaction({ companyId: deal.companyId, dealId, canal: "Sistema", autorId: actor, kind: "win", titulo: isFirst ? `Primeira venda registrada — ${money(valor)}` : `Recompra registrada — ${money(valor)} (ciclo ${deal.ciclo})`, conteudo: obs }),
-              ...s.interactions,
-            ],
-            notifications: [
-              ...notifyManagers({ tipo: "sistema", titulo: isFirst ? `Primeira venda: ${company.nome}` : `Recompra: ${company.nome}`, texto: `${seller?.short ?? "Vendedor"} fechou ${money(valor)}. Recorrência iniciada.`, link: `/empresas/${company.id}` }, actor),
-              ...s.notifications,
-            ],
-            audit: [
-              auditEntry({ autorId: "sistema", origem: "automacao", entidade: "Atividade", entidadeId: posVendaId, companyId: deal.companyId, campo: "criada pela regra de pós-venda", para: posVenda.titulo }),
-              auditEntry({ autorId: "sistema", origem: "automacao", entidade: "Oportunidade", entidadeId: recurrenceDealId, companyId: deal.companyId, campo: "funil", para: `Recorrência · Pós-venda (ciclo ${ciclo})` }),
-              auditEntry({ autorId: actor, origem: "usuario", entidade: "Oportunidade", entidadeId: dealId, companyId: deal.companyId, campo: "status", de: `aberta (${from.nome})`, para: `ganha — ${money(valor)}` }),
-              ...s.audit,
-            ],
-          });
-          return { recurrenceDealId, posVendaId };
+        winDeal: async (dealId, { valor, obs }) => {
+          const r = await sendCommand<{ recurrence_id: string; activity_id: string }>({ command: "winDeal", dealId, valor, obs, actorId: me() });
+          return { recurrenceDealId: r.recurrence_id, posVendaId: r.activity_id };
         },
 
-        loseDeal: (dealId, { motivo, obs }) => {
-          pushQuoteDecisions(get().quotes, dealId, "recusado");
-          const s = get();
-          const deal = s.deals.find((d) => d.id === dealId)!;
-          const actor = me();
-          const now = nowIso();
-          const from = getStage(deal.funnel, deal.stageId);
-          const closed: Deal = { ...deal, status: "perdida", motivo, closedAt: now, history: deal.history.map((h) => (h.leftAt ? h : { ...h, leftAt: now })) };
-          const extraDeals: Deal[] = [];
-          const extraActs: Activity[] = [];
-          if (deal.funnel === "recorrencia") {
-            const nd: Deal = {
-              id: uid("d"), companyId: deal.companyId, ownerId: deal.ownerId, funnel: "recorrencia", stageId: "relacionamento", titulo: `Recuperação — ciclo ${deal.ciclo}`,
-              status: "aberta", probabilidade: 30, createdAt: now, stageEnteredAt: now, checklist: {}, history: [{ stageId: "relacionamento", enteredAt: now, byId: actor }], ciclo: deal.ciclo,
-            };
-            extraDeals.push(nd);
-            extraActs.push({
-              id: uid("a"), companyId: deal.companyId, dealId: nd.id, ownerId: deal.ownerId, tipo: "Reunião", titulo: `Plano de recuperação — motivo: ${motivo}`,
-              dueAt: rel(7, 10), prioridade: "Alta", status: "pendente", origem: "regra", createdAt: now,
-            });
-          }
-          set({
-            deals: [...extraDeals, ...s.deals.map((d) => (d.id === dealId ? closed : d))],
-            companies: deal.funnel === "aquisicao" ? s.companies.map((c) => (c.id === deal.companyId ? { ...c, status: "perdida", motivoPerda: motivo, updatedAt: now } : c)) : s.companies,
-            activities: [
-              ...extraActs,
-              ...s.activities.map((a) => (a.dealId === dealId && a.status === "pendente" ? { ...a, status: "cancelada" as const, resultado: "Encerrada: oportunidade perdida" } : a)),
-            ],
-            quotes: s.quotes.map((q) => (q.dealId === dealId && q.status === "enviado" ? { ...q, status: "recusado" } : q)),
-            interactions: [interaction({ companyId: deal.companyId, dealId, canal: "Sistema", autorId: actor, kind: "loss", titulo: `Oportunidade perdida em ${from.nome}`, conteudo: `Motivo: ${motivo}${obs ? ` — ${obs}` : ""}` }), ...s.interactions],
-            audit: [auditEntry({ autorId: actor, origem: "usuario", entidade: "Oportunidade", entidadeId: dealId, companyId: deal.companyId, campo: "status", de: `aberta (${from.nome})`, para: `perdida — ${motivo}` }), ...s.audit],
-          });
+        loseDeal: async (dealId, { motivo, obs }) => {
+          await sendCommand({ command: "loseDeal", dealId, motivo, obs, actorId: me() });
         },
 
-        setStandby: (companyId, sb) => {
-          const s = get();
-          const actor = me();
-          const now = nowIso();
-          const deal = s.deals.find((d) => d.companyId === companyId && d.status === "aberta");
-          const reval: Activity = {
-            id: uid("a"), companyId, dealId: deal?.id, ownerId: sb.responsavelId, tipo: "Ligação", titulo: `Reavaliar conta em espera — ${sb.motivo.toLowerCase()}`,
-            descricao: `Condição de retomada: ${sb.condicao}`, dueAt: sb.reavaliacao, prioridade: "Média", status: "pendente", origem: "regra", createdAt: now,
-          };
-          set({
-            companies: s.companies.map((c) => (c.id === companyId ? { ...c, status: "espera", standby: { ...sb, inicio: now }, updatedAt: now } : c)),
-            activities: [reval, ...s.activities.map((a) => (a.companyId === companyId && a.status === "pendente" ? { ...a, status: "cancelada" as const, resultado: "Encerrada: conta em espera" } : a))],
-            interactions: [interaction({ companyId, dealId: deal?.id, canal: "Sistema", autorId: actor, kind: "standby", titulo: "Conta colocada em espera", conteudo: `Motivo: ${sb.motivo}. Retomada: ${sb.condicao}. Reavaliação em ${fmtDateShort(sb.reavaliacao)}.` }), ...s.interactions],
-            audit: [
-              auditEntry({ autorId: actor, origem: "usuario", entidade: "Empresa", entidadeId: companyId, companyId, campo: "Status", de: "ativa", para: "em espera" }),
-              auditEntry({ autorId: "sistema", origem: "automacao", entidade: "Atividade", entidadeId: reval.id, companyId, campo: "criada pela regra de espera", para: reval.titulo }),
-              ...s.audit,
-            ],
-          });
+        setStandby: async (companyId, sb) => {
+          await sendCommand({ command: "setStandby", companyId, motivo: sb.motivo, condicao: sb.condicao, reavaliacao: sb.reavaliacao, responsavelId: sb.responsavelId, actorId: me() });
         },
 
-        resumeStandby: (companyId) => {
-          const s = get();
-          const actor = me();
-          const now = nowIso();
-          set({
-            companies: s.companies.map((c) => (c.id === companyId ? { ...c, status: "ativa", standby: undefined, updatedAt: now } : c)),
-            activities: s.activities.map((a) =>
-              a.companyId === companyId && a.status === "pendente" && a.titulo.startsWith("Reavaliar conta em espera") ? { ...a, status: "concluida" as const, completedAt: now, resultado: "Conta retomada" } : a,
-            ),
-            deals: s.deals.map((d) => (d.companyId === companyId && d.status === "aberta" ? { ...d, stageEnteredAt: now } : d)),
-            interactions: [interaction({ companyId, canal: "Sistema", autorId: actor, kind: "standby", titulo: "Conta retomada — saiu da espera" }), ...s.interactions],
-            audit: [auditEntry({ autorId: actor, origem: "usuario", entidade: "Empresa", entidadeId: companyId, companyId, campo: "Status", de: "em espera", para: "ativa" }), ...s.audit],
-          });
+        resumeStandby: async (companyId) => {
+          await sendCommand({ command: "resumeStandby", companyId, actorId: me() });
         },
 
-        addInteraction: (i) => {
-          const s = get();
-          set({ interactions: [interaction(i), ...s.interactions] });
+        addInteraction: async (i) => {
+          await sendCommand({ command: "addInteraction", companyId: i.companyId, dealId: i.dealId, canal: i.canal, kind: i.kind, titulo: i.titulo, conteudo: i.conteudo, autorId: i.autorId });
         },
 
         // -------------------------------------------------------------------
@@ -750,17 +544,8 @@ export const useStore = create<AppState>()(
         },
 
         // -------------------------------------------------------------------
-        saveStrategy: (companyId, data, origem = "manual") => {
-          const s = get();
-          const actor = me();
-          const prev = s.strategies.find((x) => x.companyId === companyId);
-          const next: Strategy = { ...data, companyId, definidoPorId: actor, revisadaEm: nowIso(), versao: (prev?.versao ?? 0) + 1, origem };
-          set({
-            strategies: [next, ...s.strategies.filter((x) => x.companyId !== companyId)],
-            strategyHistory: prev ? [prev, ...s.strategyHistory] : s.strategyHistory,
-            interactions: [interaction({ companyId, canal: "Nota", autorId: actor, kind: "strategy", titulo: `Estratégia ${prev ? "revisada" : "definida"} (v${next.versao})`, conteudo: next.estrategia }), ...s.interactions],
-            audit: [auditEntry({ autorId: actor, origem: "usuario", entidade: "Estratégia", entidadeId: companyId, companyId, campo: "estratégia", de: prev?.estrategia, para: next.estrategia }), ...s.audit],
-          });
+        saveStrategy: async (companyId, data, origem = "manual") => {
+          await sendCommand({ command: "saveStrategy", companyId, data, origem, actorId: me() });
         },
 
         addSuggestion: (sg) => {
@@ -785,9 +570,11 @@ export const useStore = create<AppState>()(
           });
           if (decision === "aprovada" && sg.detalhes) {
             const d = sg.detalhes;
-            get().saveStrategy(sg.companyId, {
-              objetivo: d.objetivo, diagnostico: d.diagnostico, barreira: d.barreira, estrategia: d.estrategia, resultadoEsperado: d.resultadoEsperado, proximaRevisao: rel(14),
-            }, "ia-aprovada");
+            get()
+              .saveStrategy(sg.companyId, {
+                objetivo: d.objetivo, diagnostico: d.diagnostico, barreira: d.barreira, estrategia: d.estrategia, resultadoEsperado: d.resultadoEsperado, proximaRevisao: rel(14),
+              }, "ia-aprovada")
+              .catch((e) => reportError(e, "Não foi possível salvar a estratégia"));
             if (opts.criarAcoes) {
               const company = get().companies.find((c) => c.id === sg.companyId);
               d.acoes.forEach((a, i) =>

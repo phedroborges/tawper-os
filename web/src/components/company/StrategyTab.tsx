@@ -9,6 +9,7 @@ import { copilotFor } from "@/lib/ai";
 import { companyContext } from "@/lib/ai-context";
 import { fmtDate, fmtDue, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { useStore } from "@/lib/store";
+import { useAction } from "@/lib/use-action";
 import type { AISuggestion, Company } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 import { aiCopilot } from "@/server/ai/actions";
@@ -169,6 +170,7 @@ export function StrategyTab({ company }: { company: Company }) {
   const strategy = s.strategies.find((x) => x.companyId === company.id);
   const history = s.strategyHistory.filter((x) => x.companyId === company.id);
   const [editing, setEditing] = useState(false);
+  const action = useAction();
   const [f, setF] = useState({
     objetivo: strategy?.objetivo ?? "",
     diagnostico: strategy?.diagnostico ?? "",
@@ -179,9 +181,11 @@ export function StrategyTab({ company }: { company: Company }) {
   });
 
   const save = () => {
-    s.saveStrategy(company.id, { ...f, proximaRevisao: fromInputDate(f.proximaRevisao) });
-    setEditing(false);
-    toast("Estratégia salva", { sub: "Versão anterior mantida no histórico" });
+    void action.run(async () => {
+      await s.saveStrategy(company.id, { ...f, proximaRevisao: fromInputDate(f.proximaRevisao) });
+      setEditing(false);
+      toast("Estratégia salva", { sub: "Versão anterior mantida no histórico" });
+    });
   };
 
   return (
@@ -222,11 +226,12 @@ export function StrategyTab({ company }: { company: Company }) {
                 </Field>
               </div>
               <div className="flex justify-end gap-2">
+                {action.error && <span className="mr-auto text-[12.5px] font-medium text-brand">{action.error}</span>}
                 <Button size="sm" variant="ghost" onClick={() => setEditing(false)}>
                   Cancelar
                 </Button>
-                <Button size="sm" variant="primary" onClick={save} disabled={!f.objetivo.trim() || !f.estrategia.trim()}>
-                  Salvar nova versão
+                <Button size="sm" variant="primary" onClick={save} disabled={!f.objetivo.trim() || !f.estrategia.trim() || action.busy}>
+                  {action.busy ? "Salvando…" : "Salvar nova versão"}
                 </Button>
               </div>
             </div>

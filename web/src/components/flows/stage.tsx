@@ -13,6 +13,7 @@ import { useStore, type ActivityDraft } from "@/lib/store";
 import type { Company, Contact, Papel, Potencial, Prensa } from "@/lib/types";
 import { formatWhatsApp, isValidWhatsApp, storedWhatsApp } from "@/lib/br-ids";
 import { useUI } from "@/lib/ui-store";
+import { useAction } from "@/lib/use-action";
 import { cn, money, quoteTotals } from "@/lib/utils";
 
 /** Mudança de etapa validada (RN-03), com tarefas da nova etapa e próximo passo obrigatório (RN-01). */
@@ -29,6 +30,7 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
   const [newContact, setNewContact] = useState<{ nome: string; cargo: string; papel: Papel; whatsapp: string }>({ nome: "", cargo: "", papel: "Técnico", whatsapp: "" });
   const [nota, setNota] = useState(initialNota ?? "");
   const [tasksSel, setTasksSel] = useState<Record<number, boolean>>({ 0: true });
+  const action = useAction();
 
   const targetStage = deal && target ? getStage(deal.funnel, target) : undefined;
   const targetIdx = deal && target ? stageIndex(deal.funnel, target) : 0;
@@ -60,15 +62,17 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
       toast("WhatsApp inválido", { sub: "Use um celular brasileiro com DDD, no formato (64) 99999-9999.", tone: "warn" });
       return;
     }
-    const patch = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined && v !== ""));
-    if (Object.keys(patch).length) s.updateCompany(company.id, patch);
-    if (newContact.nome.trim()) {
-      s.addContact({ companyId: company.id, nome: newContact.nome, cargo: newContact.cargo || newContact.papel, papel: newContact.papel, influencia: 2, whatsapp: storedWhatsApp(newContact.whatsapp), canal: "WhatsApp", autorizaContato: true, ativo: true });
-    }
+    const patch = Object.fromEntries(Object.entries(fields).filter(([, v]) => v !== undefined && v !== "")) as Partial<Company>;
+    const contact: Omit<Contact, "id"> | undefined = newContact.nome.trim()
+      ? { companyId: company.id, nome: newContact.nome, cargo: newContact.cargo || newContact.papel, papel: newContact.papel, influencia: 2, whatsapp: storedWhatsApp(newContact.whatsapp), canal: "WhatsApp", autorizaContato: true, ativo: true }
+      : undefined;
     const tarefas: ActivityDraft[] = selectedTasks.map((t, i) => ({ companyId: company.id, dealId: deal.id, titulo: t.titulo, tipo: t.tipo, dueAt: rel(t.prazoDias, 9 + i), ownerId: deal.ownerId, origem: "regra" }));
-    s.moveDeal(deal.id, targetStage.id, { checks, tarefas, nota: nota.trim() || undefined });
-    toast(`Etapa alterada para ${targetStage.nome}`, { sub: tarefas.length ? `${tarefas.length} tarefa(s) criada(s) pela regra da etapa` : `Tempo em ${curStage.nome} registrado` });
-    close();
+    // Tudo é gravado pelo banco; a janela só fecha depois que ele confirmar.
+    void action.run(async () => {
+      await s.moveDeal(deal.id, targetStage.id, { checks, tarefas, nota: nota.trim() || undefined, companyPatch: Object.keys(patch).length ? patch : undefined, newContact: contact });
+      toast(`Etapa alterada para ${targetStage.nome}`, { sub: tarefas.length ? `${tarefas.length} tarefa(s) criada(s) pela regra da etapa` : `Tempo em ${curStage.nome} registrado` });
+      close();
+    });
   };
 
   const setField = <K extends keyof Company>(k: K, v: Company[K]) => setFields((f) => ({ ...f, [k]: v }));
@@ -183,14 +187,18 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
           </>
         ) : (
           <>
-            <span className="mr-auto text-[12px] text-muted">
-              {missing.length ? `${missing.length} critério(s) pendente(s)` : needsNext ? "Defina o próximo passo" : "Tudo certo para avançar"}
-            </span>
+            {action.error ? (
+              <span className="mr-auto text-[12.5px] font-medium text-brand">{action.error}</span>
+            ) : (
+              <span className="mr-auto text-[12px] text-muted">
+                {missing.length ? `${missing.length} critério(s) pendente(s)` : needsNext ? "Defina o próximo passo" : "Tudo certo para avançar"}
+              </span>
+            )}
             <Button variant="ghost" onClick={close}>
               Cancelar
             </Button>
-            <Button variant="primary" onClick={confirm} disabled={!canConfirm}>
-              <Check size={15} /> Confirmar mudança
+            <Button variant="primary" onClick={confirm} disabled={!canConfirm || action.busy}>
+              <Check size={15} /> {action.busy ? "Salvando…" : "Confirmar mudança"}
             </Button>
           </>
         )
@@ -304,14 +312,17 @@ export function WinDealModal({ dealId }: { dealId: string }) {
   const [valor, setValor] = useState(String(initial || ""));
   const [obs, setObs] = useState("");
   const [done, setDone] = useState<{ posVendaDue: string } | null>(null);
+  const action = useAction();
   if (!deal || !company) return null;
   const isFirst = deal.funnel === "aquisicao";
   const ciclo = isFirst ? 1 : deal.ciclo + 1;
 
   const confirm = () => {
     const v = Number(valor) || 0;
-    s.winDeal(deal.id, { valor: v, obs: obs || (quote ? `Pedido referente ao orçamento ${quote.numero}.` : undefined) });
-    setDone({ posVendaDue: rel(5, 10) });
+    void action.run(async () => {
+      await s.winDeal(deal.id, { valor: v, obs: obs || (quote ? `Pedido referente ao orçamento ${quote.numero}.` : undefined) });
+      setDone({ posVendaDue: rel(5, 10) });
+    });
   };
 
   if (done)
@@ -343,8 +354,7 @@ export function WinDealModal({ dealId }: { dealId: string }) {
             quote ? `Orçamento ${quote.numero} marcado como aceito` : "Oportunidade encerrada como ganha",
             `Conta movida para o funil de Recorrência · ciclo ${ciclo}`,
             `Pós-venda agendado para ${fmtDateShort(done.posVendaDue)} (confirmar entrega e aplicação)`,
-            "IA registrou a previsão de recompra — sem cobrar o cliente antes da janela",
-            "Gestor notificado e auditoria atualizada",
+            "Venda, histórico e auditoria gravados no banco",
           ].map((t) => (
             <li key={t} className="flex items-start gap-2.5 text-[13px] text-ink">
               <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ok text-white">
@@ -365,11 +375,12 @@ export function WinDealModal({ dealId }: { dealId: string }) {
       icon={<Trophy size={18} />}
       footer={
         <>
+          {action.error && <span className="mr-auto text-[12.5px] font-medium text-brand">{action.error}</span>}
           <Button variant="ghost" onClick={close}>
             Cancelar
           </Button>
-          <Button variant="success" onClick={confirm} disabled={!Number(valor)}>
-            <Trophy size={15} /> Confirmar venda
+          <Button variant="success" onClick={confirm} disabled={!Number(valor) || action.busy}>
+            <Trophy size={15} /> {action.busy ? "Salvando…" : "Confirmar venda"}
           </Button>
         </>
       }
@@ -413,11 +424,14 @@ export function LoseDealModal({ dealId }: { dealId: string }) {
   const company = s.companies.find((c) => c.id === deal?.companyId);
   const [motivo, setMotivo] = useState("");
   const [obs, setObs] = useState("");
+  const action = useAction();
   if (!deal || !company) return null;
   const confirm = () => {
-    s.loseDeal(deal.id, { motivo, obs });
-    toast("Oportunidade encerrada como perdida", { tone: "warn", sub: `Motivo: ${motivo}` });
-    close();
+    void action.run(async () => {
+      await s.loseDeal(deal.id, { motivo, obs });
+      toast("Oportunidade encerrada como perdida", { tone: "warn", sub: `Motivo: ${motivo}` });
+      close();
+    });
   };
   return (
     <Modal
@@ -428,11 +442,12 @@ export function LoseDealModal({ dealId }: { dealId: string }) {
       icon={<XCircle size={18} />}
       footer={
         <>
+          {action.error && <span className="mr-auto text-[12.5px] font-medium text-brand">{action.error}</span>}
           <Button variant="ghost" onClick={close}>
             Cancelar
           </Button>
-          <Button variant="danger" onClick={confirm} disabled={!motivo}>
-            Confirmar perda
+          <Button variant="danger" onClick={confirm} disabled={!motivo || action.busy}>
+            {action.busy ? "Salvando…" : "Confirmar perda"}
           </Button>
         </>
       }
@@ -464,11 +479,14 @@ export function StandbyModal({ companyId }: { companyId: string }) {
   const [condicao, setCondicao] = useState("");
   const [reav, setReav] = useState(toInputDate(addDays(new Date(), 30).toISOString()));
   const [resp, setResp] = useState(company?.ownerId ?? "");
+  const action = useAction();
   if (!company) return null;
   const confirm = () => {
-    s.setStandby(company.id, { motivo, condicao, reavaliacao: fromInputDate(reav, 9), responsavelId: resp });
-    toast("Conta colocada em espera", { tone: "warn", sub: `Reavaliação em ${fmtDateShort(fromInputDate(reav))}` });
-    close();
+    void action.run(async () => {
+      await s.setStandby(company.id, { motivo, condicao, reavaliacao: fromInputDate(reav, 9), responsavelId: resp });
+      toast("Conta colocada em espera", { tone: "warn", sub: `Reavaliação em ${fmtDateShort(fromInputDate(reav))}` });
+      close();
+    });
   };
   return (
     <Modal
@@ -478,11 +496,12 @@ export function StandbyModal({ companyId }: { companyId: string }) {
       icon={<Pause size={18} />}
       footer={
         <>
+          {action.error && <span className="mr-auto text-[12.5px] font-medium text-brand">{action.error}</span>}
           <Button variant="ghost" onClick={close}>
             Cancelar
           </Button>
-          <Button variant="dark" onClick={confirm} disabled={!motivo || !condicao.trim() || !reav}>
-            Colocar em espera
+          <Button variant="dark" onClick={confirm} disabled={!motivo || !condicao.trim() || !reav || action.busy}>
+            {action.busy ? "Salvando…" : "Colocar em espera"}
           </Button>
         </>
       }

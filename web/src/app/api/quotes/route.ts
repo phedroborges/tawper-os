@@ -18,10 +18,16 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
     switch (body.action) {
-      case "save":
-        return NextResponse.json({ quote: await saveQuoteRecord(body.quote, body.actorId) });
-      case "duplicate":
-        return NextResponse.json({ quote: await duplicateQuoteRecord(body.id, body.actorId) });
+      case "save": {
+        const quote = await saveQuoteRecord(body.quote, body.actorId);
+        invalidateCrmReadCache();
+        return NextResponse.json({ quote });
+      }
+      case "duplicate": {
+        const quote = await duplicateQuoteRecord(body.id, body.actorId);
+        invalidateCrmReadCache();
+        return NextResponse.json({ quote });
+      }
       case "setStatus":
         invalidateCrmReadCache();
         return NextResponse.json({ quote: await setQuoteStatusRecord(body.id, body.status) });

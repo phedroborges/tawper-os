@@ -12,6 +12,7 @@ import { ACTIVITY_TYPES, getStage } from "@/lib/constants";
 import { addDays, fmtDue, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { openDealOf, stageOf } from "@/lib/selectors";
 import { useStore, type ActivityDraft } from "@/lib/store";
+import { useAction } from "@/lib/use-action";
 import type { ActivityType, Prioridade } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 import { cn } from "@/lib/utils";
@@ -265,12 +266,15 @@ export function RescheduleModal({ activityId }: { activityId: string }) {
   const a = s.activities.find((x) => x.id === activityId);
   const [due, setDue] = useState(toInputDate(addDays(new Date(), 2).toISOString()));
   const [motivo, setMotivo] = useState("");
+  const action = useAction();
   if (!a) return null;
   const save = () => {
-    s.rescheduleActivity(a.id, fromInputDate(due, 10));
-    if (motivo.trim()) s.addInteraction({ companyId: a.companyId, canal: "Nota", autorId: s.currentUserId ?? "u-murilo", kind: "note", titulo: `Atividade reagendada: ${a.titulo}`, conteudo: motivo });
-    toast("Atividade reagendada", { sub: fmtDue(fromInputDate(due)) });
-    close();
+    void action.run(async () => {
+      await s.rescheduleActivity(a.id, fromInputDate(due, 10));
+      if (motivo.trim()) await s.addInteraction({ companyId: a.companyId, canal: "Nota", autorId: s.currentUserId ?? "u-murilo", kind: "note", titulo: `Atividade reagendada: ${a.titulo}`, conteudo: motivo });
+      toast("Atividade reagendada", { sub: fmtDue(fromInputDate(due)) });
+      close();
+    });
   };
   return (
     <Modal
@@ -280,11 +284,12 @@ export function RescheduleModal({ activityId }: { activityId: string }) {
       title={a.titulo}
       footer={
         <>
+          {action.error && <span className="mr-auto text-[12.5px] font-medium text-brand">{action.error}</span>}
           <Button variant="ghost" onClick={close}>
             Cancelar
           </Button>
-          <Button variant="dark" onClick={save}>
-            Salvar nova data
+          <Button variant="dark" onClick={save} disabled={action.busy}>
+            {action.busy ? "Salvando…" : "Salvar nova data"}
           </Button>
         </>
       }

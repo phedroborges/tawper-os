@@ -157,9 +157,22 @@ function NovaEmpresa() {
       firstActivity: { tipo: next.tipo, titulo: next.titulo, dueAt: fromInputDate(next.due, 10), prioridade: next.prioridade, ownerId: f.ownerId },
       conversationId: convId,
     };
-    if (decision?.kind === "merge" || process.env.NEXT_PUBLIC_TAWPER_USE_SUPABASE !== "true") {
-      const id = decision?.kind === "merge" ? s.mergeIntoCompany(decision.id, payload) : s.createCompany(payload);
-      toast(decision?.kind === "merge" ? "Registros unidos — histórico preservado" : "Empresa cadastrada", { sub: "Oportunidade criada em Lead desconhecido com o primeiro próximo passo" });
+    if (decision?.kind === "merge") {
+      setSaving(true);
+      try {
+        const id = await s.mergeIntoCompany(decision.id, payload);
+        toast("Registros unidos — histórico preservado", { sub: "Dados novos incorporados e primeiro próximo passo criado" });
+        router.push(`/empresas/${id}`);
+      } catch (e) {
+        toast("Não foi possível unir os registros", { tone: "warn", sub: e instanceof Error ? e.message : undefined });
+      } finally {
+        setSaving(false);
+      }
+      return;
+    }
+    if (process.env.NEXT_PUBLIC_TAWPER_USE_SUPABASE !== "true") {
+      const id = s.createCompany(payload);
+      toast("Empresa cadastrada", { sub: "Oportunidade criada em Lead desconhecido com o primeiro próximo passo" });
       router.push(`/empresas/${id}`);
       return;
     }

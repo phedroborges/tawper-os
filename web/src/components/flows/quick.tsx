@@ -10,7 +10,7 @@ import { companyContext, funnelStages } from "@/lib/ai-context";
 import { ACTIVITY_TYPES, FUNNELS, FIELD_LABELS, isManager } from "@/lib/constants";
 import { fmtDue, fromInputDate, toInputDate } from "@/lib/dates";
 import { missingCriteria, nextStepOf, openDealOf } from "@/lib/selectors";
-import { useCurrentUser, useStore } from "@/lib/store";
+import { reportError, useCurrentUser, useStore } from "@/lib/store";
 import type { ActivityType, Company, Prioridade } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 import { aiQuickNote, aiTranscribe } from "@/server/ai/actions";
@@ -280,7 +280,7 @@ export function QuickRegisterModal({ companyId: initialCompany, text: initialTex
     };
     if (pending) s.completeActivity(pending.id, { resultado: text.trim(), next });
     else {
-      s.addInteraction({ companyId: company.id, dealId: deal?.id, canal: p.canal, autorId: user.id, titulo: p.resultado, conteudo: text.trim(), kind: "note" });
+      s.addInteraction({ companyId: company.id, dealId: deal?.id, canal: p.canal, autorId: user.id, titulo: p.resultado, conteudo: text.trim(), kind: "note" }).catch((e) => reportError(e, "Não foi possível salvar o registro"));
       s.addActivity(next);
     }
     s.addInteraction({
@@ -298,9 +298,9 @@ export function QuickRegisterModal({ companyId: initialCompany, text: initialTex
       ]
         .filter(Boolean)
         .join(" · "),
-    });
+    }).catch((e) => reportError(e, "Não foi possível salvar o registro da IA"));
     if (applyData && Object.keys(p.dadosExtraidos).length) s.updateCompany(company.id, p.dadosExtraidos as Partial<Company>, "ia");
-    if (deal && Object.keys(p.checks).length) s.setChecklist(deal.id, p.checks, "ia");
+    if (deal && Object.keys(p.checks).length) s.setChecklist(deal.id, p.checks, "ia").catch((e) => reportError(e, "Não foi possível marcar os critérios"));
 
     close();
     toast("Registro salvo", { tone: "ai", sub: `${p.proximoPasso.titulo} · ${fmtDue(p.proximoPasso.dueAt)}` });
@@ -317,11 +317,13 @@ export function QuickRegisterModal({ companyId: initialCompany, text: initialTex
       if (falta.length === 0) {
         const st = FUNNELS[d2.funnel].stages.find((x) => x.id === p.etapaSugerida!.stageId)!;
         const t = st.tarefas[0];
-        fresh.moveDeal(d2.id, st.id, {
-          nota: "Mudança sugerida pela IA a partir do registro do vendedor.",
-          tarefas: t ? [{ companyId: company.id, dealId: d2.id, titulo: t.titulo, tipo: t.tipo, dueAt: p.proximoPasso.dueAt, ownerId: d2.ownerId, origem: "regra" }] : [],
-        });
-        toast(`Etapa alterada para ${st.nome}`, { tone: "ai", sub: "Sugerida pela IA, confirmada por você" });
+        fresh
+          .moveDeal(d2.id, st.id, {
+            nota: "Mudança sugerida pela IA a partir do registro do vendedor.",
+            tarefas: t ? [{ companyId: company.id, dealId: d2.id, titulo: t.titulo, tipo: t.tipo, dueAt: p.proximoPasso.dueAt, ownerId: d2.ownerId, origem: "regra" }] : [],
+          })
+          .then(() => toast(`Etapa alterada para ${st.nome}`, { tone: "ai", sub: "Sugerida pela IA, confirmada por você" }))
+          .catch((e) => reportError(e, "Não foi possível mudar a etapa"));
       } else {
         setTimeout(() => open({ kind: "move", dealId: deal.id, toStageId: p.etapaSugerida!.stageId, preChecks: p.checks }), 120);
       }

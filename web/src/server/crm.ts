@@ -1,10 +1,26 @@
 import "server-only";
 
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
-import type { Activity, Company, Contact, Deal, DemoData, User } from "@/lib/types";
-import { USERS } from "@/lib/constants";
+import type { Activity, AuditEntry, Canal, Company, Contact, Deal, DemoData, Interaction, InteractionKind, Strategy, User } from "@/lib/types";
+import { FUNNELS, USERS } from "@/lib/constants";
+import { criterionKey } from "@/server/commands";
 import { ensureOperators } from "@/server/persist";
 import { listQuotes } from "@/server/quotes";
+
+/** Tudo que a tela precisa do banco; vem sempre inteiro, nunca guardado no navegador. */
+export type CrmSlice = Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users" | "quotes" | "interactions" | "audit" | "strategies" | "strategyHistory">;
+
+const CHANNEL_FROM_DB: Record<string, Canal> = { whatsapp: "WhatsApp", phone: "Ligação", email: "E-mail", visit: "Visita", meeting: "Reunião", note: "Nota", system: "Sistema", ai: "IA" };
+const KIND_FROM_DB: Record<string, InteractionKind> = { nudge: "cobranca", message: "note" };
+const ENTITY_LABEL: Record<string, string> = {
+  companies: "Empresa", contacts: "Contato", opportunities: "Oportunidade", activities: "Atividade", standby_periods: "Espera", quotes: "Orçamento", strategy_versions: "Estratégia",
+  opportunity_requirement_values: "Critério", sales: "Venda", company_relationships: "Vínculo", ai_suggestions: "Sugestão", route_plans: "Rota", stages: "Etapa", funnels: "Funil", stage_requirements: "Critério de etapa",
+};
+const FIELD_LABEL: Record<string, string> = {
+  created: "criado(a)", deleted: "excluído(a)", status: "Status", stage_id: "Etapa", owner_id: "Responsável", due_at: "Prazo", is_met: "Cumprido", trade_name: "Nome fantasia", legal_name: "Razão social",
+  estimated_value: "Valor estimado", realized_value: "Valor realizado", close_reason: "Motivo de encerramento", outcome: "Resultado", title: "Título", priority: "Prioridade", city: "Cidade", state: "UF",
+  discount_pct: "Desconto %", payment_terms: "Pagamento", validity_days: "Validade (dias)", review_at: "Reavaliação", ended_at: "Fim da espera", end_outcome: "Desfecho da espera",
+};
 
 export type DbHealth =
   | { ok: true; organization: string; funnels: number; stages: number; companies: number }
@@ -70,7 +86,7 @@ export async function getDbHealth(): Promise<DbHealth> {
   }
 }
 
-export async function loadCrmSnapshot(): Promise<Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users" | "quotes">> {
+export async function loadCrmSnapshot(): Promise<CrmSlice> {
   const sb = getSupabaseAdmin();
   const [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes, membershipsRes, profilesRes, regionsRes, funnelsRes] = await Promise.all([
     sb.from("companies").select("*").eq("organization_id", TAWPER_ORG_ID).neq("status", "merged"),
@@ -231,17 +247,18 @@ export async function loadCrmSnapshot(): Promise<Pick<DemoData, "companies" | "c
   }));
 
   void ownerToDemo;
-  const quotes = await listQuotes().catch(() => []);
-  return { companies, contacts, deals, activities, users, quotes };
+  const quotes = await listQuotes();
+  const extra = await loadDealDetails({ companies, deals, users, stageKey, stagesRows: stagesRes.data ?? [] });
+  return { companies: extra.companies, contacts, deals: extra.deals, activities, users, quotes, interactions: extra.interactions, audit: extra.audit, strategies: extra.strategies, strategyHistory: extra.strategyHistory };
 }
 
 export type CrmBootstrap = {
   health: DbHealth;
-  snapshot: Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users" | "quotes"> | null;
+  snapshot: CrmSlice | null;
   actorMap: Record<string, string> | null;
 };
 
-const SNAPSHOT_TTL_MS = 60_000;
+const SNAPSHOT_TTL_MS = 5_000;
 let snapshotGen = 0;
 let snapshotCache: { gen: number; at: number; body: CrmBootstrap } | null = null;
 let snapshotPending: { gen: number; promise: Promise<CrmBootstrap> } | null = null;
@@ -291,4 +308,133 @@ export function readCrmBootstrap(): Promise<CrmBootstrap> {
     });
   snapshotPending = { gen, promise };
   return promise;
+}
+
+type Row = Record<string, unknown>;
+
+/** O banco devolve no máximo 1000 linhas por consulta: lê em páginas até acabar. */
+async function selectPaged(table: string, columns: string, opts: { order: string; onlyMet?: boolean }): Promise<Row[]> {
+  const sb = getSupabaseAdmin();
+  const out: Row[] = [];
+  for (let from = 0; from < 20_000; from += 1000) {
+    let q = sb.from(table).select(columns).eq("organization_id", TAWPER_ORG_ID);
+    if (opts.onlyMet) q = q.eq("is_met", true);
+    const res = await q.order(opts.order).range(from, from + 999);
+    if (res.error) throw new Error(res.error.message);
+    const rows = (res.data ?? []) as unknown as Row[];
+    out.push(...rows);
+    if (rows.length < 1000) break;
+  }
+  return out;
+}
+
+/** Histórico de etapas, critérios cumpridos, espera, estratégia, linha do tempo e auditoria: tudo vem do banco. */
+async function loadDealDetails(input: { companies: Company[]; deals: Deal[]; users: User[]; stageKey: Map<string, string>; stagesRows: Row[] }) {
+  const { stageKey } = input;
+  const org = TAWPER_ORG_ID;
+  const [history, values, reqs, standbys, strategies, versions, interactions, audit] = await Promise.all([
+    selectPaged("opportunity_stage_history", "opportunity_id, stage_id, entered_at, left_at, entered_by, actor_type", { order: "entered_at" }),
+    selectPaged("opportunity_requirement_values", "opportunity_id, requirement_id, is_met", { order: "opportunity_id", onlyMet: true }),
+    getSupabaseAdmin().from("stage_requirements").select("id, key").eq("organization_id", org),
+    getSupabaseAdmin().from("standby_periods").select("*").eq("organization_id", org).is("ended_at", null),
+    getSupabaseAdmin().from("strategies").select("id, company_id, current_version_id").eq("organization_id", org),
+    getSupabaseAdmin().from("strategy_versions").select("*").eq("organization_id", org).order("version", { ascending: false }),
+    getSupabaseAdmin().from("interactions").select("*").eq("organization_id", org).order("occurred_at", { ascending: false }).limit(1500),
+    getSupabaseAdmin().from("audit_events").select("*").eq("organization_id", org).order("occurred_at", { ascending: false }).limit(800),
+  ]);
+  for (const r of [reqs, standbys, strategies, versions, interactions, audit]) if (r.error) throw new Error(r.error.message);
+
+  // critério do app (camelCase) a partir da chave do banco (snake_case)
+  const idByKey = new Map<string, string>();
+  for (const f of Object.values(FUNNELS)) for (const st of f.stages) for (const c of st.criterios) idByKey.set(criterionKey(c.id), c.id);
+  const reqKey = new Map((reqs.data ?? []).map((r) => [r.id as string, r.key as string]));
+
+  const checklist = new Map<string, Record<string, boolean>>();
+  for (const v of values) {
+    const key = reqKey.get(v.requirement_id as string);
+    const id = key ? idByKey.get(key) : undefined;
+    if (!id) continue;
+    const cur = checklist.get(v.opportunity_id as string) ?? {};
+    cur[id] = true;
+    checklist.set(v.opportunity_id as string, cur);
+  }
+  const historyBy = new Map<string, Deal["history"]>();
+  for (const h of history) {
+    const list = historyBy.get(h.opportunity_id as string) ?? [];
+    list.push({
+      stageId: stageKey.get(h.stage_id as string) ?? "lead",
+      enteredAt: h.entered_at as string,
+      leftAt: (h.left_at as string) ?? undefined,
+      byId: (h.entered_by as string) ?? (h.actor_type === "ai" ? "ia" : "sistema"),
+    });
+    historyBy.set(h.opportunity_id as string, list);
+  }
+  const deals = input.deals.map((d) => ({ ...d, checklist: checklist.get(d.id) ?? {}, history: historyBy.get(d.id) ?? [] }));
+
+  const standbyBy = new Map((standbys.data ?? []).map((s) => [s.company_id as string, s]));
+  const companies = input.companies.map((c) => {
+    const s = standbyBy.get(c.id);
+    return s ? { ...c, standby: { motivo: s.reason as string, inicio: s.started_at as string, reavaliacao: s.review_at as string, responsavelId: s.responsible_id as string, condicao: s.resume_condition as string } } : c;
+  });
+
+  const toStrategy = (v: Row, companyId: string): Strategy => ({
+    companyId,
+    objetivo: v.objective as string,
+    diagnostico: (v.diagnosis as string) ?? "",
+    barreira: (v.barrier as string) ?? "",
+    estrategia: v.strategy as string,
+    resultadoEsperado: (v.expected_result as string) ?? "",
+    definidoPorId: (v.defined_by as string) ?? "sistema",
+    revisadaEm: v.reviewed_at as string,
+    proximaRevisao: (v.next_review_at as string) ?? "",
+    versao: Number(v.version),
+    origem: v.origin === "ai_approved" ? "ia-aprovada" : "manual",
+  });
+  const companyOfStrategy = new Map((strategies.data ?? []).map((s) => [s.id as string, s]));
+  const strategiesOut: Strategy[] = [];
+  const historyOut: Strategy[] = [];
+  for (const v of versions.data ?? []) {
+    const parent = companyOfStrategy.get(v.strategy_id as string);
+    if (!parent) continue;
+    (parent.current_version_id === v.id ? strategiesOut : historyOut).push(toStrategy(v, parent.company_id as string));
+  }
+
+  const interactionsOut: Interaction[] = (interactions.data ?? []).map((i) => ({
+    id: i.id as string,
+    companyId: i.company_id as string,
+    dealId: (i.opportunity_id as string) ?? undefined,
+    canal: CHANNEL_FROM_DB[i.channel as string] ?? "Sistema",
+    at: i.occurred_at as string,
+    autorId: (i.author_id as string) ?? (i.actor_type === "ai" ? "ia" : "sistema"),
+    titulo: i.title as string,
+    conteudo: (i.content as string) ?? undefined,
+    kind: (KIND_FROM_DB[i.kind as string] ?? i.kind) as InteractionKind,
+  }));
+
+  const stageName = new Map(input.stagesRows.map((s) => [s.id as string, (s.key as string)]));
+  const userName = new Map(input.users.map((u) => [u.id, u.name]));
+  const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const pretty = (field: string, value: unknown) => {
+    if (value == null) return undefined;
+    const text = String(value);
+    if (field === "stage_id") return stageName.get(text) ?? text;
+    if (uuidLike.test(text)) return userName.get(text) ?? text;
+    if (text === "true") return "sim";
+    if (text === "false") return "não";
+    return text;
+  };
+  const auditOut: AuditEntry[] = (audit.data ?? []).map((a) => ({
+    id: `db-${a.id}`,
+    at: a.occurred_at as string,
+    autorId: (a.actor_id as string) ?? (a.actor_type === "ai" ? "ia" : "sistema"),
+    origem: a.actor_type === "ai" ? "ia" : a.actor_type === "integration" ? "integracao" : a.actor_type === "user" ? "usuario" : "automacao",
+    entidade: ENTITY_LABEL[a.entity_type as string] ?? (a.entity_type as string),
+    entidadeId: a.entity_id as string,
+    companyId: (a.company_id as string) ?? undefined,
+    campo: FIELD_LABEL[a.field as string] ?? (a.field as string),
+    de: pretty(a.field as string, a.old_value),
+    para: pretty(a.field as string, a.new_value),
+  }));
+
+  return { companies, deals, interactions: interactionsOut, audit: auditOut, strategies: strategiesOut, strategyHistory: historyOut };
 }

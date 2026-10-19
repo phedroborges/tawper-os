@@ -37,7 +37,7 @@ import { STORAGE_KEY, useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
 import { digitsQueryMatch } from "@/lib/br-ids";
 import { cn, normalize } from "@/lib/utils";
-import { DbStatus, SupabaseBridge } from "./SupabaseBridge";
+import { CrmSync, DbStatus, SupabaseBridge } from "./SupabaseBridge";
 import { Toaster } from "./Toaster";
 
 const FlowHost = dynamic(() => import("@/components/flows/FlowHost").then((m) => m.FlowHost), { ssr: false });
@@ -437,6 +437,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <>
       <SupabaseBridge />
+      <CrmSync />
       {!mounted ? (
         <Splash />
       ) : (

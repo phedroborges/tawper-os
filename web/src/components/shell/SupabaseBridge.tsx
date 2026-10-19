@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { setActorAliases, useStore } from "@/lib/store";
+import { refreshCrm, setActorAliases, useStore } from "@/lib/store";
 import type { DemoData } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 
@@ -58,6 +58,45 @@ export function SupabaseBridge() {
       cancelled = true;
     };
   }, [hydrateCrm, setDbHealth]);
+
+  return null;
+}
+
+/** Mantém a tela igual ao banco: relê ao voltar para a aba e a cada 15 segundos. */
+const SYNC_EVERY_MS = 15_000;
+
+export function CrmSync() {
+  const setDbHealth = useUI((s) => s.setDbHealth);
+
+  useEffect(() => {
+    let stopped = false;
+    let failing = false;
+    const sync = async () => {
+      if (stopped || document.hidden) return;
+      try {
+        await refreshCrm();
+        if (failing) {
+          failing = false;
+          setDbHealth({ ok: true, label: "conexão com o banco restabelecida" });
+        }
+      } catch (e) {
+        failing = true;
+        setDbHealth({ ok: false, label: `sem conexão com o banco — ${e instanceof Error ? e.message : "erro de rede"}` });
+      }
+    };
+    const timer = window.setInterval(sync, SYNC_EVERY_MS);
+    const onVisible = () => {
+      if (!document.hidden) void sync();
+    };
+    document.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    return () => {
+      stopped = true;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+    };
+  }, [setDbHealth]);
 
   return null;
 }
