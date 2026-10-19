@@ -38,7 +38,7 @@ import { useUI } from "@/lib/ui-store";
 import { digitsQueryMatch } from "@/lib/br-ids";
 import { cn, normalize } from "@/lib/utils";
 import { ConversasLoading } from "@/components/chat/ConversasLoading";
-import { InboxButton, InboxDrawer, InboxUnreadSync } from "@/components/chat/InboxDrawer";
+import { ChatDock, InboxButton, InboxUnreadSync } from "@/components/chat/ChatDock";
 import { CrmSync, DbStatus, SupabaseBridge } from "./SupabaseBridge";
 import { Toaster } from "./Toaster";
 
@@ -485,7 +485,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <MobileTabBar onConversasIntent={onConversasIntent} />
           {conversasLoading && <ConversasLoading />}
-          <InboxDrawer />
+          <ChatDock />
           {(extras || flow) && <FlowHost />}
           {(extras || assistantOpen) && <AssistantPanel />}
           {(extras || guideOpen) && <DemoGuide />}

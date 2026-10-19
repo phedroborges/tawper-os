@@ -51,14 +51,23 @@ interface UIState {
   conversasLoading: boolean;
   beginConversasLoad: () => void;
   endConversasLoad: () => void;
-  /** Inbox do WhatsApp aberto na lateral, em qualquer tela; `peer` abre direto numa conversa. */
-  inbox: { open: boolean; peer: string };
+  /**
+   * Janelas do WhatsApp no canto da tela (como o Messenger): a lista e até 3 conversas abertas,
+   * cada uma podendo ficar minimizada. A tela de trás continua usável.
+   */
+  dock: { list: DockState; chats: { peer: string; min: boolean }[] };
+  /** Com número: abre a janela daquela conversa. Sem número: abre a lista. */
   openInbox: (peer?: string) => void;
-  closeInbox: () => void;
+  setDockList: (state: DockState) => void;
+  toggleChatMin: (peer: string) => void;
+  closeChat: (peer: string) => void;
   /** Conversas do WhatsApp com mensagem não lida para quem está usando (null = WhatsApp não ligado). */
   liveUnread: number | null;
   setLiveUnread: (n: number | null) => void;
 }
+
+export type DockState = "closed" | "open" | "min";
+const MAX_DOCK_CHATS = 3;
 
 let tid = 0;
 
@@ -89,9 +98,16 @@ export const useUI = create<UIState>()((set, get) => ({
   conversasLoading: false,
   beginConversasLoad: () => set({ conversasLoading: true }),
   endConversasLoad: () => set({ conversasLoading: false }),
-  inbox: { open: false, peer: "" },
-  openInbox: (peer = "") => set({ inbox: { open: true, peer } }),
-  closeInbox: () => set({ inbox: { open: false, peer: "" } }),
+  dock: { list: "closed", chats: [] },
+  openInbox: (peer = "") => {
+    const { dock } = get();
+    if (!peer) return set({ dock: { ...dock, list: "open" } });
+    const chats = [{ peer, min: false }, ...dock.chats.filter((c) => c.peer !== peer)].slice(0, MAX_DOCK_CHATS);
+    set({ dock: { list: dock.list === "closed" ? "min" : dock.list, chats } });
+  },
+  setDockList: (list) => set({ dock: { ...get().dock, list } }),
+  toggleChatMin: (peer) => set({ dock: { ...get().dock, chats: get().dock.chats.map((c) => (c.peer === peer ? { ...c, min: !c.min } : c)) } }),
+  closeChat: (peer) => set({ dock: { ...get().dock, chats: get().dock.chats.filter((c) => c.peer !== peer) } }),
   liveUnread: null,
   setLiveUnread: (liveUnread) => set({ liveUnread }),
 }));
