@@ -469,19 +469,20 @@ export async function moveDealRecord(input: {
     .eq("organization_id", TAWPER_ORG_ID)
     .maybeSingle();
   if (opp.error) throw new Error(opp.error.message);
-  if (!opp.data) throw new Error("Oportunidade não encontrada.");
-  if (opp.data.status !== "open") throw new Error("Só é possível mover oportunidade aberta.");
+  const opportunity = opp.data;
+  if (!opportunity) throw new Error("Oportunidade não encontrada.");
+  if (opportunity.status !== "open") throw new Error("Só é possível mover oportunidade aberta.");
 
-  const current = await sb.from("stages").select("id, key, position").eq("id", opp.data.stage_id).maybeSingle();
+  const current = await sb.from("stages").select("id, key, position").eq("id", opportunity.stage_id).maybeSingle();
   if (current.error) throw new Error(current.error.message);
   if (!current.data) throw new Error("Etapa atual não encontrada.");
 
   const wantedKeys = Array.from(new Set([input.toStageId, stageKeyToDb(input.toStageId)]));
-  const found = await sb.from("stages").select("id, key, position, probability, is_terminal").eq("funnel_id", opp.data.funnel_id).in("key", wantedKeys).order("position", { ascending: true });
+  const found = await sb.from("stages").select("id, key, position, probability, is_terminal").eq("funnel_id", opportunity.funnel_id).in("key", wantedKeys).order("position", { ascending: true });
   if (found.error) throw new Error(found.error.message);
   const target = found.data?.[0];
   if (!target) throw new Error(`Etapa "${input.toStageId}" não encontrada no funil.`);
-  if (target.id === opp.data.stage_id) return;
+  if (target.id === opportunity.stage_id) return;
   if (target.is_terminal) throw new Error("Etapa terminal exige registrar a venda.");
 
   const actors = await ensureOperators();
@@ -503,7 +504,7 @@ export async function moveDealRecord(input: {
           )
           select ${TAWPER_ORG_ID}::uuid, ${input.dealId}::uuid, r.id, true, now(), ${actor}::uuid, ${nota ?? null}
             from public.stage_requirements r
-           where r.stage_id = ${opp.data.stage_id}::uuid and r.kind = 'check'
+           where r.stage_id = ${opportunity.stage_id}::uuid and r.kind = 'check'
           on conflict (opportunity_id, requirement_id)
           do update set is_met = true, met_at = now(), met_by = excluded.met_by, note = excluded.note
         `;
@@ -533,7 +534,7 @@ export async function moveDealRecord(input: {
   for (const tarefa of input.tarefas ?? []) {
     await addActivityRecord({
       ...tarefa,
-      companyId: tarefa.companyId || (opp.data.company_id as string),
+      companyId: tarefa.companyId || (opportunity.company_id as string),
       dealId: input.dealId,
     });
   }
