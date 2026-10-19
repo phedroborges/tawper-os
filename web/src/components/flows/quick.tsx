@@ -7,7 +7,7 @@ import { Button, Checkbox, Field, Input, Select, Textarea } from "@/components/u
 import { Modal } from "@/components/ui/overlay";
 import { parseQuickNote, QUICK_EXAMPLES, type QuickProposal } from "@/lib/ai";
 import { companyContext, funnelStages } from "@/lib/ai-context";
-import { ACTIVITY_TYPES, FUNNELS, FIELD_LABELS, isManager } from "@/lib/constants";
+import { ACTIVITY_TYPES, FUNNELS, FIELD_LABELS, isManager, stageIndex } from "@/lib/constants";
 import { fmtDue, fromInputDate, toInputDate } from "@/lib/dates";
 import { missingCriteria, nextStepOf, openDealOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
@@ -314,6 +314,9 @@ export function QuickRegisterModal({ companyId: initialCompany, text: initialTex
       const d2 = fresh.deals.find((x) => x.id === deal.id)!;
       const c2 = fresh.companies.find((x) => x.id === company.id)!;
       const falta = missingCriteria(fresh, d2, c2);
+      if (stageIndex(d2.funnel, p.etapaSugerida.stageId) <= stageIndex(d2.funnel, d2.stageId)) {
+        return;
+      }
       if (falta.length === 0) {
         const st = FUNNELS[d2.funnel].stages.find((x) => x.id === p.etapaSugerida!.stageId)!;
         const t = st.tarefas[0];

@@ -6,7 +6,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { FIELD_LABELS, FUNNELS, getStage, isManager, stageIndex } from "./constants";
-import { stageKeyToUi, withRetornoNote } from "./crm-map";
+import { stageKeyToUi } from "./crm-map";
 import { fmtDateShort, rel } from "./dates";
 import { missingCriteria } from "./selectors";
 import { buildSeed, DATA_VERSION } from "./seed";
@@ -557,8 +557,8 @@ export const useStore = create<AppState>()(
           const to = getStage(deal.funnel, toStageId);
           const fromIdx = stageIndex(deal.funnel, deal.stageId);
           const toIdx = stageIndex(deal.funnel, toStageId);
-          const returning = toIdx >= 0 && fromIdx >= 0 && toIdx < fromIdx;
-          const nota = returning ? withRetornoNote(opts.nota) : opts.nota;
+          if (toIdx >= 0 && fromIdx >= 0 && toIdx < fromIdx) return;
+          const nota = opts.nota;
           const company = s.companies.find((c) => c.id === deal.companyId)!;
           const checks = { ...deal.checklist, ...(opts.checks ?? {}) };
           const allCriteria = FUNNELS[deal.funnel].stages.flatMap((st) => st.criterios);
@@ -569,7 +569,6 @@ export const useStore = create<AppState>()(
             stageEnteredAt: now,
             probabilidade: to.probabilidade,
             checklist: checks,
-            autoAdvanceHold: returning,
             history: [...deal.history.map((h) => (h.leftAt ? h : { ...h, leftAt: now })), { stageId: toStageId, enteredAt: now, byId: actor }],
           };
           const newActs: Activity[] = (opts.tarefas ?? []).map((t) => ({
