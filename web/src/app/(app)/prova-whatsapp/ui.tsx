@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, useTransition } from "react";
 import { ArrowLeft, Search, SendHorizontal, Settings2 } from "lucide-react";
 import { loadProofSnapshot, pairProofPhone, refreshProofQr, registerProofWebhook, sendProofText } from "@/server/integrations/stevo-proof/actions";
 import type { ProofEventView } from "@/server/integrations/stevo-proof/events";
+import { ForwardedLabel } from "@/components/chat/live-message";
+import { outgoingReceipt, WhatsAppTicks } from "@/components/chat/WhatsAppTicks";
 import { Badge, Button, Field, Input } from "@/components/ui/primitives";
 import { Drawer } from "@/components/ui/overlay";
 import { formatWhatsApp, normalizeWhatsApp } from "@/lib/br-ids";
@@ -14,7 +16,7 @@ type Snapshot = Awaited<ReturnType<typeof loadProofSnapshot>>;
 type Thread = {
   peer: string;
   name: string;
-  messages: { id: string; at: string; text: string; out: boolean }[];
+  messages: { id: string; at: string; text: string; out: boolean; receipt?: ProofEventView["receipt"]; forwarded?: boolean }[];
 };
 
 function chatOf(event: ProofEventView) {
@@ -24,7 +26,7 @@ function chatOf(event: ProofEventView) {
   if (direction !== "in" && direction !== "out") return null;
   const peer = event.peer || (legacy ? event.from : "");
   if (!peer || !event.preview) return null;
-  return { peer, name: event.name ?? "", out: direction === "out", text: event.preview, id: event.id, at: event.receivedAt };
+  return { peer, name: event.name ?? "", out: direction === "out", text: event.preview, id: event.id, at: event.receivedAt, receipt: event.receipt, forwarded: event.forwarded };
 }
 
 function threadsOf(events: ProofEventView[]): Thread[] {
@@ -34,7 +36,7 @@ function threadsOf(events: ProofEventView[]): Thread[] {
     if (!chat) continue;
     const thread = map.get(chat.peer) ?? { peer: chat.peer, name: "", messages: [] };
     if (chat.name) thread.name = chat.name;
-    thread.messages.push({ id: chat.id, at: chat.at, text: chat.text, out: chat.out });
+    thread.messages.push({ id: chat.id, at: chat.at, text: chat.text, out: chat.out, receipt: chat.receipt, forwarded: chat.forwarded });
     map.set(chat.peer, thread);
   }
   return [...map.values()].sort((a, b) => (b.messages.at(-1)?.at ?? "").localeCompare(a.messages.at(-1)?.at ?? ""));
@@ -62,6 +64,7 @@ function bubbleOf(item: PendingOut): ProofEventView {
     direction: "out",
     peer: item.peer,
     name: "",
+    receipt: "pending",
   };
 }
 
@@ -116,14 +119,36 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
   const listed = peer && !visible.some((thread) => thread.peer === peer) ? [{ peer, name: "", messages: [] }, ...visible] : visible;
   const active = threads.find((thread) => thread.peer === peer) ?? null;
 
+  const refreshLive = async () => {
+    try {
+      const res = await fetch("/api/whatsapp/live", { cache: "no-store" });
+      if (!res.ok) return;
+      const live = (await res.json()) as Pick<Snapshot, "events" | "conversations">;
+      setSnap((current) => {
+        const next = { ...current, events: live.events, conversations: live.conversations };
+        pendingOut.current = pendingOut.current.filter((item) => !alreadySaved(next.events, item));
+        return withPending(next, pendingOut.current);
+      });
+    } catch {
+      // O poll seguinte tenta de novo.
+    }
+  };
+
   const reload = async () => {
     show(await loadProofSnapshot());
   };
 
   useEffect(() => {
-    const timer = setInterval(() => {
-      loadProofSnapshot().then(show).catch(() => undefined);
-    }, 4000);
+    let busy = false;
+    const tick = () => {
+      if (busy || document.visibilityState === "hidden") return;
+      busy = true;
+      refreshLive().finally(() => {
+        busy = false;
+      });
+    };
+    const timer = setInterval(tick, 1000);
+    tick();
     return () => clearInterval(timer);
   }, []);
 
@@ -176,7 +201,7 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
         const sent = await sendProofText(target, text);
         setPeer(sent.number);
         setNewNumber("");
-        show(await loadProofSnapshot());
+        await refreshLive();
       } catch (error) {
         pendingOut.current = pendingOut.current.filter((row) => row.id !== item.id);
         setSnap((current) => ({ ...current, events: current.events.filter((event) => event.id !== item.id) }));
@@ -246,7 +271,10 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
                         <span className="truncate text-[16px] text-[#111b21]">{thread.name || formatWhatsApp(thread.peer)}</span>
                         <span className="ml-auto shrink-0 text-[12px] text-[#667781]">{last ? clock(last.at) : ""}</span>
                       </span>
-                      <span className="mt-0.5 block truncate text-[13.5px] text-[#667781]">{last?.out ? "Você: " : ""}{last?.text}</span>
+                      <span className="mt-0.5 flex items-center gap-1 truncate text-[13.5px] text-[#667781]">
+                        {last?.out && <WhatsAppTicks receipt={outgoingReceipt(last)} />}
+                        <span className="truncate">{last?.out ? "Você: " : ""}{last?.text}</span>
+                      </span>
                     </span>
                   </button>
                 </li>
@@ -284,8 +312,12 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
                       )}
                       <div className={cn("flex", message.out ? "justify-end" : "justify-start")}>
                         <div className={cn("max-w-[75%] rounded-lg px-2.5 py-1.5 text-[14.2px] leading-snug text-[#111b21] shadow-sm", message.out ? "rounded-tr-none bg-[#d9fdd3]" : "rounded-tl-none bg-white")}>
+                          {message.forwarded && <ForwardedLabel />}
                           <span className="whitespace-pre-wrap">{message.text}</span>
-                          <span className="ml-2 inline-block translate-y-1 text-[11px] text-[#667781]">{clock(message.at)}</span>
+                          <span className="ml-2 inline-flex translate-y-1 items-center gap-0.5 text-[11px] text-[#667781]">
+                            {clock(message.at)}
+                            {message.out && <WhatsAppTicks receipt={outgoingReceipt(message)} />}
+                          </span>
                         </div>
                       </div>
                     </div>

@@ -15,7 +15,7 @@ import {
   type StevoStatus,
 } from "./client";
 import { appPublicUrl, assertProofEnabled, proofEnabled, signMessages, stevoConfigured, stevoInstance, testNumber, webhookPublicUrl } from "./config";
-import { listMessages, recordSent, type ProofEventView } from "./events";
+import { listMessages, recordSent, syncForwardedFlagsFromDebug, type ProofEventView } from "./events";
 import {
   deleteLiveConversation,
   getLiveConversation,
@@ -87,7 +87,8 @@ export async function loadProofSnapshot(): Promise<ProofSnapshot> {
   }
   const status = await getStevoStatusCached();
   const qr = status.loggedIn ? emptyQr : await getStevoQr().catch(() => emptyQr);
-  if (status.loggedIn) ensureLiveWebhook().catch(() => undefined);
+  if (status.loggedIn) await ensureLiveWebhook().catch(() => false);
+  syncForwardedFlagsFromDebug().catch(() => undefined);
   const [events, conversations] = await Promise.all([listMessages(), listLiveConversations().catch(() => null)]);
   return {
     enabled,
@@ -118,6 +119,7 @@ export async function loadCompanyChat(phones: string[]): Promise<CompanyChatSnap
   }
   const peers = [...new Set(phones.map((phone) => toStevoNumber(phone)).filter((peer): peer is string => Boolean(peer)).flatMap(peerVariants))];
   const status = await getStevoStatusCached();
+  syncForwardedFlagsFromDebug().catch(() => undefined);
   const [stored, conversations] = await Promise.all([
     listLiveMessagesFor(peers).catch(() => null),
     listLiveConversationsFor(peers).catch(() => null),

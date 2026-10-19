@@ -1,4 +1,3 @@
-import { existsSync, writeFileSync } from "node:fs";
 import { stevoApiKey, stevoBaseUrl, stevoConfigured, webhookPublicUrl } from "./config";
 
 type Json = Record<string, unknown> | unknown[] | string | number | boolean | null;
@@ -21,6 +20,8 @@ export type StevoQr = {
 function asRecord(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value) ? (value as Record<string, unknown>) : null;
 }
+
+const STEVO_SUBSCRIBE = ["MESSAGE", "SEND_MESSAGE", "CONNECTION", "RECEIPT", "ACK"];
 
 async function stevoFetch(path: string, init?: RequestInit): Promise<unknown> {
   if (!stevoConfigured()) throw new Error("Stevo não configurado.");
@@ -150,7 +151,7 @@ export function toStevoNumber(raw: string) {
 export async function requestStevoPairing(rawPhone: string) {
   const phone = toStevoNumber(rawPhone);
   if (!phone) throw new Error("Informe o celular com DDD. Exemplo: 64 99999-9999.");
-  const payload = { phone, subscribe: ["MESSAGE", "SEND_MESSAGE", "CONNECTION"], webhookUrl: webhookPublicUrl() };
+  const payload = { phone, subscribe: STEVO_SUBSCRIBE, webhookUrl: webhookPublicUrl() };
   let code = pairingCodeOf(await stevoFetch("/instance/pair", { method: "POST", body: JSON.stringify(payload) }));
   if (!code) {
     code = pairingCodeOf(
@@ -240,20 +241,50 @@ export async function revokeStevoMessage(peer: string, messageId: string) {
   await stevoFetch("/message/delete", { method: "POST", body: JSON.stringify({ chat, messageId }) });
 }
 
-const subscribedFlag = "/tmp/tawper-stevo-subscribed";
-let subscribing: Promise<void> | null = null;
+let webhookInflight: Promise<boolean> | null = null;
+let lastWebhookRegisterAt = 0;
+const WEBHOOK_REREGISTER_MS = 5 * 60 * 1000;
 
+function webhookPointsToUs(info: unknown, url: string) {
+  if (!url) return false;
+  const blob = JSON.stringify(info ?? "").toLowerCase();
+  const needle = url.toLowerCase();
+  if (blob.includes(needle)) return true;
+  try {
+    const path = new URL(url).pathname.toLowerCase();
+    return Boolean(path) && blob.includes(path);
+  } catch {
+    return false;
+  }
+}
+
+function webhookHasReceipts(info: unknown) {
+  const blob = JSON.stringify(info ?? "").toUpperCase();
+  return /\bRECEIPT\b/.test(blob) || /\bACK\b/.test(blob);
+}
+
+/** Garante o webhook da Stevo quando a sessão está logada, sem precisar clicar em Reativar. */
 export function ensureLiveWebhook() {
-  if (subscribing) return subscribing;
-  subscribing = (async () => {
-    if (existsSync(subscribedFlag)) return;
+  if (webhookInflight) return webhookInflight;
+  webhookInflight = (async () => {
+    const url = webhookPublicUrl();
+    if (!url) return false;
+    const current = await getStevoWebhook().catch(() => null);
+    if (webhookPointsToUs(current, url) && (webhookHasReceipts(current) || lastWebhookRegisterAt > 0)) return true;
+    if (Date.now() - lastWebhookRegisterAt < WEBHOOK_REREGISTER_MS) return true;
     await registerStevoWebhook();
-    writeFileSync(subscribedFlag, new Date().toISOString());
-  })().catch((error: unknown) => {
-    subscribing = null;
-    throw error;
-  });
-  return subscribing;
+    lastWebhookRegisterAt = Date.now();
+    return true;
+  })()
+    .catch((error: unknown) => {
+      webhookInflight = null;
+      throw error;
+    })
+    .then((ok) => {
+      webhookInflight = null;
+      return ok;
+    });
+  return webhookInflight;
 }
 
 export async function registerStevoWebhook() {
@@ -261,14 +292,22 @@ export async function registerStevoWebhook() {
   if (!url) {
     throw new Error("Defina APP_PUBLIC_URL (HTTPS público do EasyPanel) e STEVO_WEBHOOK_TOKEN.");
   }
-  const result = (await stevoFetch("/instance/connect", {
-    method: "POST",
-    body: JSON.stringify({
-      webhookUrl: url,
-      subscribe: ["MESSAGE", "SEND_MESSAGE", "CONNECTION"],
-      immediate: true,
-    }),
-  })) as Json;
+  const lists = [STEVO_SUBSCRIBE, ["MESSAGE", "SEND_MESSAGE", "CONNECTION", "RECEIPT"], ["MESSAGE", "SEND_MESSAGE", "CONNECTION"]];
+  let result: Json = null;
+  let lastError: Error | null = null;
+  for (const subscribe of lists) {
+    try {
+      result = (await stevoFetch("/instance/connect", {
+        method: "POST",
+        body: JSON.stringify({ webhookUrl: url, subscribe, immediate: true }),
+      })) as Json;
+      lastError = null;
+      break;
+    } catch (cause) {
+      lastError = cause instanceof Error ? cause : new Error("Stevo recusou o webhook.");
+    }
+  }
+  if (lastError) throw lastError;
   clearStevoStatusCache();
   return { url, result };
 }
