@@ -38,6 +38,7 @@ import { useUI } from "@/lib/ui-store";
 import { digitsQueryMatch } from "@/lib/br-ids";
 import { cn, normalize } from "@/lib/utils";
 import { ConversasLoading } from "@/components/chat/ConversasLoading";
+import { InboxButton, InboxDrawer, InboxUnreadSync } from "@/components/chat/InboxDrawer";
 import { CrmSync, DbStatus, SupabaseBridge } from "./SupabaseBridge";
 import { Toaster } from "./Toaster";
 
@@ -56,6 +57,7 @@ interface NavItem {
 function useNav(): NavItem[] {
   const user = useCurrentUser();
   const conversations = useStore((s) => s.conversations);
+  const liveUnread = useUI((s) => s.liveUnread);
   const companies = useStore((s) => s.companies);
   const contacts = useStore((s) => s.contacts);
   const deals = useStore((s) => s.deals);
@@ -80,7 +82,7 @@ function useNav(): NavItem[] {
     { href: "/meu-dia", label: "Meu dia", icon: <Sun size={18} /> },
     { href: "/carteira", label: "Carteira", icon: <Building2 size={18} /> },
     { href: "/funis", label: "Funis", icon: <Columns3 size={18} /> },
-    { href: "/conversas", label: "Conversas", icon: <MessageCircle size={18} />, badge: unread },
+    { href: "/conversas", label: "Conversas", icon: <MessageCircle size={18} />, badge: liveUnread ?? unread },
     { href: "/catalogo", label: "Catálogo", icon: <Package size={18} /> },
     { href: "/rotas", label: "Rotas", icon: <Route size={18} /> },
     { href: "/implementacao", label: "Implementação", icon: <ListChecks size={18} /> },
@@ -362,6 +364,7 @@ function Topbar() {
         >
           <Sparkles size={17} /> <span className="hidden lg:inline">Pergunte à IA</span>
         </button>
+        <InboxButton />
         <Notifications />
         <button type="button" onClick={() => open({ kind: "quick" })} className="inline-flex size-10 items-center justify-center gap-2 rounded-[6px] bg-navy text-[13.5px] font-medium text-white hover:bg-navy-2 sm:h-10 sm:w-auto sm:px-3.5">
           <Plus size={16} /> <span className="hidden sm:inline">Registrar</span>
@@ -459,6 +462,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     <>
       <SupabaseBridge />
       <CrmSync />
+      <InboxUnreadSync />
       {!mounted ? (
         <Splash />
       ) : (
@@ -481,6 +485,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <MobileTabBar onConversasIntent={onConversasIntent} />
           {conversasLoading && <ConversasLoading />}
+          <InboxDrawer />
           {(extras || flow) && <FlowHost />}
           {(extras || assistantOpen) && <AssistantPanel />}
           {(extras || guideOpen) && <DemoGuide />}

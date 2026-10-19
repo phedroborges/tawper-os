@@ -35,6 +35,8 @@ const CITY_REGION: Record<string, string> = {
 function NovaEmpresa() {
   const params = useSearchParams();
   const convId = params.get("conv") ?? undefined;
+  // Vindo da conversa do WhatsApp: o número (e o nome que o cliente usa) já entram no contato.
+  const fromChat = { whatsapp: params.get("whatsapp") ?? "", nome: params.get("contato") ?? "" };
   const s = useStore();
   const user = useCurrentUser();
   const router = useRouter();
@@ -44,10 +46,10 @@ function NovaEmpresa() {
   const [reading, setReading] = useState(Boolean(convId));
   const [filled, setFilled] = useState(false);
   const [f, setF] = useState({
-    nome: "", razaoSocial: "", cnpj: "", cidade: "", uf: "SP", regiao: "", ramo: "", origem: "Visita de prospecção", ownerId: user.id,
+    nome: "", razaoSocial: "", cnpj: "", cidade: "", uf: "SP", regiao: "", ramo: "", origem: fromChat.whatsapp ? "WhatsApp" : "Visita de prospecção", ownerId: user.id,
     urgencia: "Média" as Urgencia, colhedoras: "", prensa: "" as Prensa | "", marcaAtual: "", observacoes: "",
   });
-  const [ct, setCt] = useState({ nome: "", cargo: "", papel: "Comprador" as Papel, whatsapp: "", email: "" });
+  const [ct, setCt] = useState({ nome: fromChat.nome, cargo: "", papel: "Comprador" as Papel, whatsapp: fromChat.whatsapp ? formatWhatsApp(fromChat.whatsapp) : "", email: "" });
   const [next, setNext] = useState({ titulo: "Qualificar: frota, prensa e fornecedor atual", tipo: "WhatsApp" as ActivityType, due: toInputDate(rel(0)), prioridade: "Alta" as Prioridade });
   const [decision, setDecision] = useState<{ kind: "merge"; id: string } | { kind: "new" } | null>(null);
   const [touched, setTouched] = useState(false);

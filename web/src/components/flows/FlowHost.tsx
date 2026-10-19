@@ -34,7 +34,7 @@ export function FlowHost() {
     case "quote":
       return <QuoteModal key={key} dealId={flow.dealId} quoteId={flow.quoteId} />;
     case "contact":
-      return <ContactModal key={key} companyId={flow.companyId} />;
+      return <ContactModal key={key} companyId={flow.companyId} preset={flow.preset} />;
     case "editCompany":
       return <EditCompanyModal key={key} companyId={flow.companyId} />;
     case "cobranca":

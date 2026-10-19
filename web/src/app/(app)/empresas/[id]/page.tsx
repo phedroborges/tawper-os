@@ -22,30 +22,32 @@ import {
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
 import { Suspense, useState } from "react";
-import { ChatThread, ConversationAI } from "@/components/chat/Chat";
-import { CompanyLiveChat, useCompanyChat } from "@/components/chat/CompanyLiveChat";
 import { DealTab } from "@/components/company/DealTab";
 import { CopilotCard, StrategyTab } from "@/components/company/StrategyTab";
 import { CompanyLink, NextStepCard, QualityMeter, StagePill, StageStepper, StatusBadge, TaskRow, Timeline, UrgencyBadge, UserAvatar, userName } from "@/components/crm/crm";
 import { MenuItem, Popover } from "@/components/ui/overlay";
 import { Badge, Button, Card, CardHeader, Empty } from "@/components/ui/primitives";
 import { FUNNELS, getStage, isManager, isMuriloLouis } from "@/lib/constants";
-import { fmtAgo, fmtDate, fmtDateTime, rel } from "@/lib/dates";
-import { canSeeCompany, currentDealOf, daysInStage, lastInteractionAt, missingCriteria, openDealOf, pendingOf, qualityOf, timelineOf } from "@/lib/selectors";
+import { fmtAgo, fmtDate, fmtDateTime } from "@/lib/dates";
+import { canSeeCompany, currentDealOf, daysInStage, lastInteractionAt, openDealOf, pendingOf, qualityOf, timelineOf } from "@/lib/selectors";
 import { reportError, useCurrentUser, useStore } from "@/lib/store";
+import { peerOf } from "@/lib/contact-match";
 import { useUI } from "@/lib/ui-store";
+import { useAdvanceDeal } from "@/lib/use-advance";
 import { formatCNPJ, formatWhatsApp } from "@/lib/br-ids";
 import { cn, money } from "@/lib/utils";
 
-type Tab = "timeline" | "conversa" | "atividades" | "negocio" | "estrategia" | "contatos" | "auditoria";
+type Tab = "timeline" | "atividades" | "negocio" | "estrategia" | "contatos" | "auditoria";
 
 function EmpresaView() {
   const { id } = useParams<{ id: string }>();
   const params = useSearchParams();
   const s = useStore();
   const user = useCurrentUser();
-  const { open, toast } = useUI();
-  const [tab, setTab] = useState<Tab>((params.get("tab") as Tab) ?? "timeline");
+  const { open, toast, openInbox } = useUI();
+  const { advance } = useAdvanceDeal();
+  const initialTab = params.get("tab") as Tab | null;
+  const [tab, setTab] = useState<Tab>(initialTab && initialTab !== ("conversa" as Tab) ? initialTab : "timeline");
   const [note, setNote] = useState("");
 
   const company = s.companies.find((c) => c.id === id);
@@ -54,7 +56,6 @@ function EmpresaView() {
   const pending = company ? pendingOf(s, company.id) : [];
   const done = company ? s.activities.filter((a) => a.companyId === company.id && a.status === "concluida").sort((a, b) => (b.completedAt ?? "").localeCompare(a.completedAt ?? "")) : [];
   const contacts = company ? s.contacts.filter((c) => c.companyId === company.id) : [];
-  const conv = company ? s.conversations.find((c) => c.companyId === company.id) : undefined;
   const timeline = company ? timelineOf(s, company.id) : [];
   const audit = company ? s.audit.filter((a) => a.companyId === company.id) : [];
   const quality = company ? qualityOf(s, company) : { score: 0, missing: [] };
@@ -62,9 +63,6 @@ function EmpresaView() {
   const dependents = company ? s.companies.filter((c) => c.influenciadoraId === company.id) : [];
   const pendingSug = company ? s.suggestions.find((x) => x.companyId === company.id && x.status === "pendente") : undefined;
   const wins = company ? s.deals.filter((d) => d.companyId === company.id && d.status === "ganha") : [];
-  const liveChat = useCompanyChat(contacts);
-  const live = Boolean(liveChat.data?.live);
-  const [liveContactId, setLiveContactId] = useState<string | null>(null);
 
   if (!company) return <Empty title="Empresa não encontrada" text="Talvez a demo tenha sido reiniciada." action={<Link href="/carteira" className="font-semibold text-navy-3">Voltar para a carteira</Link>} />;
   if (!canSeeCompany(user, company))
@@ -73,41 +71,20 @@ function EmpresaView() {
   const stage = deal ? getStage(deal.funnel, deal.stageId) : undefined;
   const nextStage = deal ? FUNNELS[deal.funnel].stages[FUNNELS[deal.funnel].stages.findIndex((x) => x.id === deal.stageId) + 1] : undefined;
 
-  /** Se não falta nenhum critério, avança as etapas já cumpridas — sem modal. */
+  /** Avança de um clique (mesma regra da ficha do cliente na conversa). */
   const avancar = () => {
-    if (!deal || !nextStage) return;
-    if (nextStage.terminal) {
-      open({ kind: "win", dealId: deal.id });
-      return;
-    }
-    const falta = missingCriteria(s, deal, company);
-    if (falta.length) {
-      open({ kind: "move", dealId: deal.id, toStageId: nextStage.id });
-      return;
-    }
-    const hops = s.autoAdvanceDeal(deal.id, { ignoreHold: true });
-    const fresh = useStore.getState().deals.find((d) => d.id === deal.id);
-    const landed = fresh ? getStage(fresh.funnel, fresh.stageId) : nextStage;
-    if (hops) {
-      toast(`Etapa alterada para ${landed.nome}`, { sub: hops > 1 ? "Etapas já cumpridas foram avançadas automaticamente" : undefined });
-      return;
-    }
-    const t = nextStage.tarefas[0];
-    s.moveDeal(deal.id, nextStage.id, {
-      tarefas: t ? [{ companyId: company.id, dealId: deal.id, titulo: t.titulo, tipo: t.tipo, dueAt: rel(t.prazoDias, 10), ownerId: deal.ownerId, origem: "regra" }] : [],
-    });
-    toast(`Etapa alterada para ${nextStage.nome}`, { sub: t ? `Próximo passo criado: ${t.titulo.toLowerCase()}` : undefined });
+    if (deal) advance(deal, company);
   };
 
-  const startConversation = () => {
-    const contact = contacts.find((c) => c.whatsapp) ?? contacts[0];
-    if (!contact || (live && !contact.whatsapp)) {
+  /** Abre o WhatsApp na lateral, já na conversa do contato (o principal, se nenhum for escolhido). */
+  const startConversation = (contact = contacts.find((c) => c.whatsapp && c.ativo) ?? contacts.find((c) => c.whatsapp)) => {
+    const peer = peerOf(contact);
+    if (!peer) {
+      toast("Nenhum contato com WhatsApp", { tone: "warn", sub: "Cadastre o WhatsApp de um contato para conversar." });
       open({ kind: "contact", companyId: company.id });
       return;
     }
-    if (live) setLiveContactId(contact.id);
-    else s.startConversation(company.id, contact.id);
-    setTab("conversa");
+    openInbox(peer);
   };
 
   const addNote = () => {
@@ -122,7 +99,6 @@ function EmpresaView() {
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "timeline", label: "Histórico" },
-    { id: "conversa", label: "Conversa", count: (live ? liveChat.unread : conv?.unread) || undefined },
     { id: "atividades", label: "Tarefas", count: pending.length },
     { id: "negocio", label: "Negócio" },
     { id: "estrategia", label: "Estratégia" },
@@ -176,6 +152,9 @@ function EmpresaView() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
+              <Button variant="success" size="sm" onClick={() => startConversation()} title="Abre a conversa na lateral, sem sair da empresa">
+                <MessageCircle size={14} /> WhatsApp
+              </Button>
               <Button variant="outline" size="sm" onClick={() => open({ kind: "quick", companyId: company.id })}>
                 <Sparkles size={14} /> Registrar
               </Button>
@@ -324,35 +303,6 @@ function EmpresaView() {
             </div>
           )}
 
-          {tab === "conversa" &&
-            (liveChat.loading || live ? (
-              <CompanyLiveChat
-                company={company}
-                chat={liveChat}
-                contactId={liveContactId}
-                onSelectContact={setLiveContactId}
-                onAddContact={() => open({ kind: "contact", companyId: company.id })}
-              />
-            ) : conv ? (
-              <div className="grid lg:grid-cols-[1fr_300px]">
-                <ChatThread conv={conv} className="h-[560px]" />
-                <div className="border-t border-line p-3 lg:border-t-0 lg:border-l">
-                  <ConversationAI conv={conv} compact />
-                </div>
-              </div>
-            ) : (
-              <Empty
-                icon={<MessageCircle size={20} />}
-                title="Nenhuma conversa com esta conta"
-                text="Inicie pelo WhatsApp integrado: a conversa fica vinculada à empresa e ao contato."
-                action={
-                  <Button variant="success" onClick={startConversation}>
-                    <MessageCircle size={15} /> Iniciar conversa
-                  </Button>
-                }
-              />
-            ))}
-
           {tab === "atividades" && (
             <div>
               <div className="flex items-center justify-between px-4 pt-3 pb-1">
@@ -412,11 +362,7 @@ function EmpresaView() {
                         size="xs"
                         variant="success"
                         className="mt-2.5"
-                        onClick={() => {
-                          if (live) setLiveContactId(c.id);
-                          else s.startConversation(company.id, c.id);
-                          setTab("conversa");
-                        }}
+                        onClick={() => startConversation(c)}
                       >
                         <MessageCircle size={12} /> Conversar
                       </Button>

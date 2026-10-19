@@ -14,11 +14,11 @@ import type { Company, Papel, Potencial, Prensa, Urgencia } from "@/lib/types";
 import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import { useUI } from "@/lib/ui-store";
 
-export function ContactModal({ companyId }: { companyId: string }) {
+export function ContactModal({ companyId, preset }: { companyId: string; preset?: { nome?: string; whatsapp?: string } }) {
   const s = useStore();
   const { close, toast } = useUI();
   const company = s.companies.find((c) => c.id === companyId);
-  const [f, setF] = useState({ nome: "", cargo: "", papel: "Técnico" as Papel, whatsapp: "", email: "", influencia: 2 as 1 | 2 | 3 });
+  const [f, setF] = useState({ nome: preset?.nome ?? "", cargo: "", papel: "Técnico" as Papel, whatsapp: preset?.whatsapp ?? "", email: "", influencia: 2 as 1 | 2 | 3 });
   if (!company) return null;
   const save = () => {
     if (f.whatsapp.trim() && !isValidWhatsApp(f.whatsapp)) {

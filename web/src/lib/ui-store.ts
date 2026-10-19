@@ -15,7 +15,7 @@ export type Flow =
   | { kind: "lose"; dealId: string }
   | { kind: "standby"; companyId: string }
   | { kind: "quote"; dealId: string; quoteId?: string }
-  | { kind: "contact"; companyId: string }
+  | { kind: "contact"; companyId: string; preset?: { nome?: string; whatsapp?: string } }
   | { kind: "editCompany"; companyId: string }
   | { kind: "cobranca"; companyId: string; texto?: string }
   | { kind: "deleteCompany"; companyId: string }
@@ -51,6 +51,13 @@ interface UIState {
   conversasLoading: boolean;
   beginConversasLoad: () => void;
   endConversasLoad: () => void;
+  /** Inbox do WhatsApp aberto na lateral, em qualquer tela; `peer` abre direto numa conversa. */
+  inbox: { open: boolean; peer: string };
+  openInbox: (peer?: string) => void;
+  closeInbox: () => void;
+  /** Conversas do WhatsApp com mensagem não lida para quem está usando (null = WhatsApp não ligado). */
+  liveUnread: number | null;
+  setLiveUnread: (n: number | null) => void;
 }
 
 let tid = 0;
@@ -82,4 +89,9 @@ export const useUI = create<UIState>()((set, get) => ({
   conversasLoading: false,
   beginConversasLoad: () => set({ conversasLoading: true }),
   endConversasLoad: () => set({ conversasLoading: false }),
+  inbox: { open: false, peer: "" },
+  openInbox: (peer = "") => set({ inbox: { open: true, peer } }),
+  closeInbox: () => set({ inbox: { open: false, peer: "" } }),
+  liveUnread: null,
+  setLiveUnread: (liveUnread) => set({ liveUnread }),
 }));
