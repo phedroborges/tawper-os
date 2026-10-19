@@ -8,7 +8,7 @@ import { Modal } from "@/components/ui/overlay";
 import { Badge, Button, Field, Input, Select, Textarea } from "@/components/ui/primitives";
 import { inferStage, parseQuickNote } from "@/lib/ai";
 import { companyContext } from "@/lib/ai-context";
-import { ACTIVITY_TYPES, getStage } from "@/lib/constants";
+import { ACTIVITY_TYPES, getStage, stageIndex } from "@/lib/constants";
 import { addDays, fmtDue, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { openDealOf, stageOf } from "@/lib/selectors";
 import { useStore, type ActivityDraft } from "@/lib/store";
@@ -73,7 +73,9 @@ export function CompleteActivityModal({ activityId }: { activityId: string }) {
       });
       toast("Atividade concluída", { sub: `Próximo passo: ${titulo} · ${fmtDue(fromInputDate(due))}` });
       close();
-      if (stageHint && deal) setTimeout(() => open({ kind: "move", dealId: deal.id, toStageId: stageHint.stageId }), 120);
+      if (stageHint && deal && stageIndex(deal.funnel, stageHint.stageId) > stageIndex(deal.funnel, deal.stageId)) {
+        setTimeout(() => open({ kind: "move", dealId: deal.id, toStageId: stageHint.stageId }), 120);
+      }
       return;
     }
     s.completeActivity(a.id, { resultado: res });

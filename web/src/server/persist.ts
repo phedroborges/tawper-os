@@ -2,7 +2,7 @@ import "server-only";
 
 import postgres from "postgres";
 import { USERS } from "@/lib/constants";
-import { stageKeyToDb, withRetornoNote } from "@/lib/crm-map";
+import { stageKeyToDb } from "@/lib/crm-map";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import { storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import type { Activity, ActivityType, Company, Contact, Deal, Papel, Prensa, Prioridade, Urgencia } from "@/lib/types";
@@ -484,11 +484,14 @@ export async function moveDealRecord(input: {
   if (!target) throw new Error(`Etapa "${input.toStageId}" não encontrada no funil.`);
   if (target.id === opportunity.stage_id) return;
   if (target.is_terminal) throw new Error("Etapa terminal exige registrar a venda.");
+  if (Number(target.position) < Number(current.data.position)) {
+    throw new Error("Não é permitido voltar etapa.");
+  }
 
   const actors = await ensureOperators();
   const actor = input.actorId ? await resolveOwner(input.actorId, actors) : null;
   const advancing = Number(target.position) > Number(current.data.position);
-  const nota = advancing ? input.nota : withRetornoNote(input.nota);
+  const nota = input.nota;
   const url = process.env.DATABASE_URL;
   if (!url) throw new Error("DATABASE_URL ausente para gravar a etapa.");
 

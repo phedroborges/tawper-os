@@ -2,7 +2,7 @@
 
 import { AlertTriangle, ArrowRight, Check, CircleCheck, Eye, FileText, Pause, PartyPopper, Trophy, XCircle } from "lucide-react";
 import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
 import { Modal } from "@/components/ui/overlay";
 import { Badge, Button, Checkbox, Field, Input, Select, Textarea } from "@/components/ui/primitives";
@@ -24,16 +24,28 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
   const company = s.companies.find((c) => c.id === deal?.companyId);
   const stages = deal ? FUNNELS[deal.funnel].stages : [];
   const curIdx = deal ? stageIndex(deal.funnel, deal.stageId) : 0;
-  const [target, setTarget] = useState(toStageId ?? stages[curIdx + 1]?.id ?? "");
+  const [target, setTarget] = useState(() => {
+    if (toStageId && deal && stageIndex(deal.funnel, toStageId) >= curIdx) return toStageId;
+    return stages[curIdx + 1]?.id ?? "";
+  });
   const [checks, setChecks] = useState<Record<string, boolean>>({ ...(preChecks ?? {}) });
   const [fields, setFields] = useState<Partial<Company>>({});
   const [newContact, setNewContact] = useState<{ nome: string; cargo: string; papel: Papel; whatsapp: string }>({ nome: "", cargo: "", papel: "Técnico", whatsapp: "" });
   const [nota, setNota] = useState(initialNota ?? "");
   const [tasksSel, setTasksSel] = useState<Record<number, boolean>>({ 0: true });
 
+  useEffect(() => {
+    if (!toStageId) return;
+    const current = useStore.getState().deals.find((d) => d.id === dealId);
+    if (!current) return;
+    if (stageIndex(current.funnel, toStageId) < stageIndex(current.funnel, current.stageId)) {
+      toast("Não é possível voltar o lead", { tone: "warn", sub: "O funil só avança. Confira a etapa atual." });
+      open({ kind: "viewStage", dealId: current.id });
+    }
+  }, [dealId, toStageId, toast, open]);
+
   const targetStage = deal && target ? getStage(deal.funnel, target) : undefined;
   const targetIdx = deal && target ? stageIndex(deal.funnel, target) : 0;
-  const backwards = targetIdx < curIdx;
   const curStage = deal ? getStage(deal.funnel, deal.stageId) : undefined;
 
   const effectiveDeal = deal ? { ...deal, checklist: { ...deal.checklist, ...checks } } : undefined;
@@ -46,17 +58,17 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
   if (!deal || !company || !curStage || !effectiveDeal || !effectiveCompany) return null;
 
   const dataEff = { ...s, contacts: contactsEff };
-  const criteria = backwards ? [] : curStage.criterios;
+  const criteria = curStage.criterios;
   const status = criteria.map((c) => ({ c, ok: criterionMet(dataEff, effectiveDeal, effectiveCompany, c) }));
   const missing = status.filter((x) => !x.ok);
   const hasPending = pendingOf(s, company.id).length > 0;
   const tasks = targetStage?.tarefas ?? [];
   const selectedTasks = tasks.filter((_, i) => tasksSel[i]);
-  const needsNext = !backwards && !hasPending && selectedTasks.length === 0 && !targetStage?.terminal;
-  const canConfirm = targetStage && !targetStage.terminal && missing.length === 0 && !needsNext && (!backwards || nota.trim().length > 3);
+  const needsNext = !hasPending && selectedTasks.length === 0 && !targetStage?.terminal;
+  const canConfirm = Boolean(targetStage && !targetStage.terminal && targetIdx >= curIdx && missing.length === 0 && !needsNext);
 
   const confirm = () => {
-    if (!targetStage) return;
+    if (!targetStage || targetIdx < curIdx) return;
     if (newContact.nome.trim() && newContact.whatsapp.trim() && !isValidWhatsApp(newContact.whatsapp)) {
       toast("WhatsApp inválido", { sub: "Use um celular brasileiro com DDD, no formato (64) 99999-9999.", tone: "warn" });
       return;
@@ -70,13 +82,12 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
       }
       s.moveDeal(deal.id, targetStage.id, { checks, tarefas, nota: nota.trim() || undefined });
     });
-    const extra = backwards ? 0 : s.autoAdvanceDeal(deal.id, { ignoreHold: true });
+    const extra = s.autoAdvanceDeal(deal.id, { ignoreHold: true });
     const fresh = useStore.getState().deals.find((d) => d.id === deal.id);
     const landed = fresh ? getStage(fresh.funnel, fresh.stageId) : targetStage;
     toast(`Etapa alterada para ${landed.nome}`, {
-      sub: backwards
-        ? "Retorno registrado. A empresa permanece nesta etapa até você avançar de novo."
-        : extra > 0
+      sub:
+        extra > 0
           ? "Etapas já cumpridas foram avançadas automaticamente"
           : tarefas.length
             ? `${tarefas.length} tarefa(s) criada(s) pela regra da etapa`
@@ -198,15 +209,11 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
         ) : (
           <>
             <span className="mr-auto text-[12px] text-muted">
-              {backwards
-                ? nota.trim().length > 3
-                  ? "Tudo certo para retornar"
-                  : "Informe o motivo do retorno"
-                : missing.length
-                  ? `${missing.length} critério(s) pendente(s)`
-                  : needsNext
-                    ? "Defina o próximo passo"
-                    : "Tudo certo para avançar"}
+              {missing.length
+                ? `${missing.length} critério(s) pendente(s)`
+                : needsNext
+                  ? "Defina o próximo passo"
+                  : "Tudo certo para avançar"}
             </span>
             <Button variant="ghost" onClick={close}>
               Cancelar
@@ -225,13 +232,23 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
               key={st.id}
               type="button"
               disabled={i === curIdx}
-              onClick={() => setTarget(st.id)}
+              onClick={() => {
+                if (i < curIdx) {
+                  toast("Não é possível voltar o lead", { tone: "warn", sub: "O funil só avança. Confira a etapa atual." });
+                  close();
+                  setTimeout(() => open({ kind: "viewStage", dealId: deal.id }), 100);
+                  return;
+                }
+                setTarget(st.id);
+              }}
               className={cn(
                 "rounded-[6px] border px-2.5 py-1.5 text-[12.5px] whitespace-nowrap transition",
+                i < curIdx && "border-line bg-soft text-muted/60 hover:border-warn/50",
                 i === curIdx && "cursor-default border-dashed border-line text-muted",
                 st.id === target && "border-navy bg-navy text-white",
-                st.id !== target && i !== curIdx && "border-line bg-white text-muted hover:text-ink",
+                st.id !== target && i > curIdx && "border-line bg-white text-muted hover:text-ink",
               )}
+              title={i < curIdx ? "Não é possível voltar etapa" : undefined}
             >
               {i + 1}. {st.nome}
             </button>
@@ -247,34 +264,26 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
           </div>
         ) : (
           <>
-            {!backwards && (
-              <div className="rounded-[6px] border border-line">
-                <div className="flex items-center justify-between border-b border-line px-3.5 py-2.5">
-                  <div className="text-[13px] font-medium text-ink">Para sair de {curStage.nome}</div>
-                  <span className={cn("text-[12px]", missing.length ? "text-warn" : "text-ok")}>{missing.length ? `faltam ${missing.length}` : "tudo certo"}</span>
-                </div>
-                {status.length === 0 && <div className="px-3.5 py-3 text-[12.5px] text-muted">Esta etapa não possui critérios mínimos de saída.</div>}
-                <ul>
-                  {status.map(({ c, ok }) => (
-                    <li key={c.id} className="border-b border-line/70 px-3.5 py-2.5 last:border-b-0">
-                      <div className="flex items-center gap-2 text-[13px]">
-                        {ok ? <CircleCheck size={16} className="text-ok" /> : <AlertTriangle size={16} className="text-warn" />}
-                        <span className={cn("font-medium", ok ? "text-ink" : "text-ink")}>{c.label}</span>
-                        {c.hint && <span className="text-[11.5px] text-muted">({c.hint})</span>}
-                        {ok && preChecks?.[c.id] && <AIBadge label="reconhecido pela IA" />}
-                      </div>
-                      {(!ok || (c.kind === "check" && checks[c.id] && !deal.checklist[c.id])) && <div className="mt-2 pl-6">{renderFix(c)}</div>}
-                    </li>
-                  ))}
-                </ul>
+            <div className="rounded-[6px] border border-line">
+              <div className="flex items-center justify-between border-b border-line px-3.5 py-2.5">
+                <div className="text-[13px] font-medium text-ink">Para sair de {curStage.nome}</div>
+                <span className={cn("text-[12px]", missing.length ? "text-warn" : "text-ok")}>{missing.length ? `faltam ${missing.length}` : "tudo certo"}</span>
               </div>
-            )}
-
-            {backwards && (
-              <Field label="Motivo do retorno de etapa" required hint="fica na auditoria">
-                <Input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ex.: cliente pediu novo teste" />
-              </Field>
-            )}
+              {status.length === 0 && <div className="px-3.5 py-3 text-[12.5px] text-muted">Esta etapa não possui critérios mínimos de saída.</div>}
+              <ul>
+                {status.map(({ c, ok }) => (
+                  <li key={c.id} className="border-b border-line/70 px-3.5 py-2.5 last:border-b-0">
+                    <div className="flex items-center gap-2 text-[13px]">
+                      {ok ? <CircleCheck size={16} className="text-ok" /> : <AlertTriangle size={16} className="text-warn" />}
+                      <span className={cn("font-medium", ok ? "text-ink" : "text-ink")}>{c.label}</span>
+                      {c.hint && <span className="text-[11.5px] text-muted">({c.hint})</span>}
+                      {ok && preChecks?.[c.id] && <AIBadge label="reconhecido pela IA" />}
+                    </div>
+                    {(!ok || (c.kind === "check" && checks[c.id] && !deal.checklist[c.id])) && <div className="mt-2 pl-6">{renderFix(c)}</div>}
+                  </li>
+                ))}
+              </ul>
+            </div>
 
             {targetStage && (
               <div className="rounded-[6px] border border-line">
@@ -303,11 +312,9 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
                 </div>
               </div>
             )}
-            {!backwards && (
-              <Field label="Observação" hint="opcional">
-                <Input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ex.: apresentação feita com a manutenção" />
-              </Field>
-            )}
+            <Field label="Observação" hint="opcional">
+              <Input value={nota} onChange={(e) => setNota(e.target.value)} placeholder="Ex.: apresentação feita com a manutenção" />
+            </Field>
           </>
         )}
       </div>

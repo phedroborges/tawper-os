@@ -66,6 +66,11 @@ function Kanban() {
     const c = s.companies.find((x) => x.id === d.companyId);
     const fromIdx = stageIndex(d.funnel, d.stageId);
     const toIdx = stageIndex(d.funnel, stageId);
+    if (toIdx < fromIdx) {
+      toast("Não é possível voltar o lead", { tone: "warn", sub: "O funil só avança. Confira a etapa atual." });
+      open({ kind: "viewStage", dealId: d.id });
+      return;
+    }
     if (c && toIdx > fromIdx && missingCriteria(s, d, c).length === 0) {
       const hops = s.autoAdvanceDeal(d.id, { untilStageId: stageId, ignoreHold: true });
       if (hops) {
