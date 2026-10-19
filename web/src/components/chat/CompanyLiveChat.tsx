@@ -132,7 +132,7 @@ export function useCompanyChat(contacts: Contact[]) {
   }, [data, contacts]);
 
   const loading = !data && !failed;
-  return { data, loading, threads, refresh, unread: threads.reduce((sum, t) => sum + t.unread, 0) };
+  return { data, loading, threads, refresh, poll, unread: threads.reduce((sum, t) => sum + t.unread, 0) };
 }
 
 export function CompanyLiveChat({
@@ -151,7 +151,7 @@ export function CompanyLiveChat({
   const user = useCurrentUser();
   const manager = isManager(user);
   const agent: Agent = useMemo(() => ({ id: user?.id ?? "", name: user?.short || user?.name || "", role: user?.role ?? "vendedor" }), [user]);
-  const { data, threads, refresh } = chat;
+  const { data, threads, refresh, poll } = chat;
   const [draft, setDraft] = useState("");
   const [error, setError] = useState("");
   const [attachment, setAttachment] = useState<File | null>(null);
