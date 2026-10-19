@@ -15,6 +15,7 @@ import {
   type Agent,
 } from "@/server/integrations/stevo-proof/actions";
 import type { MediaKind, ProofEventView } from "@/server/integrations/stevo-proof/events";
+import { ConversasReady } from "@/components/chat/ConversasLoading";
 import { MediaView, REVOKED_TEXT, visibleText, withoutSignature } from "@/components/chat/live-message";
 import { Badge, Button, Card, Empty, Field, Input, Select } from "@/components/ui/primitives";
 import { isManager } from "@/lib/constants";
@@ -374,6 +375,7 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
 
   return (
     <div className="-mt-1">
+      <ConversasReady />
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div>
           <div className="label">Central de conversas</div>

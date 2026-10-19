@@ -4,6 +4,7 @@ import { ArrowLeft, MessageCircle, Search } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
+import { ConversasReady } from "@/components/chat/ConversasLoading";
 import { ChatThread, ConversationAI } from "@/components/chat/Chat";
 import { DueLabel, StagePill, UserAvatar } from "@/components/crm/crm";
 import { Badge, Card, Empty, Segmented } from "@/components/ui/primitives";
@@ -45,6 +46,7 @@ function Central() {
 
   return (
     <div className="-mt-1">
+      <ConversasReady />
       <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
         <div>
           <div className="label">Central de conversas</div>
@@ -166,7 +168,7 @@ function Central() {
 
 export function DemoConversas() {
   return (
-    <Suspense>
+    <Suspense fallback={null}>
       <Central />
     </Suspense>
   );

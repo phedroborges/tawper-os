@@ -37,6 +37,7 @@ import { STORAGE_KEY, useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
 import { digitsQueryMatch } from "@/lib/br-ids";
 import { cn, normalize } from "@/lib/utils";
+import { ConversasLoading } from "@/components/chat/ConversasLoading";
 import { DbStatus, SupabaseBridge } from "./SupabaseBridge";
 import { Toaster } from "./Toaster";
 
@@ -89,7 +90,7 @@ function useNav(): NavItem[] {
   ];
 }
 
-function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
+function Sidebar({ onNavigate, onConversasIntent }: { onNavigate?: () => void; onConversasIntent?: () => void }) {
   const pathname = usePathname();
   const user = useCurrentUser();
   const nav = useNav();
@@ -103,7 +104,10 @@ function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
       <Link
         key={n.href}
         href={n.href}
-        onClick={onNavigate}
+        onClick={() => {
+          if (n.href === "/conversas") onConversasIntent?.();
+          onNavigate?.();
+        }}
         className={cn(
           "flex items-center gap-3 rounded-[6px] px-2.5 py-2 text-[13.5px] transition-colors",
           active ? "bg-soft font-medium text-ink" : "text-muted hover:bg-soft/70 hover:text-ink",
@@ -369,7 +373,7 @@ function Topbar() {
   );
 }
 
-function MobileTabBar() {
+function MobileTabBar({ onConversasIntent }: { onConversasIntent?: () => void }) {
   const pathname = usePathname();
   const open = useUI((s) => s.open);
   const nav = useNav();
@@ -378,7 +382,14 @@ function MobileTabBar() {
     <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
       {items.map((n, i) =>
         n ? (
-          <Link key={n.href} href={n.href} className={cn("relative flex flex-col items-center gap-0.5 py-2 text-[10.5px]", pathname.startsWith(n.href) ? "font-medium text-navy" : "text-muted")}>
+          <Link
+            key={n.href}
+            href={n.href}
+            onClick={() => {
+              if (n.href === "/conversas") onConversasIntent?.();
+            }}
+            className={cn("relative flex flex-col items-center gap-0.5 py-2 text-[10.5px]", pathname.startsWith(n.href) ? "font-medium text-navy" : "text-muted")}
+          >
             {n.icon}
             {n.label.split(" ")[0]}
             {Boolean(n.badge) && <span className="absolute top-1 right-[calc(50%-18px)] size-1.5 rounded-full bg-brand" />}
@@ -421,12 +432,22 @@ function Splash() {
 
 export function AppShell({ children }: { children: ReactNode }) {
   const mounted = useMounted();
+  const pathname = usePathname();
   const mobileNav = useUI((s) => s.mobileNav);
   const setMobileNav = useUI((s) => s.setMobileNav);
   const flow = useUI((s) => s.flow);
   const assistantOpen = useUI((s) => s.assistantOpen);
   const guideOpen = useUI((s) => s.guideOpen);
   const [extras, setExtras] = useState(false);
+  const conversasLoading = useUI((s) => s.conversasLoading);
+  const beginConversasLoad = useUI((s) => s.beginConversasLoad);
+  const endConversasLoad = useUI((s) => s.endConversasLoad);
+  useEffect(() => {
+    if (!pathname.startsWith("/conversas")) endConversasLoad();
+  }, [pathname, endConversasLoad]);
+  const onConversasIntent = () => {
+    if (!pathname.startsWith("/conversas")) beginConversasLoad();
+  };
   useEffect(() => {
     const run = () => setExtras(true);
     const idle = window.requestIdleCallback?.(run, { timeout: 800 });
@@ -443,12 +464,12 @@ export function AppShell({ children }: { children: ReactNode }) {
         <div className="min-h-dvh bg-paper">
           <CrossTabSync />
           <aside className="fixed inset-y-0 left-0 z-50 hidden w-[224px] md:block">
-            <Sidebar />
+            <Sidebar onConversasIntent={onConversasIntent} />
           </aside>
           {mobileNav && (
             <div className="fixed inset-0 z-[75] bg-ink/30 md:hidden" onClick={() => setMobileNav(false)}>
               <aside className="h-full w-[248px] animate-slide-up" onClick={(e) => e.stopPropagation()}>
-                <Sidebar onNavigate={() => setMobileNav(false)} />
+                <Sidebar onNavigate={() => setMobileNav(false)} onConversasIntent={onConversasIntent} />
               </aside>
             </div>
           )}
@@ -457,7 +478,8 @@ export function AppShell({ children }: { children: ReactNode }) {
             <DbStatus />
             <main className="mx-auto w-full max-w-[1440px] px-4 pt-6 pb-28 md:px-8 md:pt-7 md:pb-14">{children}</main>
           </div>
-          <MobileTabBar />
+          <MobileTabBar onConversasIntent={onConversasIntent} />
+          {conversasLoading && <ConversasLoading />}
           {(extras || flow) && <FlowHost />}
           {(extras || assistantOpen) && <AssistantPanel />}
           {(extras || guideOpen) && <DemoGuide />}

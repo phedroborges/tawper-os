@@ -48,6 +48,9 @@ interface UIState {
   setActiveConversation: (id: string | null) => void;
   dbHealth: { ok: boolean; label: string } | null;
   setDbHealth: (v: { ok: boolean; label: string } | null) => void;
+  conversasLoading: boolean;
+  beginConversasLoad: () => void;
+  endConversasLoad: () => void;
 }
 
 let tid = 0;
@@ -76,4 +79,7 @@ export const useUI = create<UIState>()((set, get) => ({
   setActiveConversation: (activeConversation) => set({ activeConversation }),
   dbHealth: null,
   setDbHealth: (dbHealth) => set({ dbHealth }),
+  conversasLoading: false,
+  beginConversasLoad: () => set({ conversasLoading: true }),
+  endConversasLoad: () => set({ conversasLoading: false }),
 }));
