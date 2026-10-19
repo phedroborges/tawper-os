@@ -42,3 +42,11 @@ Os avisos remanescentes dos advisors referem-se a policies e funções anteriore
 ## Aceite e pendência externa
 
 Código, migration, segurança e fluxo simulado estão aprovados para integração. A operação real só começa depois que o número `17981640081` for conectado por QR code na Stevo, os segredos forem cadastrados no ambiente, a migration for aplicada no banco alvo e o worker for agendado. Essas ações exigem acesso à conta/infraestrutura externa e não são reproduzíveis no repositório.
+
+## Correção após validação real — SM-2026-10-19-004
+
+- O webhook de diagnóstico da Central de Conversas registrou a mensagem real “Como estão as tarefas de hoje?” às 19:58 de 19/10/2026.
+- A outbox do agente não continha esse ID; continha somente o ensaio sintético concluído com status `processed`, uma tentativa e sem erro.
+- Causa confirmada: a instância SM v2 entregava no endpoint mantido automaticamente pela Central de Conversas, substituindo o endpoint exclusivo configurado manualmente.
+- Correção: o endpoint compartilhado agora preserva o registro de Conversas e também enfileira o agente quando o remetente passa pela lista interna.
+- O JID real de Phedro chegou na forma brasileira antiga sem o nono dígito; o normalizador converteu-o para o número autorizado. Um teste de regressão cobre esse caso.

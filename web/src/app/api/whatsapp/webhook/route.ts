@@ -1,4 +1,6 @@
-import { NextResponse } from "next/server";
+import { after, NextResponse } from "next/server";
+import { ingestWhatsAppAgentPayload } from "@/server/ai/whatsapp/ingest";
+import { processWhatsAppAgentQueue } from "@/server/ai/whatsapp/runtime";
 import { webhookToken } from "@/server/integrations/stevo-proof/config";
 import { recordInbound } from "@/server/integrations/stevo-proof/events";
 
@@ -50,7 +52,13 @@ export async function POST(request: Request) {
     // Diagnóstico nunca pode derrubar o recebimento.
   }
   const event = await recordInbound(payload);
-  return NextResponse.json({ ok: true, id: event.id, event: event.event });
+  const agent = await ingestWhatsAppAgentPayload(payload);
+  if ("queued" in agent && agent.queued) {
+    after(async () => {
+      await processWhatsAppAgentQueue(3);
+    });
+  }
+  return NextResponse.json({ ok: true, id: event.id, event: event.event, agent });
 }
 
 export async function GET(request: Request) {

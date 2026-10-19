@@ -1,15 +1,13 @@
 import { timingSafeEqual } from "node:crypto";
 import { after, NextResponse } from "next/server";
 import {
-  findWhatsAppAgentIdentity,
   whatsappAgentBotNumber,
   whatsappAgentEnabled,
   whatsappAgentUsers,
   whatsappAgentWebhookToken,
 } from "@/server/ai/whatsapp/config";
-import { parseWhatsAppAgentInbound } from "@/server/ai/whatsapp/inbound";
+import { ingestWhatsAppAgentPayload } from "@/server/ai/whatsapp/ingest";
 import { processWhatsAppAgentQueue } from "@/server/ai/whatsapp/runtime";
-import { enqueueWhatsAppAgentMessage } from "@/server/ai/whatsapp/store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -41,18 +39,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: true, ignored: "invalid_json" });
   }
 
-  const message = parseWhatsAppAgentInbound(payload);
-  if (!message) return NextResponse.json({ ok: true, ignored: "unsupported_event" });
-  const identity = findWhatsAppAgentIdentity(message.sender);
-  if (!identity) return NextResponse.json({ ok: true, ignored: "unauthorized_sender" });
-
-  const queued = await enqueueWhatsAppAgentMessage({ ...message, displayName: identity.name });
-  if (!queued.duplicate) {
+  const result = await ingestWhatsAppAgentPayload(payload);
+  if ("queued" in result && result.queued) {
     after(async () => {
       await processWhatsAppAgentQueue(3);
     });
   }
-  return NextResponse.json({ ok: true, duplicate: queued.duplicate, queued: !queued.duplicate });
+  return NextResponse.json({ ok: true, ...result });
 }
 
 export async function GET(request: Request) {

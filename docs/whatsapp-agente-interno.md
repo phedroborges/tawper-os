@@ -6,13 +6,13 @@ Esta entrega prepara o número dedicado para consultas internas somente de leitu
 
 Na Stevo, conecte `17981640081` por QR code. A mesma conta pode ser usada. Se a instância atual for reaproveitada, ela passa a representar esse número e deixa de representar o número anterior; para manter os dois números simultaneamente, contrate/crie outra instância.
 
-Configure o webhook dessa instância como:
+Quando a instância também estiver conectada à Central de Conversas do Tawper, configure o webhook único como:
 
 ```text
-https://SEU_DOMINIO/api/whatsapp/agent/webhook?token=SEU_TOKEN_FORTE
+https://SEU_DOMINIO/api/whatsapp/webhook?token=SEU_STEVO_WEBHOOK_TOKEN
 ```
 
-Não aponte o número interno para `/api/whatsapp/webhook`, que pertence ao atendimento de clientes.
+Esse endpoint registra o evento de Conversas e encaminha ao agente apenas remetentes autorizados. A rota `/api/whatsapp/agent/webhook` é alternativa para uma instância futura exclusivamente dedicada; não configure as duas na mesma instância porque a SM v2 mantém apenas um destino operacional.
 
 ## 2. Configurar o ambiente
 
@@ -50,6 +50,7 @@ O webhook tenta processar logo após responder à Stevo; o worker recupera timeo
 ## 4. Checklist de ativação
 
 - `GET /api/whatsapp/agent/webhook?token=...` retorna `ok: true`, `enabled: true`, número configurado e a quantidade esperada de usuários.
+- Uma mensagem real recebida em `/api/whatsapp/webhook` retorna `agent.queued: true` para remetente autorizado.
 - Número fora da lista é ignorado e não aparece em `inbound_events`.
 - Um gestor consegue perguntar “Como está o dia hoje?” e recebe métricas e comparativos.
 - Um vendedor vê apenas empresas e tarefas da própria carteira.

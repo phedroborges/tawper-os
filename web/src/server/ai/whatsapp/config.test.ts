@@ -30,6 +30,14 @@ describe("configuração do agente interno no WhatsApp", () => {
     expect(findWhatsAppAgentIdentity("5517981640028")?.name).toBe("Douglas");
   });
 
+  it("reconhece o JID brasileiro antigo sem o nono dígito", () => {
+    process.env.TAWPER_WHATSAPP_AGENT_BOT_NUMBER = "17 98164-0081";
+    process.env.TAWPER_WHATSAPP_AGENT_USERS_JSON = JSON.stringify([
+      { phone: "64 99943-0898", name: "Phedro Borges", role: "admin" },
+    ]);
+    expect(findWhatsAppAgentIdentity("556499430898@s.whatsapp.net")?.name).toBe("Phedro Borges");
+  });
+
   it("recusa lista malformada", () => {
     expect(() => parseWhatsAppAgentUsers('[{"phone":"123"}]')).toThrow(/phone, name e role/);
   });
