@@ -5,9 +5,9 @@ import { useUI } from "@/lib/ui-store";
 import { cn } from "@/lib/utils";
 
 export function Toaster() {
-  const { toasts, dismiss } = useUI();
+  const { toasts, dismiss, navCollapsed } = useUI();
   return (
-    <div className="pointer-events-none fixed bottom-20 left-4 z-[90] flex w-[330px] max-w-[calc(100vw-2rem)] flex-col gap-2 md:bottom-5 md:left-[240px]">
+    <div className={cn("pointer-events-none fixed bottom-20 left-4 z-[90] flex w-[330px] max-w-[calc(100vw-2rem)] flex-col gap-2 md:bottom-5", navCollapsed ? "md:left-[84px]" : "md:left-[240px]")}>
       {toasts.slice(-3).map((t) => (
         <div key={t.id} className="pointer-events-auto flex items-start gap-3 rounded-[7px] border border-line bg-white p-3 shadow-pop animate-slide-up">
           <span

@@ -12,6 +12,8 @@ import {
   Menu,
   MessageCircle,
   Package,
+  PanelLeftClose,
+  PanelLeftOpen,
   Plus,
   RotateCcw,
   Route,
@@ -92,8 +94,9 @@ function useNav(): NavItem[] {
   ];
 }
 
-function Sidebar({ onNavigate, onConversasIntent }: { onNavigate?: () => void; onConversasIntent?: () => void }) {
+function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavigate?: () => void; onConversasIntent?: () => void; collapsed?: boolean }) {
   const pathname = usePathname();
+  const setNavCollapsed = useUI((s) => s.setNavCollapsed);
   const user = useCurrentUser();
   const nav = useNav();
   const { setGuide, toast } = useUI();
@@ -110,37 +113,61 @@ function Sidebar({ onNavigate, onConversasIntent }: { onNavigate?: () => void; o
           if (n.href === "/conversas") onConversasIntent?.();
           onNavigate?.();
         }}
+        title={collapsed ? n.label : undefined}
+        aria-label={collapsed ? n.label : undefined}
         className={cn(
-          "flex items-center gap-3 rounded-[6px] px-2.5 py-2 text-[13.5px] transition-colors",
+          "relative flex items-center rounded-[6px] py-2 text-[13.5px] transition-colors",
+          collapsed ? "justify-center px-0" : "gap-3 px-2.5",
           active ? "bg-soft font-medium text-ink" : "text-muted hover:bg-soft/70 hover:text-ink",
         )}
       >
         <span className={cn(active ? "text-navy" : "text-muted")}>{n.icon}</span>
-        <span className="flex-1">{n.label}</span>
-        {Boolean(n.badge) && (
-          <span className={cn("rounded-full px-1.5 text-[10.5px] leading-[18px] font-medium", active ? "bg-navy text-white" : "bg-soft-2 text-muted")}>{n.badge}</span>
-        )}
+        {!collapsed && <span className="flex-1">{n.label}</span>}
+        {Boolean(n.badge) &&
+          (collapsed ? (
+            <span className="absolute top-1 right-2 size-2 rounded-full bg-brand" />
+          ) : (
+            <span className={cn("rounded-full px-1.5 text-[10.5px] leading-[18px] font-medium", active ? "bg-navy text-white" : "bg-soft-2 text-muted")}>{n.badge}</span>
+          ))}
       </Link>
     );
   };
 
   return (
     <div className="flex h-full flex-col border-r border-line bg-white">
-      <div className="px-4 pt-5 pb-5">
-        <Link href="/meu-dia" onClick={onNavigate} className="block">
-          <Image src="/brand/tawper-logo.png" alt="Tawper" width={293} height={83} className="h-auto w-[112px]" priority />
+      <div className={cn("flex items-center pt-5 pb-5", collapsed ? "justify-center px-2" : "px-4")}>
+        <Link href="/meu-dia" onClick={onNavigate} className="block" title="Tawper">
+          {collapsed ? (
+            <span className="grid size-9 place-items-center rounded-[9px] bg-brand text-[18px] font-black text-white">T</span>
+          ) : (
+            <Image src="/brand/tawper-logo.png" alt="Tawper" width={293} height={83} className="h-auto w-[112px]" priority />
+          )}
         </Link>
       </div>
-      <nav className="flex-1 space-y-0.5 overflow-y-auto px-2.5">
+      <nav className={cn("flex-1 space-y-0.5 overflow-y-auto", collapsed ? "px-2" : "px-2.5")}>
         {nav.filter((n) => !n.manager).map(item)}
         {manager && (
           <>
-            <div className="label px-2.5 pt-5 pb-1.5">Gestão</div>
+            {collapsed ? <div className="mx-2 my-3 h-px bg-line" /> : <div className="label px-2.5 pt-5 pb-1.5">Gestão</div>}
             {nav.filter((n) => n.manager).map(item)}
           </>
         )}
       </nav>
-      <div className="space-y-0.5 border-t border-line px-2.5 py-3">
+      {!onNavigate && (
+        <div className={cn("border-t border-line py-2", collapsed ? "px-2" : "px-2.5")}>
+          <button
+            type="button"
+            onClick={() => setNavCollapsed(!collapsed)}
+            title={collapsed ? "Expandir menu" : "Recolher menu"}
+            aria-label={collapsed ? "Expandir menu" : "Recolher menu"}
+            className={cn("flex w-full items-center rounded-[6px] py-1.5 text-[12.5px] text-muted transition-colors hover:bg-soft hover:text-ink", collapsed ? "justify-center" : "gap-3 px-2.5")}
+          >
+            {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
+            {!collapsed && "Recolher menu"}
+          </button>
+        </div>
+      )}
+      <div className={cn("space-y-0.5 border-t border-line px-2.5 py-3", collapsed && "hidden")}>
         <button
           type="button"
           onClick={() => {
@@ -362,7 +389,7 @@ function Topbar() {
           className="inline-flex h-10 items-center gap-2 rounded-[6px] px-2.5 text-[13.5px] text-muted transition-colors hover:bg-soft hover:text-ink"
           title="Pergunte à IA"
         >
-          <Sparkles size={17} /> <span className="hidden lg:inline">Pergunte à IA</span>
+          <Sparkles size={17} /> <span className="hidden xl:inline">Pergunte à IA</span>
         </button>
         <InboxButton />
         <Notifications />
@@ -439,6 +466,7 @@ export function AppShell({ children }: { children: ReactNode }) {
   const mobileNav = useUI((s) => s.mobileNav);
   const setMobileNav = useUI((s) => s.setMobileNav);
   const flow = useUI((s) => s.flow);
+  const navCollapsed = useUI((s) => s.navCollapsed);
   const assistantOpen = useUI((s) => s.assistantOpen);
   const guideOpen = useUI((s) => s.guideOpen);
   const [extras, setExtras] = useState(false);
@@ -468,8 +496,8 @@ export function AppShell({ children }: { children: ReactNode }) {
       ) : (
         <div className="min-h-dvh bg-paper">
           <CrossTabSync />
-          <aside className="fixed inset-y-0 left-0 z-50 hidden w-[224px] md:block">
-            <Sidebar onConversasIntent={onConversasIntent} />
+          <aside className={cn("fixed inset-y-0 left-0 z-50 hidden transition-[width] duration-200 md:block", navCollapsed ? "w-[68px]" : "w-[224px]")}>
+            <Sidebar onConversasIntent={onConversasIntent} collapsed={navCollapsed} />
           </aside>
           {mobileNav && (
             <div className="fixed inset-0 z-[75] bg-ink/30 md:hidden" onClick={() => setMobileNav(false)}>
@@ -478,10 +506,18 @@ export function AppShell({ children }: { children: ReactNode }) {
               </aside>
             </div>
           )}
-          <div className="md:pl-[224px]">
+          <div className={cn("transition-[padding] duration-200", navCollapsed ? "md:pl-[68px]" : "md:pl-[224px]")}>
             <Topbar />
             <DbStatus />
-            <main className="mx-auto w-full max-w-[1440px] px-4 pt-6 pb-28 md:px-8 md:pt-7 md:pb-14">{children}</main>
+            <main
+              className={cn(
+                "mx-auto w-full",
+                // Conversas usa a largura toda da tela; as demais páginas mantêm a largura de leitura.
+                pathname.startsWith("/conversas") ? "px-3 pt-3 pb-20 md:px-4 md:pb-3" : "max-w-[1440px] px-4 pt-6 pb-28 md:px-8 md:pt-7 md:pb-14",
+              )}
+            >
+              {children}
+            </main>
           </div>
           <MobileTabBar onConversasIntent={onConversasIntent} />
           {conversasLoading && <ConversasLoading />}

@@ -69,9 +69,9 @@ export function InboxButton() {
       aria-label={unread ? `WhatsApp, ${unread} conversa(s) não lida(s)` : "WhatsApp"}
     >
       <MessageCircle size={18} className="text-ok" />
-      <span className="hidden lg:inline">WhatsApp</span>
+      <span className="hidden xl:inline">WhatsApp</span>
       {Boolean(unread) && (
-        <span className="absolute top-1 left-6 min-w-[18px] rounded-full bg-ok px-1 text-center text-[10.5px] leading-[18px] font-semibold text-white lg:static lg:ml-0.5">
+        <span className="absolute top-1 left-6 min-w-[18px] rounded-full bg-ok px-1 text-center text-[10.5px] leading-[18px] font-semibold text-white xl:static xl:ml-0.5">
           {unread! > 99 ? "99+" : unread}
         </span>
       )}

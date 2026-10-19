@@ -64,9 +64,22 @@ interface UIState {
   /** Conversas do WhatsApp com mensagem não lida para quem está usando (null = WhatsApp não ligado). */
   liveUnread: number | null;
   setLiveUnread: (n: number | null) => void;
+  /** Menu lateral recolhido (só ícones). Preferência de quem usa, guardada neste navegador. */
+  navCollapsed: boolean;
+  setNavCollapsed: (v: boolean) => void;
 }
 
 export type DockState = "closed" | "open" | "min";
+
+const NAV_KEY = "tawper-nav-collapsed";
+
+function readNavCollapsed() {
+  try {
+    return typeof window !== "undefined" && window.localStorage.getItem(NAV_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 const MAX_DOCK_CHATS = 3;
 
 let tid = 0;
@@ -110,4 +123,13 @@ export const useUI = create<UIState>()((set, get) => ({
   closeChat: (peer) => set({ dock: { ...get().dock, chats: get().dock.chats.filter((c) => c.peer !== peer) } }),
   liveUnread: null,
   setLiveUnread: (liveUnread) => set({ liveUnread }),
+  navCollapsed: readNavCollapsed(),
+  setNavCollapsed: (navCollapsed) => {
+    try {
+      window.localStorage.setItem(NAV_KEY, navCollapsed ? "1" : "0");
+    } catch {
+      /* sem armazenamento: vale só nesta aba */
+    }
+    set({ navCollapsed });
+  },
 }));
