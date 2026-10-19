@@ -192,7 +192,7 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
       setError("O WhatsApp está offline. Abra a conexão e espere ficar online.");
       return;
     }
-    const item: PendingOut = { id: `local-${Date.now()}`, peer: target, text, at: new Date().toISOString() };
+    const item: PendingOut = { id: `local-${crypto.randomUUID()}`, peer: target, text, at: new Date().toISOString() };
     pendingOut.current = [item, ...pendingOut.current];
     setDraft("");
     setSnap((current) => withPending(current, pendingOut.current));
