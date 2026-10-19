@@ -3,6 +3,7 @@ import "server-only";
 import postgres from "postgres";
 import { canonicalWhatsApp } from "@/lib/br-ids";
 import { TAWPER_ORG_ID } from "@/lib/supabase/admin";
+import { decideConversationRoute } from "@/server/ai/conversation-routing";
 import type { InboundMedia, MediaKind, MessageReceipt, ProofEventView } from "./events";
 
 export type LiveConversation = {
@@ -152,13 +153,14 @@ async function assignFromPortfolio(peer: string) {
         and ct.whatsapp_e164 in ${client(candidates)}
         and co.owner_id is not null
         and co.status in ('active', 'standby')
-      limit 1
     `;
-    const owner = rows[0];
-    if (!owner) return;
+    const decision = decideConversationRoute({
+      portfolioCandidates: rows.map((row) => ({ ownerId: row.owner_id, ownerName: row.name })),
+    });
+    if (decision.destination !== "owner") return;
     await client`
       update public.whatsapp_live_conversations
-      set owner_id = ${owner.owner_id}, owner_name = ${owner.name}, assigned_at = now(), updated_at = now()
+      set owner_id = ${decision.ownerId}, owner_name = ${decision.ownerName}, assigned_at = now(), updated_at = now()
       where peer = ${peer} and owner_id is null
     `;
   } catch {

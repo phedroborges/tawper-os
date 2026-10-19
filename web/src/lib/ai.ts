@@ -1,4 +1,4 @@
-// Regras locais da IA: rascunho instantâneo e fallback quando o modelo (gpt-4o-mini) não responde.
+// Regras locais da IA: rascunho instantâneo e fallback quando nenhum modelo responde.
 // A chamada real fica em `src/server/ai/actions.ts`.
 
 import { FUNNELS, getStage, stageIndex } from "./constants";
@@ -557,6 +557,8 @@ export function copilotFor(d: Data, companyId: string, now = new Date()) {
     c.marcaAtual ? `Fornecedor atual: ${c.marcaAtual}${c.prensa ? ` · prensa ${c.prensa.toLowerCase()}` : ""}` : "Fornecedor atual não informado",
   ];
   if (strategy) base.push(`Estratégia vigente v${strategy.versao}`);
+  if (decisor) base.push(`Decisor cadastrado: ${decisor.nome}${decisor.cargo ? ` (${decisor.cargo})` : ""}`);
+  if (tecnico) base.push(`Contato técnico cadastrado: ${tecnico.nome}${tecnico.cargo ? ` (${tecnico.cargo})` : ""}`);
   if (deal?.objecao) base.push(`Objeção registrada: ${deal.objecao}`);
   if (lastAt) base.push(`Última interação há ${daysSince(lastAt, now)} dias`);
 
@@ -754,7 +756,19 @@ export function managerDigest(d: Data, now = new Date()) {
 export interface AssistantAnswer {
   texto: string;
   itens?: { label: string; meta?: string; href: string }[];
+  blocos?: AssistantBlock[];
 }
+
+export type AssistantBlock =
+  | { type: "text"; text: string }
+  | { type: "metric"; label: string; value: string; comparison?: string; trend?: "up" | "down" | "neutral" }
+  | {
+      type: "task_list";
+      title: string;
+      items: { title: string; status: "pending" | "done" | "cancelled"; meta?: string; href?: string }[];
+    }
+  | { type: "bar_chart"; title: string; items: { label: string; value: number; display: string }[] }
+  | { type: "table"; title?: string; columns: string[]; rows: string[][] };
 
 export const ASSISTANT_SUGGESTIONS = [
   "Quais clientes estão parados?",
@@ -778,6 +792,76 @@ export function assistantAnswer(d: Data, user: User, question: string, now = new
       const toks = normalize(c.nome).split(" ").filter((t) => t.length > 3 && !["usina", "grupo", "agricola", "bioenergia", "agroindustrial", "fornecedora", "cana"].includes(t));
       return toks.some((t) => q.includes(t));
     });
+
+  if (company && /tarefa|atividade|pendencia|feito|fazer/.test(q)) {
+    const activities = d.activities
+      .filter((a) => a.companyId === company.id && a.status !== "cancelada")
+      .sort((a, b) => Number(a.status === "concluida") - Number(b.status === "concluida") || a.dueAt.localeCompare(b.dueAt));
+    const pending = activities.filter((a) => a.status === "pendente").length;
+    const done = activities.filter((a) => a.status === "concluida").length;
+    return {
+      texto: `${company.nome} tem ${pending} tarefa${pending === 1 ? " pendente" : "s pendentes"} e ${done} concluída${done === 1 ? "" : "s"}.`,
+      blocos: [
+        {
+          type: "task_list",
+          title: `Tarefas de ${company.nome}`,
+          items: activities.slice(0, 20).map((a) => ({
+            title: a.titulo,
+            status: a.status === "concluida" ? "done" : "pending",
+            meta: a.status === "concluida" ? `Concluída${a.completedAt ? ` em ${fmtDateShort(a.completedAt)}` : ""}` : `${a.prioridade} · vence ${fmtDateShort(a.dueAt)}`,
+            href: `/empresas/${company.id}`,
+          })),
+        },
+      ],
+    };
+  }
+
+  if (/vendeu|vendas?|fatur|resultado.*(hoje|dia)|como.*dia/.test(q)) {
+    const won = d.deals.filter((x) => x.status === "ganha" && x.closedAt && (!ownerId || x.ownerId === ownerId));
+    const totalAt = (minDays: number, maxDays: number) =>
+      won
+        .filter((x) => {
+          const age = -dayDiff(x.closedAt!, now);
+          return age >= minDays && age <= maxDays;
+        })
+        .reduce((sum, x) => sum + (x.valorRealizado ?? x.valor ?? 0), 0);
+    const today = totalAt(0, 0);
+    const yesterday = totalAt(1, 1);
+    const week = totalAt(0, 6);
+    const previousWeek = totalAt(7, 13);
+    const pct = (current: number, previous: number) => (previous > 0 ? ((current - previous) / previous) * 100 : current > 0 ? 100 : 0);
+    const dayPct = pct(today, yesterday);
+    const weekPct = pct(week, previousWeek);
+    return {
+      texto: `Resultado comercial até agora: ${money(today)} hoje e ${money(week)} nos últimos 7 dias.`,
+      blocos: [
+        {
+          type: "metric",
+          label: "Vendas de hoje",
+          value: money(today),
+          comparison: `${dayPct >= 0 ? "+" : ""}${Math.round(dayPct)}% vs. ontem (${money(yesterday)})`,
+          trend: dayPct > 0 ? "up" : dayPct < 0 ? "down" : "neutral",
+        },
+        {
+          type: "bar_chart",
+          title: "Comparativo de vendas",
+          items: [
+            { label: "Hoje", value: today, display: money(today) },
+            { label: "Ontem", value: yesterday, display: money(yesterday) },
+            { label: "7 dias", value: week, display: money(week) },
+            { label: "7 dias anteriores", value: previousWeek, display: money(previousWeek) },
+          ],
+        },
+        {
+          type: "metric",
+          label: "Últimos 7 dias",
+          value: money(week),
+          comparison: `${weekPct >= 0 ? "+" : ""}${Math.round(weekPct)}% vs. 7 dias anteriores`,
+          trend: weekPct > 0 ? "up" : weekPct < 0 ? "down" : "neutral",
+        },
+      ],
+    };
+  }
 
   if (company && /resum|como esta|situacao|conta|fala|me conta/.test(q)) {
     const deal = openDealOf(d, company.id);
