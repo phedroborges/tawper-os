@@ -192,12 +192,14 @@ export async function aiAssistant(input: {
   if (!aiConfigured()) return input.fallback;
   const allowed = new Set(input.allowedCompanyIds);
   const plan = planForQuestion(input.question);
+  const task = plan.agent === "strategic_copilot" ? "strategy" : "assistant";
   const whatsapp = await whatsappDaBase(input.escopo);
   const raw = await askJSON<{ texto?: unknown; itens?: unknown; blocos?: unknown }>({
     system: `${TAWPER}
 Você responde qualquer pergunta sobre a Tawper e sobre a operação comercial, usando a base completa enviada.
 A base traz cadastro, contatos, negócios, atividades, histórico, orçamentos, estratégias, rotas, alertas, indicadores, funis, catálogo de produtos e as mensagens de WhatsApp.
 Conte, filtre, compare e explique a partir desses registros. Se o dado está na base, responda com ele. Se não está, diga que não está registrado.
+Este canal é somente de consulta: nunca afirme que enviou mensagem, formulário ou alterou o sistema. Quando pedirem uma ação, explique que ela precisa de confirmação humana e ofereça o plano ou rascunho.
 Leia o campo "cobertura": se algo foi encurtado, avise só quando a pergunta depender desse trecho.
 Cite a empresa pelo nome. Em "itens", use o empresaId exatamente como veio na base.
 Entregue a resposta já mastigada. Para tarefas, use task_list com o check correto. Para indicadores, use metric e bar_chart comparando com ontem ou com o período anterior. Use table quando houver linhas e colunas. Não use markdown nem HTML.
@@ -214,9 +216,9 @@ JSON: { "texto": string, "blocos": [
     maxTokens: 1800,
     temperature: 0.2,
     timeoutMs: 90_000,
-    task: "assistant",
-    agentKey: "assistant_analytic",
-    promptVersion: AGENTS.assistant_analytic.promptVersion,
+    task,
+    agentKey: plan.agent,
+    promptVersion: AGENTS[plan.agent].promptVersion,
   });
   if (!raw) return input.fallback;
   return {

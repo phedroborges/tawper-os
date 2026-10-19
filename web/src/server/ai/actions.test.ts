@@ -30,6 +30,13 @@ describe("ações dos especialistas", () => {
     expect(askJSON.mock.calls[0][0]).toMatchObject({ task: "assistant", agentKey: "assistant_analytic" });
   });
 
+  it("delega perguntas estratégicas ao copiloto sem liberar ações", async () => {
+    askJSON.mockResolvedValue({ texto: "Plano seguro", blocos: [] });
+    await aiAssistant({ question: "Crie uma estratégia para esta negociação", sistema: {}, fallback: { texto: "fallback" }, allowedCompanyIds: [] });
+    expect(askJSON.mock.calls[0][0]).toMatchObject({ task: "strategy", agentKey: "strategic_copilot" });
+    expect(askJSON.mock.calls[0][0].system).toContain("somente de consulta");
+  });
+
   it("copiloto respeita o decisor cadastrado", async () => {
     askJSON.mockResolvedValue({ titulo: "Descobrir decisor", acoes: [{ titulo: "Identificar decisor", tipo: "Ligação", prazoDias: 2 }], faltantes: ["Quem decide a compra?"] });
     const fallback = { titulo: "Plano", texto: "Texto", detalhes: { diagnostico: "D", hipoteses: [], acoes: [{ titulo: "Ligar", tipo: "Ligação" as const, prazoDias: 1 }], perguntas: [], rascunho: "Oi", objetivo: "O", barreira: "B", estrategia: "E", resultadoEsperado: "R" }, base: [], faltantes: [] };
