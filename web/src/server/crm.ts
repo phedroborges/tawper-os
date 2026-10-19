@@ -4,6 +4,7 @@ import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import type { Activity, Company, Contact, Deal, DemoData, User } from "@/lib/types";
 import { USERS } from "@/lib/constants";
 import { ensureOperators } from "@/server/persist";
+import { listQuotes } from "@/server/quotes";
 
 export type DbHealth =
   | { ok: true; organization: string; funnels: number; stages: number; companies: number }
@@ -69,7 +70,7 @@ export async function getDbHealth(): Promise<DbHealth> {
   }
 }
 
-export async function loadCrmSnapshot(): Promise<Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users">> {
+export async function loadCrmSnapshot(): Promise<Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users" | "quotes">> {
   const sb = getSupabaseAdmin();
   const [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes, membershipsRes, profilesRes, regionsRes, funnelsRes] = await Promise.all([
     sb.from("companies").select("*").eq("organization_id", TAWPER_ORG_ID).neq("status", "merged"),
@@ -230,12 +231,13 @@ export async function loadCrmSnapshot(): Promise<Pick<DemoData, "companies" | "c
   }));
 
   void ownerToDemo;
-  return { companies, contacts, deals, activities, users };
+  const quotes = await listQuotes().catch(() => []);
+  return { companies, contacts, deals, activities, users, quotes };
 }
 
 export type CrmBootstrap = {
   health: DbHealth;
-  snapshot: Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users"> | null;
+  snapshot: Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users" | "quotes"> | null;
   actorMap: Record<string, string> | null;
 };
 

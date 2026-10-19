@@ -6,7 +6,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { FIELD_LABELS, FUNNELS, getStage, isManager } from "./constants";
-import { addDays, fmtDateShort, rel } from "./dates";
+import { fmtDateShort, rel } from "./dates";
 import { buildSeed, DATA_VERSION } from "./seed";
 import type {
   Activity,
@@ -50,16 +50,6 @@ export interface NewCompanyInput {
   contacts: Omit<Contact, "id" | "companyId">[];
   firstActivity: Omit<ActivityDraft, "companyId">;
   conversationId?: string;
-}
-
-export interface QuoteDraft {
-  id?: string;
-  companyId: string;
-  dealId: string;
-  itens: Quote["itens"];
-  desconto: number;
-  condicao: string;
-  validadeDias: number;
 }
 
 interface Session {
@@ -106,9 +96,10 @@ interface Actions {
   addSuggestion: (s: Omit<AISuggestion, "id" | "createdAt" | "status">) => string;
   decideSuggestion: (id: string, decision: "aprovada" | "descartada", opts?: { criarAcoes?: boolean }) => void;
 
-  saveQuote: (q: QuoteDraft) => string;
-  sendQuote: (quoteId: string) => void;
-  setQuoteStatus: (quoteId: string, status: Quote["status"]) => void;
+  /** Coloca no store um orçamento já gravado no banco (a gravação acontece em /api/quotes). */
+  upsertQuote: (q: Quote) => void;
+  /** Efeitos locais depois que o servidor confirmou o envio: valor do negócio, follow-up e histórico. */
+  afterQuoteSent: (q: Quote) => void;
 
   sendCobranca: (input: { companyId: string; toUserId: string; texto: string }) => void;
   markNotificationsRead: (userId: string) => void;
@@ -161,6 +152,19 @@ const actorAlias = new Map<string, string>();
 
 export function setActorAliases(map: Record<string, string>) {
   for (const [from, to] of Object.entries(map)) actorAlias.set(from, to);
+}
+
+/** Replica no banco a decisão do cliente sobre os orçamentos enviados do negócio. */
+function pushQuoteDecisions(quotes: Quote[], dealId: string, status: "aceito" | "recusado") {
+  if (!USE_SUPABASE || typeof window === "undefined") return;
+  for (const q of quotes) {
+    if (q.dealId !== dealId || q.status !== "enviado") continue;
+    void fetch("/api/quotes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "setStatus", id: q.id, status }),
+    });
+  }
 }
 
 function pushMutation(body: unknown) {
@@ -239,6 +243,7 @@ export const useStore = create<AppState>()(
             contacts: mergeById(snapshot.contacts, s.contacts),
             deals: mergeById(snapshot.deals, s.deals),
             activities: mergeById(snapshot.activities, s.activities),
+            quotes: snapshot.quotes ?? s.quotes,
             users: snapshot.users?.length ? snapshot.users : s.users,
           }));
         },
@@ -565,6 +570,7 @@ export const useStore = create<AppState>()(
         },
 
         winDeal: (dealId, { valor, obs }) => {
+          pushQuoteDecisions(get().quotes, dealId, "aceito");
           const s = get();
           const deal = s.deals.find((d) => d.id === dealId)!;
           const company = s.companies.find((c) => c.id === deal.companyId)!;
@@ -619,6 +625,7 @@ export const useStore = create<AppState>()(
         },
 
         loseDeal: (dealId, { motivo, obs }) => {
+          pushQuoteDecisions(get().quotes, dealId, "recusado");
           const s = get();
           const deal = s.deals.find((d) => d.id === dealId)!;
           const actor = me();
@@ -791,71 +798,29 @@ export const useStore = create<AppState>()(
         },
 
         // -------------------------------------------------------------------
-        saveQuote: (q) => {
-          const s = get();
-          const actor = me();
-          if (q.id) {
-            set({ quotes: s.quotes.map((x) => (x.id === q.id ? { ...x, ...q, id: x.id } : x)) });
-            return q.id;
-          }
-          const id = uid("q");
-          const numero = `TW-2026-0${s.seq.quote}`;
-          const quote: Quote = { ...q, id, numero, status: "rascunho", createdAt: nowIso(), autorId: actor };
-          set({
-            seq: { ...s.seq, quote: s.seq.quote + 1 },
-            quotes: [quote, ...s.quotes],
-            audit: [auditEntry({ autorId: actor, origem: "usuario", entidade: "Orçamento", entidadeId: id, companyId: q.companyId, campo: "criado", para: `${numero} (rascunho)` }), ...s.audit],
-          });
-          return id;
+        upsertQuote: (q) => {
+          set((s) => ({ quotes: [q, ...s.quotes.filter((x) => x.id !== q.id)].sort((x, y) => y.createdAt.localeCompare(x.createdAt)) }));
         },
 
-        sendQuote: (quoteId) => {
+        afterQuoteSent: (q) => {
           const s = get();
-          const q = s.quotes.find((x) => x.id === quoteId);
-          if (!q) return;
           const actor = me();
-          const now = nowIso();
+          const now = q.enviadoEm ?? nowIso();
           const { total } = quoteTotals(q.itens, q.desconto);
-          const company = s.companies.find((c) => c.id === q.companyId)!;
-          const conv = s.conversations.find((c) => c.companyId === q.companyId);
-          const follow: Activity = {
-            id: uid("a"), companyId: q.companyId, dealId: q.dealId, ownerId: company.ownerId, tipo: "WhatsApp", titulo: `Follow-up do orçamento ${q.numero}`,
-            dueAt: rel(3, 10), prioridade: "Média", status: "pendente", origem: "regra", createdAt: now,
-          };
-          set({
-            quotes: s.quotes.map((x) => (x.id === quoteId ? { ...x, status: "enviado", enviadoEm: now, decisaoEsperada: addDays(new Date(), 5).toISOString() } : x)),
-            deals: s.deals.map((d) => (d.id === q.dealId ? { ...d, valor: Math.round(total), checklist: { ...d.checklist, orcamento_enviado: true } } : d)),
-            activities: [follow, ...s.activities],
-            conversations: conv
-              ? s.conversations.map((c) =>
-                  c.id === conv.id
-                    ? {
-                        ...c,
-                        lastAt: now,
-                        messages: [
-                          ...c.messages,
-                          { id: uid("m"), from: "tawper", at: now, autorId: actor, text: `Segue o orçamento ${q.numero}. Qualquer dúvida estou à disposição.`, attachment: { nome: `Orcamento_${q.numero}.pdf`, tipo: "pdf", detalhe: `${money(total)} · validade ${q.validadeDias} dias` } },
-                        ],
-                      }
-                    : c,
-                )
-              : s.conversations,
-            interactions: [interaction({ companyId: q.companyId, dealId: q.dealId, canal: "WhatsApp", autorId: actor, kind: "quote", titulo: `Orçamento ${q.numero} enviado — ${money(total)}`, conteudo: `${q.itens.length} itens · ${q.condicao} · validade ${q.validadeDias} dias. Follow-up agendado para ${fmtDateShort(follow.dueAt)}.` }), ...s.interactions],
-            audit: [
-              auditEntry({ autorId: actor, origem: "usuario", entidade: "Orçamento", entidadeId: quoteId, companyId: q.companyId, campo: "status", de: "rascunho", para: "enviado" }),
-              auditEntry({ autorId: "sistema", origem: "automacao", entidade: "Atividade", entidadeId: follow.id, companyId: q.companyId, campo: "criada pela regra do orçamento", para: follow.titulo }),
-              ...s.audit,
-            ],
+          const company = s.companies.find((c) => c.id === q.companyId);
+          const via = q.enviadoPara?.via === "manual" ? "fora do sistema" : "pelo WhatsApp";
+          const followId = get().addActivity({
+            companyId: q.companyId, dealId: q.dealId, ownerId: company?.ownerId, tipo: "WhatsApp", titulo: `Follow-up do orçamento ${q.numero}`,
+            dueAt: rel(3, 10), prioridade: "Média", origem: "regra",
           });
-        },
-
-        setQuoteStatus: (quoteId, status) => {
-          const s = get();
-          const q = s.quotes.find((x) => x.id === quoteId);
-          if (!q) return;
+          const follow = get().activities.find((a) => a.id === followId);
           set({
-            quotes: s.quotes.map((x) => (x.id === quoteId ? { ...x, status } : x)),
-            audit: [auditEntry({ autorId: me(), origem: "usuario", entidade: "Orçamento", entidadeId: quoteId, companyId: q.companyId, campo: "status", de: q.status, para: status }), ...s.audit],
+            deals: get().deals.map((d) => (d.id === q.dealId ? { ...d, valor: Math.round(total), checklist: { ...d.checklist, orcamento_enviado: true } } : d)),
+            interactions: [
+              interaction({ companyId: q.companyId, dealId: q.dealId, canal: "WhatsApp", autorId: actor, kind: "quote", titulo: `Orçamento ${q.numero} enviado — ${money(total)}`, conteudo: `${q.itens.length} itens · ${q.condicao} · validade ${q.validadeDias} dias. Enviado ${via}.${follow ? ` Follow-up agendado para ${fmtDateShort(follow.dueAt)}.` : ""}` }),
+              ...get().interactions,
+            ],
+            audit: [auditEntry({ autorId: actor, origem: "usuario", entidade: "Orçamento", entidadeId: q.id, companyId: q.companyId, campo: "status", de: "rascunho", para: `enviado (${now.slice(0, 10)})` }), ...get().audit],
           });
         },
 

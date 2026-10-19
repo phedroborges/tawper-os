@@ -384,6 +384,34 @@ export const MOTIVOS_ESPERA = [
   "Troca de responsável no cliente",
 ];
 
+export const UNIDADES: { value: string; label: string }[] = [
+  { value: "un", label: "Unidade (un)" },
+  { value: "m", label: "Metro (m)" },
+  { value: "par", label: "Par" },
+  { value: "jogo", label: "Jogo" },
+  { value: "kit", label: "Kit" },
+  { value: "cj", label: "Conjunto (cj)" },
+  { value: "pç", label: "Peça (pç)" },
+  { value: "h", label: "Hora (h)" },
+  { value: "dia", label: "Dia" },
+  { value: "mês", label: "Mês" },
+  { value: "turma", label: "Turma" },
+  { value: "serv", label: "Serviço" },
+];
+
+export const TIPOS_PRODUTO: { value: import("./types").ProductKind; label: string; hint: string }[] = [
+  { value: "produto", label: "Produto", hint: "Mangueira, terminal, adaptador, proteção…" },
+  { value: "equipamento", label: "Equipamento", hint: "Prensa, máquina de corte, bancada…" },
+  { value: "kit", label: "Kit", hint: "Conjunto montado a partir de produtos unitários" },
+  { value: "servico", label: "Serviço", hint: "Treinamento, instalação, manutenção…" },
+];
+
+export const MODALIDADES: { value: import("./types").Modalidade; label: string; hint: string }[] = [
+  { value: "venda", label: "Venda", hint: "Cobrado uma vez" },
+  { value: "locacao", label: "Locação mensal", hint: "Comodato pago: valor por mês" },
+  { value: "cortesia", label: "Cortesia", hint: "Comodato isento, sem cobrança" },
+];
+
 export const CONDICOES_PAGAMENTO = ["28 dias", "28/56 dias", "30/60/90 dias", "À vista (3% desc.)", "Boleto 21 dias"];
 
 export interface CatalogItem {

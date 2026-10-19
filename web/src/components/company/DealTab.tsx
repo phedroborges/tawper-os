@@ -119,7 +119,7 @@ export function DealTab({ company }: { company: Company }) {
             )
           }
         />
-        {quotes.length === 0 && <div className="px-4 py-8 text-center text-[12.5px] text-muted">Monte o primeiro orçamento com a sugestão da IA baseada na frota.</div>}
+        {quotes.length === 0 && <div className="px-4 py-8 text-center text-[12.5px] text-muted">Monte o primeiro orçamento a partir do catálogo, em branco ou com a sugestão pela frota.</div>}
         <ul>
           {quotes.map((q) => {
             const t = quoteTotals(q.itens, q.desconto).total;
@@ -138,6 +138,13 @@ export function DealTab({ company }: { company: Company }) {
                   {q.itens.length} itens · {q.condicao} · desconto {q.desconto}% · {q.enviadoEm ? `enviado em ${fmtDateShort(q.enviadoEm)}` : `criado em ${fmtDateShort(q.createdAt)}`}
                 </div>
                 <div className="mt-1.5 truncate text-[11.5px] text-ink/70">{q.itens.map((i) => `${i.qtd}${i.unidade === "m" ? "m" : "×"} ${i.descricao.split(" — ")[0]}`).join(" · ")}</div>
+                {q.status !== "rascunho" && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <Button size="xs" variant="outline" onClick={() => open({ kind: "quote", dealId: q.dealId, quoteId: q.id })}>
+                      <FileText size={12} /> Ver orçamento e PDF
+                    </Button>
+                  </div>
+                )}
                 {qDeal?.status === "aberta" && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {q.status === "rascunho" && (

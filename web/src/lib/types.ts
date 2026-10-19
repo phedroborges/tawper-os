@@ -266,13 +266,62 @@ export interface Conversation {
   lastAt: string;
 }
 
-export interface QuoteItem {
-  id: string;
+export type ProductKind = "produto" | "equipamento" | "servico" | "kit";
+export type Modalidade = "venda" | "locacao" | "cortesia";
+
+export interface KitComponent {
+  productId?: string;
   sku: string;
   descricao: string;
   unidade: string;
   qtd: number;
+  /** Preço unitário de venda do componente (só informativo; vem do catálogo). */
+  preco?: number;
+}
+
+export interface Product {
+  id: string;
+  sku: string;
+  descricao: string;
+  unidade: string;
+  /** Preço de venda. Em kit com preço "soma", é calculado a partir dos componentes. */
   preco: number;
+  /** Valor mensal de locação/comodato pago, para quem aceita essa modalidade. */
+  precoLocacao?: number;
+  linha: string;
+  tipo: ProductKind;
+  modalidades: Modalidade[];
+  kitPreco: "soma" | "fixo";
+  componentes: KitComponent[];
+  ativo: boolean;
+  marca?: string;
+  bitola?: string;
+  norma?: string;
+  pressaoBar?: number;
+  compatibilidade?: string;
+  ncm?: string;
+  observacoes?: string;
+}
+
+export interface QuoteItem {
+  id: string;
+  productId?: string;
+  sku: string;
+  descricao: string;
+  unidade: string;
+  qtd: number;
+  /** Venda: preço unitário. Locação: valor mensal por unidade. Cortesia: sempre 0. */
+  preco: number;
+  modo: Modalidade;
+  /** Locação e cortesia: prazo em meses. */
+  meses?: number;
+  /** Cortesia: valor mensal que seria cobrado (informativo). */
+  precoReferencia?: number;
+  motivoCortesia?: string;
+  /** Venda a prazo: condição própria da linha (senão vale a do orçamento). */
+  prazoPagamento?: string;
+  /** Kit: composição copiada do catálogo no momento do orçamento. */
+  componentes?: KitComponent[];
 }
 
 export type QuoteStatus = "rascunho" | "enviado" | "aceito" | "recusado";
@@ -291,6 +340,8 @@ export interface Quote {
   enviadoEm?: string;
   decisaoEsperada?: string;
   autorId: string;
+  observacoes?: string;
+  enviadoPara?: { contatoId?: string; via: "whatsapp" | "manual" };
 }
 
 export interface AuditEntry {

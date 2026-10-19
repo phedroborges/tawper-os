@@ -386,7 +386,7 @@ export function buildSeed(now = new Date()): DemoData {
   // ---------------------------------------------------------------------------
   const it = (sku: string, qtd: number, preco?: number): QuoteItem => {
     const c = CATALOG.find((x) => x.sku === sku)!;
-    return { id: `qi-${sku}-${qtd}`, sku, descricao: c.descricao, unidade: c.unidade, qtd, preco: preco ?? c.preco };
+    return { id: `qi-${sku}-${qtd}`, sku, descricao: c.descricao, unidade: c.unidade, qtd, preco: preco ?? c.preco, modo: "venda" };
   };
 
   const quotes: Quote[] = [

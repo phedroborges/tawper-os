@@ -65,10 +65,27 @@ export function nameSimilarity(a: string, b: string) {
   return inter / Math.min(ta.size, tb.size);
 }
 
-export function quoteTotals(itens: { qtd: number; preco: number }[], descontoPct: number) {
-  const bruto = itens.reduce((acc, i) => acc + i.qtd * i.preco, 0);
+type TotalsItem = { qtd: number; preco: number; modo?: string; meses?: number; precoReferencia?: number };
+
+/**
+ * Totais separados por modalidade. O desconto vale só para a venda.
+ * `total` é o total de venda; `mensal` é a locação por mês; `cortesiaRef` é o que seria cobrado nas cortesias.
+ */
+export function quoteTotals(itens: TotalsItem[], descontoPct: number) {
+  const sum = (modo: string) => itens.filter((i) => (i.modo ?? "venda") === modo).reduce((acc, i) => acc + i.qtd * i.preco, 0);
+  const bruto = sum("venda");
+  const mensal = Math.round(sum("locacao") * 100) / 100;
+  const contratoLocacao = itens.filter((i) => i.modo === "locacao").reduce((acc, i) => acc + i.qtd * i.preco * (i.meses ?? 1), 0);
+  const cortesiaRef = itens.filter((i) => i.modo === "cortesia").reduce((acc, i) => acc + i.qtd * (i.precoReferencia ?? 0) * (i.meses ?? 1), 0);
   const desconto = Math.round(bruto * (descontoPct / 100) * 100) / 100;
-  return { bruto, desconto, total: Math.round((bruto - desconto) * 100) / 100 };
+  return {
+    bruto,
+    desconto,
+    total: Math.round((bruto - desconto) * 100) / 100,
+    mensal,
+    contratoLocacao: Math.round(contratoLocacao * 100) / 100,
+    cortesiaRef: Math.round(cortesiaRef * 100) / 100,
+  };
 }
 
 export function digits(s?: string) {
