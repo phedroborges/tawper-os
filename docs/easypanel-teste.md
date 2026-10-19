@@ -35,7 +35,7 @@ STEVO_PROOF_ENABLED=true
 STEVO_API_URL=https://sm-cavalo.stevo.chat
 STEVO_INSTANCE=tawper-os
 STEVO_API_KEY=
-STEVO_TEST_NUMBER=5564999394890
+STEVO_TEST_NUMBER=5517981640081
 STEVO_WEBHOOK_TOKEN=
 APP_PUBLIC_URL=https://metricz-tawper-os.dedobd.easypanel.host
 STEVO_SIGN_MESSAGES=true   # opcional; false tira o "*Nome:*" das mensagens dos atendentes
@@ -51,7 +51,7 @@ A API Key da Stevo, a service role e o token de webhook ficam só no EasyPanel. 
 
 1. Confirme `https://metricz-tawper-os.dedobd.easypanel.host/api/health`.
 2. Abra `https://metricz-tawper-os.dedobd.easypanel.host/prova-whatsapp`.
-3. Escaneie o QR com o `5564999394890`.
+3. Escaneie o QR com o `5517981640081`.
 4. Clique em **Registrar na Stevo** (ou cole a URL de webhook no painel da instância `tawper-os`).
 5. Envie um texto para outro celular e peça uma resposta. O POST precisa aparecer em “eventos recebidos”.
 
