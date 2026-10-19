@@ -81,7 +81,7 @@ export default function MeuDiaPage() {
     <div>
       <PageHeader title={brief.saudacao} subtitle={`${longToday(now)} · ${brief.resumo}`} />
 
-      <div className="grid gap-5 xl:grid-cols-[1.6fr_1fr]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_clamp(340px,28vw,480px)]">
         <div className="min-w-0 space-y-5">
           <Card className="overflow-hidden">
             <div className="flex items-center gap-2 px-4 py-2.5">

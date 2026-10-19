@@ -225,7 +225,7 @@ export default function CarteiraPage() {
                           </div>
                         )}
                       </td>
-                      <td className="max-w-[280px] px-4 py-3">
+                      <td className="min-w-[220px] px-4 py-3">
                         {c.status === "espera" ? (
                           <span className="text-[12px] text-warn">Em espera · {c.standby?.motivo}</span>
                         ) : next ? (

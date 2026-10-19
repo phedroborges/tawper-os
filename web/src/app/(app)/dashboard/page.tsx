@@ -79,7 +79,7 @@ export default function DashboardPage() {
         <span className="text-[12px] text-muted">{scopeLabel}</span>
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-3 lg:grid-cols-3 xl:grid-cols-6">
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1500px]:grid-cols-6">
         <Stat
           label="Em negociação"
           value={m.negociacao.value}

@@ -82,7 +82,7 @@ export default function AuditoriaPage() {
       </Card>
       <Card className="overflow-hidden">
         <div className="overflow-x-auto">
-          <table className="w-full min-w-[900px] text-[12.5px]">
+          <table className="w-full min-w-[980px] text-[12.5px]">
             <thead>
               <tr className="border-b border-line bg-soft/40 text-left">
                 {["Quando", "Autor", "Origem", "Empresa", "Entidade · campo", "Antes", "Depois"].map((h) => (
@@ -99,7 +99,7 @@ export default function AuditoriaPage() {
                   <tr key={a.id} className="border-b border-line/70 last:border-b-0 hover:bg-soft/40">
                     <td className="px-4 py-2.5 whitespace-nowrap text-muted tabular-nums">{fmtDateTime(a.at)}</td>
                     <td className="px-4 py-2.5">
-                      <span className="inline-flex items-center gap-2">
+                      <span className="inline-flex items-center gap-2 whitespace-nowrap">
                         <UserAvatar userId={a.autorId} size={22} />
                         {userName(s.users, a.autorId)}
                       </span>
@@ -107,7 +107,7 @@ export default function AuditoriaPage() {
                     <td className="px-4 py-2.5">
                       <Badge tone={a.origem === "ia" ? "ai" : a.origem === "automacao" ? "navy" : "outline"}>{ORIGEM_LABEL[a.origem]}</Badge>
                     </td>
-                    <td className="px-4 py-2.5">
+                    <td className="min-w-[180px] px-4 py-2.5">
                       {c ? (
                         <Link href={`/empresas/${c.id}?tab=auditoria`} className="font-semibold text-ink hover:text-brand">
                           {c.nome}

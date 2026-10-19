@@ -121,7 +121,7 @@ export default function RotasPage() {
           </Select>
         }
       />
-      <div className="grid gap-5 xl:grid-cols-[1.4fr_1fr]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_clamp(360px,30vw,520px)]">
         <Card className="min-w-0">
           <CardHeader
             kicker={`${candidates.length} contas na região`}

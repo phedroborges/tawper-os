@@ -282,7 +282,7 @@ export function Stat({
     >
       <div className="flex items-center gap-2">
         {icon && <span className={cn("text-muted", tone === "bad" && "text-brand", tone === "warn" && "text-warn")}>{icon}</span>}
-        <span className="label truncate">{label}</span>
+        <span className="label line-clamp-2 leading-snug">{label}</span>
       </div>
       <div className={cn("mt-1.5 text-[24px] leading-none font-semibold tracking-[-0.01em]", valueColor)}>{value}</div>
       {sub && <div className="mt-1.5 truncate text-[12px] text-muted">{sub}</div>}

@@ -3,7 +3,7 @@ import "server-only";
 import { checklistFromRequirements, hasRetornoNote, stageKeyToUi } from "@/lib/crm-map";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import type { Activity, AuditEntry, Canal, Company, Contact, Deal, DemoData, Interaction, InteractionKind, Strategy, User } from "@/lib/types";
-import { USERS } from "@/lib/constants";
+import { FUNNELS, USERS } from "@/lib/constants";
 import { ensureOperators } from "@/server/persist";
 import { listQuotes } from "@/server/quotes";
 
@@ -19,7 +19,9 @@ const ENTITY_LABEL: Record<string, string> = {
 const FIELD_LABEL: Record<string, string> = {
   created: "criado(a)", deleted: "excluído(a)", status: "Status", stage_id: "Etapa", owner_id: "Responsável", due_at: "Prazo", is_met: "Cumprido", trade_name: "Nome fantasia", legal_name: "Razão social",
   estimated_value: "Valor estimado", realized_value: "Valor realizado", close_reason: "Motivo de encerramento", outcome: "Resultado", title: "Título", priority: "Prioridade", city: "Cidade", state: "UF",
-  discount_pct: "Desconto %", payment_terms: "Pagamento", validity_days: "Validade (dias)", review_at: "Reavaliação", ended_at: "Fim da espera", end_outcome: "Desfecho da espera",
+  discount_pct: "Desconto %", sent_to_contact_id: "Enviado para", sent_at: "Enviado em", sent_by: "Enviado por", sent_via: "Enviado por meio de", decided_at: "Decidido em",
+  completed_at: "Concluída em", closed_at: "Encerrada em", stage_entered_at: "Entrou na etapa em", probability: "Probabilidade", number: "Número",
+  customer_since: "Cliente desde", loss_reason: "Motivo da perda", review_activity_id: "Tarefa de reavaliação", payment_terms: "Pagamento", validity_days: "Validade (dias)", review_at: "Reavaliação", ended_at: "Fim da espera", end_outcome: "Desfecho da espera",
 };
 
 export type DbHealth =
@@ -416,14 +418,34 @@ async function loadDealDetails(input: { companies: Company[]; deals: Deal[]; use
   const stageName = new Map(input.stagesRows.map((s) => [s.id as string, (s.key as string)]));
   const userName = new Map(input.users.map((u) => [u.id, u.name]));
   const uuidLike = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const stageLabel = new Map<string, string>();
+  for (const f of Object.values(FUNNELS)) for (const st of f.stages) stageLabel.set(st.id, st.nome);
+  const isoLike = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}/;
+  const dateFmt = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", day: "2-digit", month: "2-digit", year: "numeric", hour: "2-digit", minute: "2-digit" });
+  const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+  const MONEY = new Set(["estimated_value", "realized_value", "list_price", "rental_price", "amount", "unit_price", "monthly_potential", "net_total", "gross_total"]);
+  const VALUE_LABEL: Record<string, string> = {
+    open: "aberta", won: "ganha", lost: "perdida", suspended: "suspensa", active: "ativa", standby: "em espera", archived: "arquivada", merged: "unida",
+    pending: "pendente", in_progress: "em andamento", done: "concluída", cancelled: "cancelada", draft: "rascunho", sent: "enviado", accepted: "aceito",
+    rejected: "recusado", expired: "vencido", resumed: "retomada", high: "alta", medium: "média", low: "baixa",
+    whatsapp: "WhatsApp", manual: "fora do sistema", rule: "regra", ai: "IA", integration: "integração",
+  };
   const pretty = (field: string, value: unknown) => {
     if (value == null) return undefined;
     const text = String(value);
-    if (field === "stage_id") return stageName.get(text) ?? text;
-    if (uuidLike.test(text)) return userName.get(text) ?? text;
+    if (field === "stage_id") {
+      const key = stageName.get(text);
+      return key ? stageLabel.get(stageKeyToUi(key)) ?? stageLabel.get(key) ?? key : text;
+    }
+    if (uuidLike.test(text)) return userName.get(text) ?? "registro vinculado";
     if (text === "true") return "sim";
     if (text === "false") return "não";
-    return text;
+    if (isoLike.test(text)) {
+      const d = new Date(text);
+      if (!Number.isNaN(d.getTime())) return dateFmt.format(d);
+    }
+    if (MONEY.has(field) && /^-?\d+(\.\d+)?$/.test(text)) return brl.format(Number(text));
+    return VALUE_LABEL[text] ?? text;
   };
   const auditOut: AuditEntry[] = (audit.data ?? []).map((a) => ({
     id: `db-${a.id}`,

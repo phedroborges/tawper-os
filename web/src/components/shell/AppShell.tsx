@@ -56,6 +56,9 @@ interface NavItem {
   manager?: boolean;
 }
 
+/** Telas de dados que aproveitam toda a largura do monitor. */
+const FLUID_ROUTES = ["/funis", "/carteira", "/auditoria", "/dashboard", "/catalogo"];
+
 function useNav(): NavItem[] {
   const user = useCurrentUser();
   const conversations = useStore((s) => s.conversations);
@@ -512,8 +515,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <main
               className={cn(
                 "mx-auto w-full",
-                // Conversas usa a largura toda da tela; as demais páginas mantêm a largura de leitura.
-                pathname.startsWith("/conversas") ? "px-3 pt-3 pb-20 md:px-4 md:pb-3" : "max-w-[1440px] px-4 pt-6 pb-28 md:px-8 md:pt-7 md:pb-14",
+                // Conversas ocupa a tela toda. Telas de dados (quadro, tabelas, painel) usam toda a largura;
+                // as de leitura crescem até 1680px para a linha não ficar longa demais.
+                pathname.startsWith("/conversas")
+                  ? "px-3 pt-3 pb-20 md:px-4 md:pb-3"
+                  : cn("px-4 pt-6 pb-28 md:px-6 md:pt-7 md:pb-14 2xl:px-8", !FLUID_ROUTES.some((r) => pathname.startsWith(r)) && "max-w-[1680px]"),
               )}
             >
               {children}

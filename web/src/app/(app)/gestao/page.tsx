@@ -106,7 +106,7 @@ export default function GestaoPage() {
         </ul>
       </Card>
 
-      <div className="grid gap-5 xl:grid-cols-[1.35fr_1fr]">
+      <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_clamp(380px,32vw,580px)]">
         <Card className="min-w-0">
           <CardHeader kicker={`${alerts.length} exceções`} title="Fila de exceções" />
           <div className="no-scrollbar flex gap-1.5 overflow-x-auto border-b border-line/70 px-3 py-2">

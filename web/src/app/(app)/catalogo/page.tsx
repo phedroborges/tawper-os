@@ -324,7 +324,7 @@ export default function CatalogoPage() {
   };
 
   return (
-    <div className="mx-auto w-full max-w-[1280px] px-4 py-6 md:px-8">
+    <div className="w-full">
       <PageHeader
         title="Catálogo de produtos"
         subtitle="Produtos, equipamentos, kits e serviços usados nos orçamentos. Sem controle de estoque. A modalidade (venda, locação ou cortesia) é escolhida em cada orçamento."

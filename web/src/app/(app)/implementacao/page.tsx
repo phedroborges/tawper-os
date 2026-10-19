@@ -208,7 +208,7 @@ export default async function ImplementacaoPage() {
         </div>
       </div>
 
-      <div className="mb-6 grid gap-5 xl:grid-cols-[1.3fr_0.7fr]">
+      <div className="mb-6 grid gap-5 xl:grid-cols-[minmax(0,1fr)_clamp(320px,26vw,460px)]">
         <section className="min-w-0 overflow-hidden rounded-[10px] border border-navy/20 bg-white p-5">
           <div className="flex items-start gap-3">
             <span className="grid size-9 shrink-0 place-items-center rounded-[8px] bg-navy text-white"><CircleDot size={17} /></span>

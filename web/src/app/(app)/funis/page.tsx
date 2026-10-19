@@ -149,8 +149,9 @@ function Kanban() {
         <span className="ml-auto text-[12px] text-muted">{FUNNELS[funnel].subtitulo}</span>
       </div>
 
-      <div className="scrollbar-thin -mx-4 overflow-x-auto px-4 pb-4 md:-mx-7 md:px-7">
-        <div className="flex min-w-max gap-3">
+      <div className="scrollbar-thin -mx-4 overflow-x-auto px-4 pb-4 md:-mx-6 md:px-6 2xl:-mx-8 2xl:px-8">
+        {/* Cada etapa ganha uma fatia igual da largura, nunca menos que 240px: telas largas mostram todas. */}
+        <div className="grid auto-cols-[minmax(240px,1fr)] grid-flow-col gap-3">
           {stages.map((st) => {
             const col = deals.filter((d) => stageKeyToUi(d.stageId) === st.id && (!onlyRisk || (d.status === "aberta" && risky(d))));
             const total = col.reduce((a, d) => a + (d.valorRealizado ?? d.valor ?? 0), 0);
@@ -164,7 +165,7 @@ function Kanban() {
                 onDragLeave={() => setOver((o) => (o === st.id ? null : o))}
                 onDrop={() => drop(st.id)}
                 className={cn(
-                  "flex w-[268px] shrink-0 flex-col rounded-[8px] border transition-colors",
+                  "flex min-w-0 flex-col rounded-[8px] border transition-colors",
                   st.terminal ? "border-line bg-ok-soft/30" : "border-line bg-soft/50",
                   over === st.id && "border-navy-3/40 bg-soft",
                 )}
