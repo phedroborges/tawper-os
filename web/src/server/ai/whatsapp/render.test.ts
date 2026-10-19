@@ -30,4 +30,24 @@ describe("formatação da resposta para WhatsApp", () => {
     expect(text.length).toBeLessThanOrEqual(500);
     expect(text).toContain("resposta encurtada");
   });
+
+  it("pede confirmação explícita para uma ação mutável", () => {
+    const text = renderWhatsAppAnswer({
+      texto: "Vou concluir a tarefa.",
+      acao: {
+        id: "a1",
+        kind: "complete_task",
+        status: "awaiting_confirmation",
+        title: "Concluir tarefa",
+        summary: "Vou concluir a tarefa.",
+        confirmationText: "Confirmar conclusão",
+        actorId: "u1",
+        createdAt: "2026-10-19T20:00:00Z",
+        expiresAt: "2026-10-19T20:15:00Z",
+        payload: { kind: "complete_task", companyId: "c1", activityId: "t1", result: "Feito" },
+      },
+    });
+    expect(text).toContain("CONFIRMAR");
+    expect(text).toContain("CANCELAR");
+  });
 });

@@ -1401,6 +1401,7 @@ Atualizar esta tabela sempre que uma fase mudar de estado.
 
 | 19/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Codex | SM-2026-10-19-003 / ADR-005: Agente Geral interno de leitura preparado para o WhatsApp dedicado. Allow-list por ambiente, escopo por carteira, sessão própria, resposta visual, outbox com idempotência/retentativa e worker protegido. Reset integral do banco, RLS/privilégios, 51 testes, typecheck, lint, build e fluxo ponta a ponta com Stevo simulada aprovados. Evidência em `docs/evidencias/2026-10-19-agente-geral-whatsapp-leitura.md`. Ativação externa depende do QR code e dos segredos na Stevo/EasyPanel; F0 permanece ativa. |
 | 19/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Codex | SM-2026-10-19-004 / ADR-005: validação real identificou que a instância SM v2 mantém um único webhook e que a renovação da Central de Conversas substituía a rota exclusiva do agente. Entrada de transporte unificada, com autorização, sessão, memória e outbox do agente ainda isoladas. Nenhuma migration ou reprocessamento de mensagens antigas; F0 permanece ativa. |
+| 19/10/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Codex | SM-2026-10-19-005 / ADR-004 / ADR-005: Agente Geral passou a propor e, após confirmação explícita, executar mudança de etapa, conclusão e criação de tarefa no sistema e WhatsApp. Requisitos, carteira, autor, prazo e estado são revalidados no servidor; WhatsApp consome a proposta uma única vez. Sem migration; evidência em `docs/evidencias/2026-10-19-acoes-confirmadas-agente.md`. F0 permanece ativa. |
 
 ---
 

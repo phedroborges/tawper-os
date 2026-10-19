@@ -2,6 +2,7 @@ import "server-only";
 
 import postgres from "postgres";
 import { TAWPER_ORG_ID } from "@/lib/supabase/admin";
+import type { AssistantActionProposal } from "@/lib/assistant-actions";
 
 let sql: ReturnType<typeof postgres> | null = null;
 
@@ -117,7 +118,9 @@ export async function recordWhatsAppAgentReply(input: {
   outboxEventId: string;
   body: string;
   externalMessageId: string;
+  action?: AssistantActionProposal;
 }) {
+  const action = input.action?.status === "awaiting_confirmation" ? JSON.stringify(input.action) : null;
   await db()`
     insert into public.ai_channel_messages (
       organization_id, session_id, channel, direction, external_message_id, body, metadata
@@ -125,7 +128,41 @@ export async function recordWhatsAppAgentReply(input: {
     values (
       ${TAWPER_ORG_ID}::uuid, ${input.sessionId}::uuid, 'whatsapp', 'out',
       ${input.externalMessageId || null}, ${input.body},
-      jsonb_build_object('outbox_event_id', ${input.outboxEventId}::text)
+      jsonb_build_object('outbox_event_id', ${input.outboxEventId}::text) ||
+      case when ${action}::text is null then '{}'::jsonb
+           else jsonb_build_object('action', ${action}::jsonb, 'action_status', 'pending') end
     )
+  `;
+}
+
+export async function claimPendingWhatsAppAction(sessionId: string) {
+  const rows = await db()<{
+    id: string;
+    action: AssistantActionProposal;
+  }[]>`
+    with candidate as (
+      select id
+        from public.ai_channel_messages
+       where session_id = ${sessionId}::uuid
+         and direction = 'out'
+         and metadata ->> 'action_status' = 'pending'
+       order by created_at desc
+       limit 1
+       for update skip locked
+    )
+    update public.ai_channel_messages message
+       set metadata = jsonb_set(message.metadata, '{action_status}', to_jsonb('executing'::text), true)
+      from candidate
+     where message.id = candidate.id
+    returning message.id::text, message.metadata -> 'action' as action
+  `;
+  return rows[0] ?? null;
+}
+
+export async function finishPendingWhatsAppAction(messageId: string, status: "executed" | "failed" | "cancelled") {
+  await db()`
+    update public.ai_channel_messages
+       set metadata = jsonb_set(metadata, '{action_status}', to_jsonb(${status}::text), true)
+     where id = ${messageId}::uuid
   `;
 }

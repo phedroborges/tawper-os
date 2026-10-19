@@ -1,16 +1,16 @@
 "use client";
 
-import { ArrowUpRight, Send, Sparkles } from "lucide-react";
+import { ArrowUpRight, Check, LoaderCircle, Send, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useRef, useState } from "react";
 import { Drawer } from "@/components/ui/overlay";
 import { ASSISTANT_SUGGESTIONS, assistantAnswer, type AssistantAnswer } from "@/lib/ai";
 import { systemContext } from "@/lib/ai-context";
 import { isManager } from "@/lib/constants";
-import { useCurrentUser, useStore } from "@/lib/store";
+import { refreshCrm, useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
 import { cn } from "@/lib/utils";
-import { aiAssistant } from "@/server/ai/actions";
+import { aiAssistant, confirmAssistantAction } from "@/server/ai/actions";
 import { AssistantBlocks } from "./AssistantBlocks";
 
 interface Msg {
@@ -27,6 +27,7 @@ export function AssistantPanel() {
   const [msgs, setMsgs] = useState<Msg[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [actionBusy, setActionBusy] = useState<string | null>(null);
   const endRef = useRef<HTMLDivElement>(null);
   const seq = useRef(0);
 
@@ -57,6 +58,7 @@ export function AssistantPanel() {
         answer = await aiAssistant({
           question: q,
           history,
+          actorId: user.id,
           sistema: systemContext(state, user),
           fallback,
           allowedCompanyIds,
@@ -72,6 +74,30 @@ export function AssistantPanel() {
       seq.current += 1;
       setMsgs((m) => [...m, { id: seq.current, from: "ia", text: answer.texto, answer }]);
       setBusy(false);
+    })();
+  };
+
+  const confirmAction = (messageId: number, answer: AssistantAnswer) => {
+    if (!answer.acao || actionBusy) return;
+    const action = answer.acao;
+    setActionBusy(action.id);
+    void (async () => {
+      try {
+        const result = await confirmAssistantAction({ actorId: user.id, action });
+        setMsgs((current) => {
+          const updated = current.map((message) => message.id === messageId && message.answer
+            ? { ...message, answer: { ...message.answer, acao: result.action } }
+            : message);
+          seq.current += 1;
+          return [...updated, { id: seq.current, from: "ia" as const, text: result.message }];
+        });
+        if (result.ok) await refreshCrm().catch(() => false);
+      } catch {
+        seq.current += 1;
+        setMsgs((current) => [...current, { id: seq.current, from: "ia", text: "Não consegui confirmar a ação agora. Nada foi alterado; tente novamente." }]);
+      } finally {
+        setActionBusy(null);
+      }
     })();
   };
 
@@ -114,6 +140,23 @@ export function AssistantPanel() {
                     ))}
                   </ul>
                 )}
+                {m.answer?.acao?.status === "awaiting_confirmation" && (
+                  <div className="mt-3 rounded-[7px] border border-ai/25 bg-ai/5 p-3">
+                    <p className="text-[12.5px] font-semibold text-navy">{m.answer.acao.title}</p>
+                    <p className="mt-1 text-[11.5px] leading-relaxed text-muted">Revise a descrição acima. O banco só será alterado depois da sua confirmação.</p>
+                    <button
+                      type="button"
+                      disabled={Boolean(actionBusy)}
+                      onClick={() => confirmAction(m.id, m.answer!)}
+                      className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-[5px] bg-ai px-3 text-[11.5px] font-semibold text-white disabled:opacity-60"
+                    >
+                      {actionBusy === m.answer.acao.id ? <LoaderCircle size={13} className="animate-spin" /> : <Check size={13} />}
+                      {m.answer.acao.confirmationText ?? "Confirmar ação"}
+                    </button>
+                  </div>
+                )}
+                {m.answer?.acao?.status === "executed" && <p className="mt-2 text-[11.5px] font-semibold text-emerald-700">Ação confirmada e gravada no CRM.</p>}
+                {m.answer?.acao?.status === "failed" && <p className="mt-2 text-[11.5px] font-semibold text-brand">A ação não foi gravada.</p>}
               </div>
             </div>
           ))}

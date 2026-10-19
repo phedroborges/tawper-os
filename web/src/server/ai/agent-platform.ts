@@ -147,6 +147,9 @@ export const AGENTS: Record<AgentKey, AgentDefinition> = {
     promptVersion: "operations-agent-v1",
     maxSteps: 4,
     tools: [
+      { name: "move_stage", risk: "write" },
+      { name: "complete_task", risk: "write" },
+      { name: "create_task", risk: "write" },
       { name: "enqueue_form", risk: "external" },
       { name: "enqueue_indexing", risk: "write" },
     ],

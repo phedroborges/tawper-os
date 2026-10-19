@@ -6,15 +6,18 @@ import { canonicalWhatsApp } from "@/lib/br-ids";
 import { visibleCompanies, type Data } from "@/lib/selectors";
 import { loadCrmSnapshot } from "@/server/crm";
 import { aiAssistant } from "../actions";
+import { executeAssistantAction } from "../action-engine";
 import { resolveWhatsAppAgentUser } from "./access";
 import { findWhatsAppAgentIdentity } from "./config";
 import { renderWhatsAppAnswer } from "./render";
 import { sendWhatsAppAgentText } from "./stevo";
 import {
   bindWhatsAppAgentSessionProfile,
+  claimPendingWhatsAppAction,
   claimWhatsAppAgentJob,
   findWhatsAppAgentReply,
   finishWhatsAppAgentJob,
+  finishPendingWhatsAppAction,
   loadWhatsAppAgentHistory,
   recordWhatsAppAgentReply,
   type WhatsAppAgentJob,
@@ -51,6 +54,29 @@ async function answerJob(job: WhatsAppAgentJob) {
   }
 
   await bindWhatsAppAgentSessionProfile(sessionId, uuid(resolved.user.id));
+  const normalizedQuestion = question.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  if (/^(confirmar|confirmo|pode confirmar|sim,? confirmar)$/.test(normalizedQuestion)) {
+    const pending = await claimPendingWhatsAppAction(sessionId);
+    if (!pending) {
+      const text = "Não há uma ação pendente para confirmar. Faça o pedido novamente com a empresa e os dados da ação.";
+      const sent = await sendWhatsAppAgentText(sender, text);
+      await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
+      return;
+    }
+    const result = await executeAssistantAction({ actorId: resolved.user.id, action: pending.action });
+    await finishPendingWhatsAppAction(pending.id, result.ok ? "executed" : "failed");
+    const sent = await sendWhatsAppAgentText(sender, result.message);
+    await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: result.message, externalMessageId: sent.messageId });
+    return;
+  }
+  if (/^(cancelar|cancela|cancelado|nao confirmar)$/.test(normalizedQuestion)) {
+    const pending = await claimPendingWhatsAppAction(sessionId);
+    const text = pending ? "Ação cancelada. Nada foi alterado no CRM." : "Não há uma ação pendente para cancelar.";
+    if (pending) await finishPendingWhatsAppAction(pending.id, "cancelled");
+    const sent = await sendWhatsAppAgentText(sender, text);
+    await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
+    return;
+  }
   const data: Data = { ...snapshot, suggestions: [], conversations: [] };
   const allowedCompanies = visibleCompanies(data, resolved.user);
   const allowedCompanyIds = allowedCompanies.map((company) => company.id);
@@ -60,6 +86,7 @@ async function answerJob(job: WhatsAppAgentJob) {
   const answer = await aiAssistant({
     question,
     history: history.slice(-6),
+    actorId: resolved.user.id,
     sistema: systemContext(data, resolved.user),
     fallback,
     allowedCompanyIds,
@@ -70,7 +97,7 @@ async function answerJob(job: WhatsAppAgentJob) {
   });
   const text = renderWhatsAppAnswer(answer);
   const sent = await sendWhatsAppAgentText(sender, text);
-  await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
+  await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId, action: answer.acao });
 }
 
 export async function processWhatsAppAgentQueue(limit = 3) {

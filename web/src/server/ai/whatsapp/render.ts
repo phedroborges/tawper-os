@@ -49,6 +49,9 @@ export function renderWhatsAppAnswer(answer: AssistantAnswer, maxLength = 3900) 
   if (answer.itens?.length) {
     parts.push(["🏢 Contas relacionadas", ...answer.itens.map((item) => `• ${clean(item.label)}${item.meta ? ` — ${clean(item.meta)}` : ""}`)].join("\n"));
   }
+  if (answer.acao?.status === "awaiting_confirmation") {
+    parts.push(`⚠️ ${clean(answer.acao.confirmationText ?? "Confirmar ação")}\nResponda somente *CONFIRMAR* para executar ou *CANCELAR* para descartar. A confirmação expira em 15 minutos.`);
+  }
   const text = parts.filter(Boolean).join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
   if (text.length <= maxLength) return text;
   return `${text.slice(0, Math.max(1, maxLength - 48)).trimEnd()}\n\n… resposta encurtada para o WhatsApp.`;

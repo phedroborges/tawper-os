@@ -10,6 +10,8 @@ import { listLiveCorpus } from "@/server/integrations/stevo-proof/live-store";
 import { aiConfigured, askJSON, type ChatTurn } from "./openai";
 import { reconcileCopilotWithKnownContacts } from "./guards";
 import { AGENTS, planConversationAgent, planForQuestion } from "./agent-platform";
+import { executeAssistantAction as executePlannedAction, planAssistantAction } from "./action-engine";
+import type { AssistantActionExecution, AssistantActionProposal } from "@/lib/assistant-actions";
 import {
   normalizeConversationSummary,
   normalizeDailyBriefing,
@@ -184,12 +186,15 @@ async function whatsappDaBase(escopo?: { gestor: boolean; telefones: string[] })
 export async function aiAssistant(input: {
   question: string;
   history?: ChatTurn[];
+  actorId?: string;
   sistema: unknown;
   fallback: AssistantAnswer;
   allowedCompanyIds: string[];
   escopo?: { gestor: boolean; telefones: string[] };
 }): Promise<AssistantAnswer> {
   if (!aiConfigured()) return input.fallback;
+  const action = await planAssistantAction({ question: input.question, history: input.history, actorId: input.actorId });
+  if (action) return action;
   const allowed = new Set(input.allowedCompanyIds);
   const plan = planForQuestion(input.question);
   const task = plan.agent === "strategic_copilot" ? "strategy" : "assistant";
@@ -199,7 +204,7 @@ export async function aiAssistant(input: {
 Você responde qualquer pergunta sobre a Tawper e sobre a operação comercial, usando a base completa enviada.
 A base traz cadastro, contatos, negócios, atividades, histórico, orçamentos, estratégias, rotas, alertas, indicadores, funis, catálogo de produtos e as mensagens de WhatsApp.
 Conte, filtre, compare e explique a partir desses registros. Se o dado está na base, responda com ele. Se não está, diga que não está registrado.
-Este canal é somente de consulta: nunca afirme que enviou mensagem, formulário ou alterou o sistema. Quando pedirem uma ação, explique que ela precisa de confirmação humana e ofereça o plano ou rascunho.
+Pedidos de mover etapa, criar tarefa ou concluir tarefa são tratados antes desta resposta por ferramentas seguras. Aqui, não afirme que uma ação foi executada se você recebeu apenas dados para consulta.
 Leia o campo "cobertura": se algo foi encurtado, avise só quando a pergunta depender desse trecho.
 Cite a empresa pelo nome. Em "itens", use o empresaId exatamente como veio na base.
 Entregue a resposta já mastigada. Para tarefas, use task_list com o check correto. Para indicadores, use metric e bar_chart comparando com ontem ou com o período anterior. Use table quando houver linhas e colunas. Não use markdown nem HTML.
@@ -226,6 +231,10 @@ JSON: { "texto": string, "blocos": [
     blocos: asAssistantBlocks(raw.blocos, input.fallback.blocos, allowed),
     itens: asAssistantItems(raw.itens, undefined, allowed),
   };
+}
+
+export async function confirmAssistantAction(input: { actorId: string; action: AssistantActionProposal }): Promise<AssistantActionExecution> {
+  return executePlannedAction(input);
 }
 
 export async function aiCopilot(input: { context: unknown; fallback: CopilotResult }): Promise<CopilotResult> {

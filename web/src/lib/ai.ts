@@ -33,6 +33,7 @@ import type {
   User,
 } from "./types";
 import { money, normalize } from "./utils";
+import type { AssistantActionProposal } from "./assistant-actions";
 
 // ---------------------------------------------------------------------------
 // Utilidades de leitura de texto
@@ -757,6 +758,7 @@ export interface AssistantAnswer {
   texto: string;
   itens?: { label: string; meta?: string; href: string }[];
   blocos?: AssistantBlock[];
+  acao?: AssistantActionProposal;
 }
 
 export type AssistantBlock =

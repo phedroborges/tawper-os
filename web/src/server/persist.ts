@@ -369,11 +369,51 @@ export async function addActivityRecord(activity: {
   dueAt: string;
   prioridade?: Prioridade;
   origem?: Activity["origem"];
-}) {
+}, options?: { actorId?: string; actorType?: "user" | "ai"; requestId?: string }) {
   if (!isUuid(activity.companyId)) return null;
-  const sb = getSupabaseAdmin();
   const actors = await ensureOperators();
   const origin = activity.origem === "ia" ? "ai" : activity.origem === "regra" ? "rule" : activity.origem === "integracao" ? "integration" : "manual";
+  const ownerId = await resolveOwner(activity.ownerId, actors);
+  const actorId = options?.actorId ? await resolveOwner(options.actorId, actors) : null;
+  if (options?.actorType === "ai") {
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error("DATABASE_URL ausente para criar a atividade.");
+    const sql = postgres(url, { max: 1, ssl: "require" });
+    try {
+      const rows = await sql.begin(async (tx) => {
+        await tx`select app.crm_begin(${actorId}::uuid, 'ai')`;
+        if (options.requestId) {
+          await tx`select pg_advisory_xact_lock(hashtextextended(${options.requestId}, 0))`;
+          const previous = await tx<{ entity_id: string }[]>`
+            select entity_id::text
+              from public.audit_events
+             where organization_id = ${TAWPER_ORG_ID}::uuid and request_id = ${options.requestId}
+             order by occurred_at desc
+             limit 1
+          `;
+          if (previous[0]) return [{ id: previous[0].entity_id }];
+          await tx`select set_config('app.request_id', ${options.requestId}, true)`;
+        }
+        return tx<{ id: string }[]>`
+          insert into public.activities (
+            organization_id, company_id, opportunity_id, type, title, description,
+            owner_id, due_at, priority, status, origin
+          ) values (
+            ${TAWPER_ORG_ID}::uuid, ${activity.companyId}::uuid,
+            ${activity.dealId && isUuid(activity.dealId) ? activity.dealId : null}::uuid,
+            ${ACTIVITY_TO_DB[activity.tipo] ?? "other"}, ${activity.titulo}, ${activity.descricao || null},
+            ${ownerId}::uuid, ${activity.dueAt}::timestamptz,
+            ${LEVEL_TO_DB[activity.prioridade ?? "Média"] ?? "medium"}, 'pending', ${origin}
+          ) returning id::text
+        `;
+      });
+      if (!rows[0]) throw new Error("Falha ao gravar a atividade.");
+      return rows[0].id;
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+  }
+  const sb = getSupabaseAdmin();
   const row = await sb
     .from("activities")
     .insert({
@@ -383,7 +423,7 @@ export async function addActivityRecord(activity: {
       type: ACTIVITY_TO_DB[activity.tipo] ?? "other",
       title: activity.titulo,
       description: activity.descricao || null,
-      owner_id: await resolveOwner(activity.ownerId, actors),
+      owner_id: ownerId,
       due_at: activity.dueAt,
       priority: LEVEL_TO_DB[activity.prioridade ?? "Média"] ?? "medium",
       status: "pending",
@@ -446,6 +486,8 @@ export async function moveDealRecord(input: {
   dealId: string;
   toStageId: string;
   actorId?: string;
+  actorType?: "user" | "ai";
+  requestId?: string;
   checks?: Record<string, boolean>;
   nota?: string;
   tarefas?: {
@@ -499,18 +541,45 @@ export async function moveDealRecord(input: {
   try {
     await sql.begin(async (tx) => {
       await tx`select set_config('app.bypass_stage_rules', 'on', true)`;
-      await tx`select set_config('app.actor_type', 'user', true)`;
-      if (advancing) {
-        await tx`
-          insert into public.opportunity_requirement_values (
-            organization_id, opportunity_id, requirement_id, is_met, met_at, met_by, note
-          )
-          select ${TAWPER_ORG_ID}::uuid, ${input.dealId}::uuid, r.id, true, now(), ${actor}::uuid, ${nota ?? null}
-            from public.stage_requirements r
-           where r.stage_id = ${opportunity.stage_id}::uuid and r.kind = 'check'
-          on conflict (opportunity_id, requirement_id)
-          do update set is_met = true, met_at = now(), met_by = excluded.met_by, note = excluded.note
+      await tx`select app.crm_begin(${actor}::uuid, ${input.actorType === "ai" ? "ai" : "user"})`;
+      if (input.requestId) {
+        await tx`select pg_advisory_xact_lock(hashtextextended(${input.requestId}, 0))`;
+        const previous = await tx<{ found: boolean }[]>`
+          select true as found
+            from public.audit_events
+           where organization_id = ${TAWPER_ORG_ID}::uuid and request_id = ${input.requestId}
+           limit 1
         `;
+        if (previous[0]) return;
+        await tx`select set_config('app.request_id', ${input.requestId}, true)`;
+      }
+      if (advancing) {
+        const confirmedKeys = Object.entries(input.checks ?? {}).filter(([, value]) => value).map(([key]) => key);
+        if (input.actorType === "ai" && confirmedKeys.length) {
+          await tx`
+            insert into public.opportunity_requirement_values (
+              organization_id, opportunity_id, requirement_id, is_met, met_at, met_by, note
+            )
+            select ${TAWPER_ORG_ID}::uuid, ${input.dealId}::uuid, r.id, true, now(), ${actor}::uuid, ${nota ?? null}
+              from public.stage_requirements r
+             where r.stage_id = ${opportunity.stage_id}::uuid
+               and r.kind = 'check'
+               and r.key = any(${confirmedKeys}::text[])
+            on conflict (opportunity_id, requirement_id)
+            do update set is_met = true, met_at = now(), met_by = excluded.met_by, note = excluded.note
+          `;
+        } else if (input.actorType !== "ai") {
+          await tx`
+            insert into public.opportunity_requirement_values (
+              organization_id, opportunity_id, requirement_id, is_met, met_at, met_by, note
+            )
+            select ${TAWPER_ORG_ID}::uuid, ${input.dealId}::uuid, r.id, true, now(), ${actor}::uuid, ${nota ?? null}
+              from public.stage_requirements r
+             where r.stage_id = ${opportunity.stage_id}::uuid and r.kind = 'check'
+            on conflict (opportunity_id, requirement_id)
+            do update set is_met = true, met_at = now(), met_by = excluded.met_by, note = excluded.note
+          `;
+        }
       }
       const updated = await tx`
         update public.opportunities
@@ -519,6 +588,7 @@ export async function moveDealRecord(input: {
                probability = ${Number(target.probability)}
          where id = ${input.dealId}::uuid
            and organization_id = ${TAWPER_ORG_ID}::uuid
+           and stage_id = ${opportunity.stage_id}::uuid
         returning id
       `;
       if (!updated.length) throw new Error("Oportunidade não encontrada.");
@@ -543,10 +613,51 @@ export async function moveDealRecord(input: {
   }
 }
 
-export async function completeActivityRecord(id: string, resultado: string, next?: { tipo: ActivityType; titulo: string; dueAt: string; prioridade?: Prioridade; ownerId?: string; companyId: string; dealId?: string }) {
+export async function completeActivityRecord(
+  id: string,
+  resultado: string,
+  next?: { tipo: ActivityType; titulo: string; dueAt: string; prioridade?: Prioridade; ownerId?: string; companyId: string; dealId?: string },
+  options?: { actorId?: string; actorType?: "user" | "ai"; requestId?: string },
+) {
   if (!isUuid(id)) return null;
+  if (options?.actorType === "ai") {
+    const actors = await ensureOperators();
+    const actorId = options.actorId ? await resolveOwner(options.actorId, actors) : null;
+    const url = process.env.DATABASE_URL;
+    if (!url) throw new Error("DATABASE_URL ausente para concluir a atividade.");
+    const sql = postgres(url, { max: 1, ssl: "require" });
+    try {
+      await sql.begin(async (tx) => {
+        await tx`select app.crm_begin(${actorId}::uuid, 'ai')`;
+        if (options.requestId) {
+          await tx`select pg_advisory_xact_lock(hashtextextended(${options.requestId}, 0))`;
+          const previous = await tx<{ found: boolean }[]>`
+            select true as found
+              from public.audit_events
+             where organization_id = ${TAWPER_ORG_ID}::uuid and request_id = ${options.requestId}
+             limit 1
+          `;
+          if (previous[0]) return;
+          await tx`select set_config('app.request_id', ${options.requestId}, true)`;
+        }
+        const rows = await tx<{ id: string }[]>`
+          update public.activities
+             set status = 'done', outcome = ${resultado}, completed_at = now()
+           where id = ${id}::uuid
+             and organization_id = ${TAWPER_ORG_ID}::uuid
+             and status = 'pending'
+          returning id::text
+        `;
+        if (!rows.length) throw new Error("A tarefa não está mais pendente.");
+      });
+    } finally {
+      await sql.end({ timeout: 5 });
+    }
+    if (!next) return null;
+    return addActivityRecord(next, { ...options, requestId: options.requestId ? `${options.requestId}:next` : undefined });
+  }
   const sb = getSupabaseAdmin();
-  const upd = await sb.from("activities").update({ status: "done", outcome: resultado, completed_at: new Date().toISOString() }).eq("id", id);
+  const upd = await sb.from("activities").update({ status: "done", outcome: resultado, completed_at: new Date().toISOString() }).eq("id", id).eq("organization_id", TAWPER_ORG_ID).eq("status", "pending");
   if (upd.error) throw new Error(upd.error.message);
   if (!next) return null;
   return addActivityRecord(next);
