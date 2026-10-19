@@ -11,6 +11,7 @@ import { useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
 import { cn } from "@/lib/utils";
 import { aiAssistant } from "@/server/ai/actions";
+import { AssistantBlocks } from "./AssistantBlocks";
 
 interface Msg {
   id: number;
@@ -19,7 +20,7 @@ interface Msg {
   answer?: AssistantAnswer;
 }
 
-/** "Pergunte à Tawper IA": gpt-4o-mini com a base inteira visível; regras locais se o modelo falhar. */
+/** "Pergunte à Tawper IA": modelo configurado com a base visível; regras locais se o modelo falhar. */
 export function AssistantPanel() {
   const { assistantOpen, setAssistant } = useUI();
   const user = useCurrentUser();
@@ -96,7 +97,8 @@ export function AssistantPanel() {
                     <Sparkles size={11} /> Tawper IA
                   </div>
                 )}
-                {m.text}
+                <p className="whitespace-pre-line">{m.text}</p>
+                {m.answer?.blocos && m.answer.blocos.length > 0 && <AssistantBlocks blocks={m.answer.blocos} onNavigate={() => setAssistant(false)} />}
                 {m.answer?.itens && m.answer.itens.length > 0 && (
                   <ul className="mt-2 divide-y divide-line/70 overflow-hidden rounded-[6px] border border-line bg-white">
                     {m.answer.itens.slice(0, 12).map((it) => (

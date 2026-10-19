@@ -1,11 +1,26 @@
 "use server";
 
-import type { AssistantAnswer, CopilotResult, DailyBriefing, ExtractedLead, ManagerDigest, QuickProposal } from "@/lib/ai";
+import { gateway } from "@ai-sdk/gateway";
+import { experimental_transcribe as transcribe } from "ai";
+import type { AssistantAnswer, AssistantBlock, CopilotResult, DailyBriefing, ExtractedLead, ManagerDigest, QuickProposal } from "@/lib/ai";
 import { canonicalWhatsApp } from "@/lib/br-ids";
-import { ACTIVITY_TYPES, MARCAS, PAPEIS, PRENSAS, UFS } from "@/lib/constants";
-import type { ActivityType, Canal, ConversationSummary, Papel, Prensa, Prioridade } from "@/lib/types";
+import { ACTIVITY_TYPES } from "@/lib/constants";
+import type { ActivityType, ConversationSummary } from "@/lib/types";
 import { listLiveCorpus } from "@/server/integrations/stevo-proof/live-store";
-import { askJSON, type ChatTurn } from "./openai";
+import { aiConfigured, askJSON, type ChatTurn } from "./openai";
+import { reconcileCopilotWithKnownContacts } from "./guards";
+import { AGENTS, planConversationAgent, planForQuestion } from "./agent-platform";
+import {
+  normalizeConversationSummary,
+  normalizeDailyBriefing,
+  normalizeExtractedLead,
+  normalizeManagerDigest,
+  normalizeNextStep,
+  normalizeQuickNote,
+  normalizeRouteIds,
+  normalizeTranscript,
+  validateTranscriptionFile,
+} from "./contracts";
 
 const TAWPER = `Você é o copiloto comercial da Tawper, fabricante de mangueiras hidráulicas para usinas de cana no Brasil.
 Regras:
@@ -14,9 +29,6 @@ Regras:
 - Se faltar informação, diga o que falta. Nunca complete com chute.
 - Nada no CRM muda sem um humano confirmar.
 - Responda APENAS um objeto JSON válido, sem markdown e sem texto fora do JSON.`;
-
-const CANAIS: Canal[] = ["WhatsApp", "Ligação", "E-mail", "Visita", "Reunião", "Nota"];
-const PRIORIDADES: Prioridade[] = ["Alta", "Média", "Baixa"];
 
 function dump(v: unknown) {
   return JSON.stringify(v);
@@ -35,10 +47,6 @@ function num(v: unknown, fallback: number, min: number, max: number) {
   return Math.min(max, Math.max(min, n));
 }
 
-function bool(v: unknown, fallback: boolean) {
-  return typeof v === "boolean" ? v : fallback;
-}
-
 function pick<T extends string>(v: unknown, allowed: readonly T[], fallback: T): T {
   return typeof v === "string" && (allowed as readonly string[]).includes(v) ? (v as T) : fallback;
 }
@@ -49,63 +57,11 @@ function strList(v: unknown, fallback: string[], maxItems: number, maxLen = 240)
   return out.length ? out : fallback;
 }
 
-function asIso(v: unknown, fallback: string) {
-  if (typeof v !== "string" || !v.trim()) return fallback;
-  if (/^\d{4}-\d{2}-\d{2}$/.test(v.trim())) {
-    const d = new Date(`${v.trim()}T10:00:00`);
-    return Number.isNaN(d.getTime()) ? fallback : d.toISOString();
-  }
-  const d = new Date(v);
-  return Number.isNaN(d.getTime()) ? fallback : d.toISOString();
-}
-
 function asTipo(v: unknown, fallback: ActivityType): ActivityType {
   return pick(v, ACTIVITY_TYPES, fallback);
 }
 
 type StageOpt = { id: string; nome: string };
-
-function asEtapa(v: unknown, stages: StageOpt[], fallback?: QuickProposal["etapaSugerida"]) {
-  if (!v || typeof v !== "object") return fallback;
-  const raw = v as { stageId?: unknown; nome?: unknown; motivo?: unknown };
-  const id = str(raw.stageId, "", 40);
-  const st = stages.find((s) => s.id === id);
-  if (!st) return fallback;
-  return { stageId: st.id, nome: st.nome, motivo: str(raw.motivo, fallback?.motivo ?? "Sugerido a partir da conversa.", 180) };
-}
-
-function asDados(v: unknown, fallback: QuickProposal["dadosExtraidos"]): QuickProposal["dadosExtraidos"] {
-  const src = v && typeof v === "object" ? (v as Record<string, unknown>) : {};
-  const out: QuickProposal["dadosExtraidos"] = { ...fallback };
-  if (src.colhedoras !== undefined) {
-    const n = num(src.colhedoras, fallback.colhedoras ?? 0, 1, 999);
-    if (n) out.colhedoras = n;
-  }
-  if (src.modelos !== undefined) {
-    const t = str(src.modelos, fallback.modelos ?? "", 120);
-    if (t) out.modelos = t;
-  }
-  if (typeof src.marcaAtual === "string" && (MARCAS as readonly string[]).includes(src.marcaAtual)) {
-    out.marcaAtual = src.marcaAtual;
-  }
-  if (typeof src.prensa === "string" && (PRENSAS as readonly string[]).includes(src.prensa)) {
-    out.prensa = src.prensa as Prensa;
-  }
-  if (src.concorrente !== undefined) {
-    const t = str(src.concorrente, fallback.concorrente ?? "", 80);
-    if (t) out.concorrente = t;
-  }
-  return out;
-}
-
-function asChecks(v: unknown, fallback: Record<string, boolean>) {
-  if (!v || typeof v !== "object") return fallback;
-  const out: Record<string, boolean> = { ...fallback };
-  for (const [k, val] of Object.entries(v as Record<string, unknown>)) {
-    if (/^[a-z0-9_]{2,40}$/.test(k) && typeof val === "boolean") out[k] = val;
-  }
-  return out;
-}
 
 const INTERNAL_HREFS = new Set(["/gestao", "/meu-dia", "/rotas", "/carteira", "/conversas"]);
 
@@ -131,6 +87,73 @@ function asAssistantItems(raw: unknown, fallback: AssistantAnswer["itens"], allo
     items.push({ label, meta: str(row.meta, "", 140) || undefined, href });
   }
   return items.length ? items : fallback;
+}
+
+function plainText(value: unknown, fallback = "", max = 4000) {
+  return str(value, fallback, max)
+    .replace(/\*\*([^*]+)\*\*/g, "$1")
+    .replace(/__([^_]+)__/g, "$1")
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1")
+    .replace(/^\s{0,3}#{1,6}\s+/gm, "")
+    .replace(/^\s*[-*]\s+/gm, "• ")
+    .replace(/[*_`~]/g, "")
+    .trim();
+}
+
+function safeHref(value: unknown, allowed: Set<string>) {
+  if (typeof value !== "string" || !value.startsWith("/")) return undefined;
+  const path = value.split("?")[0];
+  const company = path.match(/^\/empresas\/([A-Za-z0-9-]+)$/);
+  if (company && allowed.has(company[1])) return `/empresas/${company[1]}`;
+  return INTERNAL_HREFS.has(path) ? path : undefined;
+}
+
+function asAssistantBlocks(raw: unknown, fallback: AssistantBlock[] | undefined, allowed: Set<string>): AssistantBlock[] | undefined {
+  if (!Array.isArray(raw)) return fallback;
+  const blocks: AssistantBlock[] = [];
+  for (const item of raw.slice(0, 8)) {
+    if (!item || typeof item !== "object") continue;
+    const row = item as Record<string, unknown>;
+    if (row.type === "text") {
+      const text = plainText(row.text, "", 1800);
+      if (text) blocks.push({ type: "text", text });
+    } else if (row.type === "metric") {
+      const label = plainText(row.label, "", 80);
+      const value = plainText(row.value, "", 80);
+      if (label && value) {
+        const trend = row.trend === "up" || row.trend === "down" || row.trend === "neutral" ? row.trend : undefined;
+        blocks.push({ type: "metric", label, value, comparison: plainText(row.comparison, "", 160) || undefined, trend });
+      }
+    } else if (row.type === "task_list" && Array.isArray(row.items)) {
+      const items = row.items.slice(0, 20).flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const task = entry as Record<string, unknown>;
+        const title = plainText(task.title, "", 140);
+        if (!title) return [];
+        const status: "pending" | "done" | "cancelled" = task.status === "done" || task.status === "cancelled" ? task.status : "pending";
+        return [{ title, status, meta: plainText(task.meta, "", 160) || undefined, href: safeHref(task.href, allowed) }];
+      });
+      if (items.length) blocks.push({ type: "task_list", title: plainText(row.title, "Tarefas", 100), items });
+    } else if (row.type === "bar_chart" && Array.isArray(row.items)) {
+      const items = row.items.slice(0, 8).flatMap((entry) => {
+        if (!entry || typeof entry !== "object") return [];
+        const bar = entry as Record<string, unknown>;
+        const value = num(bar.value, 0, 0, 1_000_000_000_000);
+        const label = plainText(bar.label, "", 60);
+        if (!label) return [];
+        return [{ label, value, display: plainText(bar.display, String(value), 60) }];
+      });
+      if (items.length) blocks.push({ type: "bar_chart", title: plainText(row.title, "Comparativo", 100), items });
+    } else if (row.type === "table" && Array.isArray(row.columns) && Array.isArray(row.rows)) {
+      const columns = row.columns.map((value) => plainText(value, "", 60)).filter(Boolean).slice(0, 6);
+      const rows = row.rows
+        .filter(Array.isArray)
+        .slice(0, 15)
+        .map((values) => values.slice(0, columns.length).map((value) => plainText(value, "—", 100)));
+      if (columns.length && rows.length) blocks.push({ type: "table", title: plainText(row.title, "", 100) || undefined, columns, rows });
+    }
+  }
+  return blocks.length ? blocks : fallback;
 }
 
 async function whatsappDaBase(escopo?: { gestor: boolean; telefones: string[] }) {
@@ -166,31 +189,45 @@ export async function aiAssistant(input: {
   allowedCompanyIds: string[];
   escopo?: { gestor: boolean; telefones: string[] };
 }): Promise<AssistantAnswer> {
+  if (!aiConfigured()) return input.fallback;
   const allowed = new Set(input.allowedCompanyIds);
+  const plan = planForQuestion(input.question);
   const whatsapp = await whatsappDaBase(input.escopo);
-  const raw = await askJSON<{ texto?: unknown; itens?: unknown }>({
+  const raw = await askJSON<{ texto?: unknown; itens?: unknown; blocos?: unknown }>({
     system: `${TAWPER}
 Você responde qualquer pergunta sobre a Tawper e sobre a operação comercial, usando a base completa enviada.
 A base traz cadastro, contatos, negócios, atividades, histórico, orçamentos, estratégias, rotas, alertas, indicadores, funis, catálogo de produtos e as mensagens de WhatsApp.
 Conte, filtre, compare e explique a partir desses registros. Se o dado está na base, responda com ele. Se não está, diga que não está registrado.
 Leia o campo "cobertura": se algo foi encurtado, avise só quando a pergunta depender desse trecho.
 Cite a empresa pelo nome. Em "itens", use o empresaId exatamente como veio na base.
-JSON: { "texto": string, "itens": [{ "label": string, "meta": string, "companyId": string }] }
+Entregue a resposta já mastigada. Para tarefas, use task_list com o check correto. Para indicadores, use metric e bar_chart comparando com ontem ou com o período anterior. Use table quando houver linhas e colunas. Não use markdown nem HTML.
+JSON: { "texto": string, "blocos": [
+  { "type": "text", "text": string } |
+  { "type": "metric", "label": string, "value": string, "comparison": string, "trend": "up"|"down"|"neutral" } |
+  { "type": "task_list", "title": string, "items": [{ "title": string, "status": "pending"|"done"|"cancelled", "meta": string, "href": string }] } |
+  { "type": "bar_chart", "title": string, "items": [{ "label": string, "value": number, "display": string }] } |
+  { "type": "table", "title": string, "columns": string[], "rows": string[][] }
+], "itens": [{ "label": string, "meta": string, "companyId": string }] }
 "itens" é opcional e só para contas que existem na base. "texto" pode ser longo quando a pergunta pede lista, conta ou explicação.`,
-    user: `Pergunta: ${str(input.question, "", 2000)}\n\nBase do Tawper OS:\n${dump(input.sistema)}\n\nWhatsApp:\n${dump(whatsapp)}`,
+    user: `Pergunta: ${str(input.question, "", 2000)}\n\nPlano do orquestrador:\n${dump(plan)}\n\nBase do Tawper OS:\n${dump(input.sistema)}\n\nWhatsApp:\n${dump(whatsapp)}`,
     history: (input.history ?? []).slice(-6),
     maxTokens: 1800,
     temperature: 0.2,
     timeoutMs: 90_000,
+    task: "assistant",
+    agentKey: "assistant_analytic",
+    promptVersion: AGENTS.assistant_analytic.promptVersion,
   });
   if (!raw) return input.fallback;
   return {
-    texto: str(raw.texto, input.fallback.texto, 4000),
+    texto: plainText(raw.texto, input.fallback.texto, 4000),
+    blocos: asAssistantBlocks(raw.blocos, input.fallback.blocos, allowed),
     itens: asAssistantItems(raw.itens, undefined, allowed),
   };
 }
 
 export async function aiCopilot(input: { context: unknown; fallback: CopilotResult }): Promise<CopilotResult> {
+  if (!aiConfigured()) return reconcileCopilotWithKnownContacts(input.fallback, input.context);
   const raw = await askJSON<{
     titulo?: unknown;
     texto?: unknown;
@@ -208,6 +245,7 @@ export async function aiCopilot(input: { context: unknown; fallback: CopilotResu
   }>({
     system: `${TAWPER}
 Você é o copiloto estratégico. Com o contexto da conta, produza um plano acionável.
+O contexto da conta é a fonte canônica e vence o rascunho local. Antes de sugerir descobrir, mapear ou procurar uma pessoa, confira "contatos". Se já houver Decisor, Comprador ou Técnico cadastrado, cite-o pelo nome e não liste esse papel como dado faltante.
 JSON: {
   "titulo": string,
   "texto": string,
@@ -228,8 +266,11 @@ JSON: {
     user: `Contexto da conta:\n${dump(input.context)}\n\nRascunho das regras locais:\n${dump(input.fallback)}`,
     maxTokens: 1600,
     temperature: 0.4,
+    task: "strategy",
+    agentKey: "strategic_copilot",
+    promptVersion: AGENTS.strategic_copilot.promptVersion,
   });
-  if (!raw) return input.fallback;
+  if (!raw) return reconcileCopilotWithKnownContacts(input.fallback, input.context);
   const fb = input.fallback;
   const acoesRaw = Array.isArray(raw.acoes) ? raw.acoes : [];
   const acoes = (acoesRaw.length ? acoesRaw : fb.detalhes.acoes).slice(0, 4).map((a, i) => {
@@ -241,7 +282,7 @@ JSON: {
       prazoDias: num((src as { prazoDias?: unknown }).prazoDias, prev?.prazoDias ?? 2, 0, 30),
     };
   });
-  return {
+  return reconcileCopilotWithKnownContacts({
     titulo: str(raw.titulo ?? raw.objetivo, fb.titulo, 140),
     texto: str(raw.texto ?? raw.estrategia, fb.texto, 500),
     detalhes: {
@@ -257,7 +298,7 @@ JSON: {
     },
     base: strList(raw.base, fb.base, 8, 180),
     faltantes: strList(raw.faltantes, fb.faltantes, 6, 180),
-  };
+  }, input.context);
 }
 
 export async function aiQuickNote(input: {
@@ -266,6 +307,7 @@ export async function aiQuickNote(input: {
   stages: StageOpt[];
   fallback: QuickProposal;
 }): Promise<QuickProposal> {
+  if (!aiConfigured()) return input.fallback;
   const raw = await askJSON<Record<string, unknown>>({
     system: `${TAWPER}
 Você interpreta o registro livre do vendedor e devolve o mesmo JSON estruturado.
@@ -288,30 +330,12 @@ JSON: {
     user: `Anotação do vendedor:\n${str(input.note, "", 2000)}\n\nEtapas do funil atual:\n${dump(input.stages)}\n\nContexto da conta:\n${dump(input.context)}\n\nRascunho das regras locais:\n${dump(input.fallback)}`,
     maxTokens: 900,
     temperature: 0.2,
+    task: "quick_note",
+    agentKey: "quick_note",
+    promptVersion: AGENTS.quick_note.promptVersion,
   });
   if (!raw) return input.fallback;
-  const fb = input.fallback;
-  const passo = raw.proximoPasso && typeof raw.proximoPasso === "object" ? (raw.proximoPasso as Record<string, unknown>) : {};
-  return {
-    canal: pick(raw.canal, CANAIS, fb.canal),
-    resultado: str(raw.resultado, fb.resultado, 160),
-    resumo: str(raw.resumo, fb.resumo, 400),
-    contato: str(raw.contato, fb.contato ?? "", 40) || undefined,
-    pendenciaCliente: str(raw.pendenciaCliente, fb.pendenciaCliente ?? "", 80) || undefined,
-    prazoCliente: raw.prazoCliente ? asIso(raw.prazoCliente, fb.prazoCliente ?? "") || undefined : fb.prazoCliente,
-    proximoPasso: {
-      titulo: str(passo.titulo, fb.proximoPasso.titulo, 140),
-      tipo: asTipo(passo.tipo, fb.proximoPasso.tipo),
-      dueAt: asIso(passo.dueAt, fb.proximoPasso.dueAt),
-      prioridade: pick(passo.prioridade, PRIORIDADES, fb.proximoPasso.prioridade),
-    },
-    etapaSugerida: asEtapa(raw.etapaSugerida, input.stages, fb.etapaSugerida),
-    checks: asChecks(raw.checks, fb.checks),
-    dadosExtraidos: asDados(raw.dadosExtraidos, fb.dadosExtraidos),
-    destaques: strList(raw.destaques, fb.destaques, 12, 40),
-    confianca: num(raw.confianca, fb.confianca, 0.4, 0.98),
-    sugereGanho: bool(raw.sugereGanho, fb.sugereGanho),
-  };
+  return normalizeQuickNote(raw, input.fallback, input.stages);
 }
 
 export async function aiNextStep(input: {
@@ -319,20 +343,19 @@ export async function aiNextStep(input: {
   context: unknown;
   fallback: QuickProposal["proximoPasso"];
 }): Promise<QuickProposal["proximoPasso"]> {
+  if (!aiConfigured()) return input.fallback;
   const raw = await askJSON<{ titulo?: unknown; tipo?: unknown; dueAt?: unknown; prioridade?: unknown }>({
     system: `${TAWPER}
 Sugira o próximo passo comercial. JSON: { "titulo": string, "tipo": "Ligação"|"WhatsApp"|"E-mail"|"Visita"|"Reunião"|"Cotação"|"Homologação"|"Cadastro"|"Suporte"|"Outro", "dueAt": string, "prioridade": "Alta"|"Média"|"Baixa" }.`,
     user: `Resultado registrado:\n${str(input.resultado, "", 1500)}\n\nContexto:\n${dump(input.context)}\n\nRascunho:\n${dump(input.fallback)}`,
     maxTokens: 400,
     temperature: 0.25,
+    task: "next_step",
+    agentKey: "next_step",
+    promptVersion: AGENTS.next_step.promptVersion,
   });
   if (!raw) return input.fallback;
-  return {
-    titulo: str(raw.titulo, input.fallback.titulo, 140),
-    tipo: asTipo(raw.tipo, input.fallback.tipo),
-    dueAt: asIso(raw.dueAt, input.fallback.dueAt),
-    prioridade: pick(raw.prioridade, PRIORIDADES, input.fallback.prioridade),
-  };
+  return normalizeNextStep(raw, input.fallback);
 }
 
 export async function aiSummarize(input: {
@@ -341,6 +364,8 @@ export async function aiSummarize(input: {
   stages: StageOpt[];
   fallback: ConversationSummary;
 }): Promise<ConversationSummary> {
+  if (!aiConfigured()) return input.fallback;
+  const plan = planConversationAgent("summarize");
   const raw = await askJSON<Record<string, unknown>>({
     system: `${TAWPER}
 Resuma a conversa de WhatsApp. JSON: {
@@ -358,30 +383,15 @@ Resuma a conversa de WhatsApp. JSON: {
   "dadosExtraidos": { "colhedoras": number, "modelos": string, "marcaAtual": string, "prensa": string, "concorrente": string }
 }
 "etapaSugerida" é o id da etapa (ou omita). Só extraia o que o cliente disse de fato.`,
-    user: `Mensagens:\n${dump(input.messages.slice(-40))}\n\nEtapas:\n${dump(input.stages)}\n\nContexto da conta:\n${dump(input.context)}\n\nRascunho:\n${dump(input.fallback)}`,
+    user: `Plano do agente de Conversas:\n${dump(plan)}\n\nMensagens:\n${dump(input.messages.slice(-40))}\n\nEtapas:\n${dump(input.stages)}\n\nContexto da conta:\n${dump(input.context)}\n\nRascunho:\n${dump(input.fallback)}`,
     maxTokens: 1100,
     temperature: 0.25,
+    task: "conversation_summary",
+    agentKey: "conversation_summary",
+    promptVersion: AGENTS.conversation_summary.promptVersion,
   });
   if (!raw) return input.fallback;
-  const fb = input.fallback;
-  const etapaId = str(raw.etapaSugerida, fb.etapaSugerida ?? "", 40);
-  const etapa = input.stages.some((s) => s.id === etapaId) ? etapaId : fb.etapaSugerida;
-  const dados = asDados(raw.dadosExtraidos, fb.dadosExtraidos ?? {});
-  return {
-    assunto: str(raw.assunto, fb.assunto, 120),
-    necessidade: str(raw.necessidade, fb.necessidade, 240),
-    objecoes: strList(raw.objecoes, fb.objecoes, 5, 160),
-    compromissosTawper: strList(raw.compromissosTawper, fb.compromissosTawper, 4, 160),
-    compromissosCliente: strList(raw.compromissosCliente, fb.compromissosCliente, 4, 160),
-    datas: strList(raw.datas, fb.datas, 4, 120),
-    proximoPasso: str(raw.proximoPasso, fb.proximoPasso, 160),
-    proximoPassoTipo: asTipo(raw.proximoPassoTipo, fb.proximoPassoTipo),
-    proximoPassoDias: num(raw.proximoPassoDias, fb.proximoPassoDias, 0, 30),
-    confianca: num(raw.confianca, fb.confianca, 0.4, 0.98),
-    etapaSugerida: etapa,
-    dadosExtraidos: Object.keys(dados).length ? dados : undefined,
-    geradoEm: new Date().toISOString(),
-  };
+  return normalizeConversationSummary(raw, input.fallback, input.stages);
 }
 
 export async function aiRoute(input: {
@@ -389,22 +399,20 @@ export async function aiRoute(input: {
   candidates: { id: string; nome: string; cidade?: string; score: number; motivos: string[]; etapa?: string }[];
   fallbackIds: string[];
 }): Promise<string[]> {
-  const allowed = new Set(input.candidates.map((c) => c.id));
+  if (!aiConfigured()) return normalizeRouteIds(null, input.candidates, input.fallbackIds);
+  const plan = { agent: "visit_route", steps: ["read_route_candidates", "rank_route_candidates"], externalSideEffect: false };
   const raw = await askJSON<{ companyIds?: unknown }>({
     system: `${TAWPER}
 Monte uma rota de visitas para o dia, 3 a 5 paradas. Priorize urgência, atraso, potencial e etapa que pede visita. Evite contas sem motivo.
 JSON: { "companyIds": string[] } com ids exatamente iguais aos dos candidatos, sem repetir.`,
-    user: `Região: ${str(input.regiao, "", 60)}\nCandidatos:\n${dump(input.candidates)}\nRascunho (ordem das regras locais):\n${dump(input.fallbackIds)}`,
+    user: `Plano do especialista de rotas:\n${dump(plan)}\nRegião: ${str(input.regiao, "", 60)}\nCandidatos:\n${dump(input.candidates)}\nRascunho (ordem das regras locais):\n${dump(input.fallbackIds)}`,
     maxTokens: 400,
     temperature: 0.2,
+    task: "visit_route",
+    agentKey: "visit_route",
+    promptVersion: AGENTS.visit_route.promptVersion,
   });
-  const ids = Array.isArray(raw?.companyIds) ? raw.companyIds : [];
-  const picked: string[] = [];
-  for (const id of ids) {
-    if (typeof id === "string" && allowed.has(id) && !picked.includes(id)) picked.push(id);
-    if (picked.length >= 5) break;
-  }
-  return picked.length >= 2 ? picked : input.fallbackIds.filter((id) => allowed.has(id)).slice(0, 4);
+  return normalizeRouteIds(raw, input.candidates, input.fallbackIds);
 }
 
 export async function aiExtractLead(input: {
@@ -413,6 +421,8 @@ export async function aiExtractLead(input: {
   messages: { from: string; text: string }[];
   fallback: ExtractedLead;
 }): Promise<ExtractedLead> {
+  if (!aiConfigured()) return input.fallback;
+  const plan = planConversationAgent("extract_lead");
   const raw = await askJSON<Record<string, unknown>>({
     system: `${TAWPER}
 Extraia o cadastro mínimo de um lead a partir das mensagens do WhatsApp. Não invente empresa ou cidade.
@@ -428,94 +438,94 @@ JSON: {
   "indicacao": string,
   "dor": string
 }`,
-    user: `Contato: ${str(input.contatoNome, "", 80)} · ${str(input.telefone, "", 20)}\nMensagens:\n${dump(input.messages.slice(-30))}\n\nRascunho:\n${dump(input.fallback)}`,
+    user: `Plano do agente de Conversas:\n${dump(plan)}\n\nContato: ${str(input.contatoNome, "", 80)} · ${str(input.telefone, "", 20)}\nMensagens:\n${dump(input.messages.slice(-30))}\n\nRascunho:\n${dump(input.fallback)}`,
     maxTokens: 500,
     temperature: 0.15,
+    task: "lead_extraction",
+    agentKey: "lead_extractor",
+    promptVersion: AGENTS.lead_extractor.promptVersion,
   });
   if (!raw) return input.fallback;
-  const fb = input.fallback;
-  return {
-    empresa: str(raw.empresa, fb.empresa, 80),
-    cidade: str(raw.cidade, fb.cidade, 60),
-    uf: pick(raw.uf, UFS, fb.uf || "SP"),
-    contatoNome: str(raw.contatoNome, fb.contatoNome, 60),
-    papel: pick(raw.papel, PAPEIS, fb.papel) as Papel,
-    cargo: str(raw.cargo, fb.cargo, 40),
-    interesse: str(raw.interesse, fb.interesse, 120),
-    origem: str(raw.origem, fb.origem, 60),
-    indicacao: str(raw.indicacao, fb.indicacao ?? "", 80) || undefined,
-    dor: str(raw.dor, fb.dor ?? "", 80) || undefined,
-  };
+  return normalizeExtractedLead(raw, input.fallback);
 }
 
 export async function aiBriefing(input: { fallback: DailyBriefing }): Promise<DailyBriefing> {
-  const allowed = new Set(input.fallback.prioridades.map((p) => p.companyId));
+  if (!aiConfigured()) return input.fallback;
   const raw = await askJSON<{ saudacao?: unknown; resumo?: unknown; prioridades?: { companyId?: unknown; texto?: unknown }[] }>({
     system: `${TAWPER}
-Reescreva o briefing do dia com tom direto, sem mudar os fatos nem os companyId.
+Ordene as prioridades do briefing. Preserve literalmente os textos e indicadores fornecidos e todos os companyId.
 JSON: { "saudacao": string, "resumo": string, "prioridades": [{ "companyId": string, "texto": string }] }`,
     user: dump(input.fallback),
     maxTokens: 700,
     temperature: 0.35,
+    task: "daily_briefing",
+    agentKey: "daily_briefing",
+    promptVersion: AGENTS.daily_briefing.promptVersion,
   });
   if (!raw) return input.fallback;
-  const map = new Map(input.fallback.prioridades.map((p) => [p.companyId, p.texto]));
-  const prioridades = (Array.isArray(raw.prioridades) ? raw.prioridades : [])
-    .map((p) => {
-      const id = str(p?.companyId, "", 80);
-      if (!id || !allowed.has(id)) return null;
-      return { companyId: id, texto: str(p?.texto, map.get(id) ?? "", 240) };
-    })
-    .filter((p): p is { companyId: string; texto: string } => Boolean(p));
-  const seen = new Set(prioridades.map((p) => p.companyId));
-  for (const p of input.fallback.prioridades) {
-    if (!seen.has(p.companyId)) prioridades.push(p);
-  }
-  return {
-    ...input.fallback,
-    saudacao: str(raw.saudacao, input.fallback.saudacao, 80),
-    resumo: str(raw.resumo, input.fallback.resumo, 400),
-    prioridades: prioridades.slice(0, input.fallback.prioridades.length || 4),
-  };
+  return normalizeDailyBriefing(raw, input.fallback);
 }
 
 export async function aiDigest(input: { fallback: ManagerDigest }): Promise<ManagerDigest> {
+  if (!aiConfigured()) return input.fallback;
   const raw = await askJSON<{ linhas?: unknown }>({
     system: `${TAWPER}
-Reescreva o resumo gerencial da semana em 2 a 4 frases, sem inventar indicador.
+Ordene as linhas do resumo gerencial pela importância. Copie literalmente as linhas fornecidas, sem reescrever indicadores.
 JSON: { "linhas": string[] }`,
     user: dump(input.fallback),
     maxTokens: 400,
     temperature: 0.3,
+    task: "manager_digest",
+    agentKey: "manager_digest",
+    promptVersion: AGENTS.manager_digest.promptVersion,
   });
-  const linhas = strList(raw?.linhas, input.fallback.linhas, 4, 240);
-  return { linhas: linhas.length ? linhas : input.fallback.linhas };
+  return normalizeManagerDigest(raw ?? {}, input.fallback);
 }
 
-/** Transcreve um áudio curto em português. `null` se a OpenAI falhar. */
+/** Transcreve um áudio curto em português. `null` se os provedores falharem. */
 export async function aiTranscribe(form: FormData): Promise<string | null> {
-  const key = process.env.OPENAI_API_KEY;
+  if (!aiConfigured()) return null;
+  const gatewayEnabled = Boolean(process.env.AI_GATEWAY_API_KEY);
+  const openAIKey = process.env.OPENAI_API_KEY;
   const file = form.get("file");
-  if (!key || !(file instanceof File) || file.size === 0) return null;
+  if ((!gatewayEnabled && !openAIKey) || !(file instanceof File) || !validateTranscriptionFile(file)) return null;
+  if (gatewayEnabled) try {
+    const result = await transcribe({
+      model: gateway.transcriptionModel(process.env.AI_TRANSCRIPTION_MODEL || "openai/gpt-4o-mini-transcribe"),
+      audio: new Uint8Array(await file.arrayBuffer()),
+      maxRetries: 2,
+      abortSignal: AbortSignal.timeout(60_000),
+    });
+    const transcript = normalizeTranscript(result.text);
+    if (transcript) {
+      console.info("[ia] transcrição concluída", { agentKey: "transcription", promptVersion: AGENTS.transcription.promptVersion, provider: "vercel-ai-gateway", bytes: file.size });
+      return transcript;
+    }
+  } catch {
+    console.error("[ia] falha no gateway de transcrição");
+  }
+  if (!openAIKey) return null;
   try {
     const body = new FormData();
     body.set("file", file, file.name || "fala.webm");
-    body.set("model", "gpt-4o-mini-transcribe");
+    body.set("model", process.env.OPENAI_TRANSCRIPTION_MODEL || "gpt-4o-mini-transcribe");
     body.set("language", "pt");
     const res = await fetch("https://api.openai.com/v1/audio/transcriptions", {
       method: "POST",
-      headers: { Authorization: `Bearer ${key}` },
+      headers: { Authorization: `Bearer ${openAIKey}` },
       body,
       signal: AbortSignal.timeout(60_000),
     });
     if (!res.ok) {
-      console.error(`[ia] transcrição respondeu ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      console.error(`[ia] transcrição respondeu ${res.status}`);
       return null;
     }
     const data = (await res.json()) as { text?: string };
-    return data.text?.trim() || null;
-  } catch (error) {
-    console.error("[ia] falha ao transcrever:", error instanceof Error ? error.message : error);
+    const transcript = normalizeTranscript(data.text);
+    if (transcript) console.info("[ia] transcrição concluída", { agentKey: "transcription", promptVersion: AGENTS.transcription.promptVersion, provider: "openai", bytes: file.size });
+    return transcript;
+  } catch {
+    console.error("[ia] falha ao transcrever");
     return null;
   }
 }

@@ -161,11 +161,6 @@ export function LiveConversas({ initial }: { initial: Snapshot }) {
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const selected = canonicalWhatsApp(params.get("c") ?? "");
 
-  const show = (next: Snapshot) => {
-    pendingOut.current = pendingOut.current.filter((item) => !alreadySaved(next.events, item));
-    setSnap(withPending(next, pendingOut.current, agent.name));
-  };
-
   const refreshLive = async () => {
     const live = await fetchLiveFeed();
     if (!live) return;

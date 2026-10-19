@@ -1,6 +1,6 @@
 # Tawper OS — demonstração
 
-Base do sistema operacional comercial da Tawper Mangueiras e Conexões. É um app real (Next.js + TypeScript + Tailwind), mas tudo é **simulado**: não há backend, WhatsApp de verdade nem chamadas de IA. Os dados ficam no navegador (localStorage) e são fictícios.
+Base do sistema operacional comercial da Tawper Mangueiras e Conexões. É um app Next.js + TypeScript + Tailwind em conversão progressiva para Supabase. O repositório já contém integrações reais de CRM, WhatsApp, orçamento e IA; módulos ainda não convertidos continuam usando a demonstração local até seus respectivos gates.
 
 ## Como abrir
 
@@ -30,6 +30,23 @@ Não há login: o sistema abre como **Murilo (gestor)**. O seletor de perfil no 
 
 Também estão prontos: Meu Dia, Carteira, Funis (Kanban com arrastar e soltar), Gestão por exceção, Dashboard (todo número abre a lista de origem), Auditoria, Rotas, assistente "Pergunte à IA", **Modo TV** e **Ver no celular**.
 
+## Agentes de IA, em linguagem simples
+
+- **Orquestrador:** é o professor que lê a pergunta e chama o ajudante certo.
+- **Assistente Analítico:** procura tarefas e números e monta a resposta em cartões, listas e gráficos.
+- **Copiloto Estratégico:** olha o cadastro da empresa e sugere um plano sem esquecer pessoas já conhecidas.
+- **Registro Rápido:** arruma a anotação do vendedor em caixinhas organizadas.
+- **Próximo Passo:** sugere qual tarefa fazer depois e quando fazê-la.
+- **Resumo de Conversas:** lê a conversa e separa assunto, pedidos, promessas e datas.
+- **Roteador de Conversas:** manda o WhatsApp para o dono da empresa; se não tiver certeza, deixa na fila.
+- **Roteiro de Visitas:** põe as empresas reais na melhor ordem para o vendedor visitar, sem inventar paradas.
+- **Extrator de Leads:** prepara uma ficha de novo cliente, mas espera uma pessoa confirmar.
+- **Briefing Diário:** monta a listinha mais importante do dia.
+- **Resumo Gerencial:** transforma vários números em poucas frases para o gestor.
+- **Transcrição:** escuta um áudio e escreve o que foi dito.
+- **Agente de Conversas:** coordena os ajudantes que trabalham com WhatsApp, mas não envia sozinho.
+- **Agente de Operações:** prepara trabalhos automáticos; só coloca na fila depois da aprovação humana.
+
 ## Onde está cada coisa (para quem for desenvolver)
 
 | Arquivo | O que tem |
@@ -39,6 +56,7 @@ Também estão prontos: Meu Dia, Carteira, Funis (Kanban com arrastar e soltar),
 | `src/lib/seed.ts` | Os clientes fictícios e todo o histórico da demo |
 | `src/lib/store.ts` | Todas as ações (cadastro, etapas, venda, recorrência, orçamento, auditoria). É o contrato a trocar por um backend real, como o Supabase |
 | `src/lib/selectors.ts` | Regras de negócio derivadas (RN-01 a RN-08): alertas, estagnação, indicadores |
-| `src/lib/ai.ts` | A IA **simulada** (regras e modelos de texto). As funções têm o formato certo para trocar por um modelo de linguagem real |
+| `src/lib/ai.ts` | Regras determinísticas, fallbacks e contratos de resposta visual da IA |
+| `src/server/ai/*` | Agentes, roteamento multi-provedor, proteções, RAG e automações aprovadas |
 | `src/lib/sim.ts` | O "cliente" simulado do WhatsApp |
 | `src/app/(app)/*` | As telas |
