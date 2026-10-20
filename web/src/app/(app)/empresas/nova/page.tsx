@@ -10,11 +10,11 @@ import { Badge, Button, Card, CardHeader, Field, Input, PageHeader, Select, Text
 import { extractLead } from "@/lib/ai";
 import { getCurrentPosition } from "@/lib/browser-geo";
 import { aiExtractLead } from "@/server/ai/actions";
-import { ACTIVITY_TYPES, MARCAS, ORIGENS, PAPEIS, PRENSAS, RAMOS, REGIOES, UFS } from "@/lib/constants";
+import { ACTIVITY_TYPES, MARCAS, ORIGENS, PAPEIS, PRENSAS, RAMOS, REGIOES } from "@/lib/constants";
 import { fmtDate, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, onlyDigits, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import { formatCEP, isValidCEP, lookupViaCep, normalizeCEP } from "@/lib/cep";
-import { pickRegiaoFromLocation, regionForCity } from "@/lib/regions";
+import { regionForCity } from "@/lib/regions";
 import { currentDealOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { ActivityType, Company, Papel, Prensa, Prioridade, Urgencia } from "@/lib/types";
@@ -155,7 +155,6 @@ function NovaEmpresa() {
           cep: formatCEP(addr.cep),
           cidade: addr.cidade,
           uf: addr.uf,
-          regiao: pickRegiaoFromLocation(addr.cidade, addr.uf, x.regiao),
           latitude: undefined,
           longitude: undefined,
         }));
@@ -166,7 +165,6 @@ function NovaEmpresa() {
         cep: formatCEP(addr.cep),
         cidade: addr.cidade,
         uf: addr.uf,
-        regiao: pickRegiaoFromLocation(addr.cidade, addr.uf, x.regiao),
         latitude: geo.lat,
         longitude: geo.lng,
       }));
@@ -193,21 +191,17 @@ function NovaEmpresa() {
         toast("Não foi possível ler a localização", { tone: "warn", sub: place.reason });
         return;
       }
-      const regiaoAuto = pickRegiaoFromLocation(place.cidade, place.uf);
       setFromGps(true);
       setF((x) => ({
         ...x,
         cidade: place.cidade,
         uf: place.uf,
-        regiao: pickRegiaoFromLocation(place.cidade, place.uf, x.regiao),
         cep: place.cep ? formatCEP(place.cep) : x.cep,
         latitude: place.lat,
         longitude: place.lng,
       }));
       setCepStatus("ok");
-      setCepHint(
-        `GPS · ${place.cidade}/${place.uf} · ${place.lat.toFixed(5)}, ${place.lng.toFixed(5)}${regiaoAuto ? ` · ${regiaoAuto}` : ""}`,
-      );
+      setCepHint(`GPS · ${place.cidade}/${place.uf} · ${place.lat.toFixed(5)}, ${place.lng.toFixed(5)}`);
       toast("Localização atual aplicada", {
         tone: "ok",
         sub: `${place.cidade}/${place.uf} — coordenadas salvas para as rotas`,
@@ -406,15 +400,16 @@ function NovaEmpresa() {
                   {gpsLoading ? "Localizando…" : "Preencher com localização atual"}
                 </Button>
               </div>
-              <Field label="Cidade" required className="lg:col-span-3">
+              <Field label="Cidade" required hint="preenchida pelo CEP" className="lg:col-span-3">
                 <Input value={f.cidade} onChange={(e) => setF({ ...f, cidade: e.target.value })} className={cn(req(f.cidade) && "border-brand")} />
               </Field>
-              <Field label="UF" className="lg:col-span-1">
-                <Select value={f.uf} onChange={(e) => setF({ ...f, uf: e.target.value })}>
-                  {UFS.map((u) => (
-                    <option key={u}>{u}</option>
-                  ))}
-                </Select>
+              <Field label="UF" hint="preenchida pelo CEP" className="lg:col-span-1">
+                <Input
+                  value={f.uf}
+                  maxLength={2}
+                  placeholder="SP"
+                  onChange={(e) => setF({ ...f, uf: e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2) })}
+                />
               </Field>
               <Field label="Região" className="lg:col-span-2">
                 <Select value={f.regiao} onChange={(e) => setF({ ...f, regiao: e.target.value })}>

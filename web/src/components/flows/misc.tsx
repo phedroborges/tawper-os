@@ -10,8 +10,7 @@ import { Button, Field, Input, Select, Textarea } from "@/components/ui/primitiv
 import { getCurrentPosition } from "@/lib/browser-geo";
 import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import { formatCEP, isValidCEP, lookupViaCep, normalizeCEP } from "@/lib/cep";
-import { isMuriloLouis, MARCAS, PAPEIS, PRENSAS, RAMOS, REGIOES, UFS } from "@/lib/constants";
-import { pickRegiaoFromLocation } from "@/lib/regions";
+import { isMuriloLouis, MARCAS, PAPEIS, PRENSAS, RAMOS, REGIOES } from "@/lib/constants";
 import { currentDealOf, nextStepOf, qualityOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { Company, Papel, Potencial, Prensa, Urgencia } from "@/lib/types";
@@ -133,7 +132,6 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
           cep: formatCEP(addr.cep),
           cidade: addr.cidade,
           uf: addr.uf,
-          regiao: pickRegiaoFromLocation(addr.cidade, addr.uf, x.regiao),
         }));
         return;
       }
@@ -142,7 +140,6 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
         cep: formatCEP(addr.cep),
         cidade: addr.cidade,
         uf: addr.uf,
-        regiao: pickRegiaoFromLocation(addr.cidade, addr.uf, x.regiao),
         latitude: geo.lat,
         longitude: geo.lng,
       }));
@@ -173,7 +170,6 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
         ...x,
         cidade: place.cidade,
         uf: place.uf,
-        regiao: pickRegiaoFromLocation(place.cidade, place.uf, x.regiao),
         cep: place.cep ? formatCEP(place.cep) : x.cep,
         latitude: place.lat,
         longitude: place.lng,
@@ -295,16 +291,16 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
             {gpsLoading ? "Localizando…" : "Preencher com localização atual"}
           </Button>
         </div>
-        <Field label="Cidade">
+        <Field label="Cidade" hint="preenchida pelo CEP">
           <Input value={f.cidade ?? ""} onChange={(e) => set("cidade", e.target.value)} />
         </Field>
-        <Field label="UF">
-          <Select value={f.uf ?? ""} onChange={(e) => set("uf", e.target.value)}>
-            <option value="">—</option>
-            {UFS.map((u) => (
-              <option key={u}>{u}</option>
-            ))}
-          </Select>
+        <Field label="UF" hint="preenchida pelo CEP">
+          <Input
+            value={f.uf ?? ""}
+            maxLength={2}
+            placeholder="SP"
+            onChange={(e) => set("uf", e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2))}
+          />
         </Field>
         <Field label="Região">
           <Select value={f.regiao ?? ""} onChange={(e) => set("regiao", e.target.value)}>

@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
 import { Modal } from "@/components/ui/overlay";
 import { Badge, Button, Checkbox, Field, Input, Select, Textarea } from "@/components/ui/primitives";
-import { FUNNELS, getStage, MARCAS, MOTIVOS_ESPERA, MOTIVOS_PERDA, PAPEIS, PRENSAS, RAMOS, REGIOES, stageIndex, UFS, type Criterion } from "@/lib/constants";
+import { FUNNELS, getStage, MARCAS, MOTIVOS_ESPERA, MOTIVOS_PERDA, PAPEIS, PRENSAS, RAMOS, REGIOES, stageIndex, type Criterion } from "@/lib/constants";
 import { addDays, fmtDateShort, fmtDue, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { criterionMet, daysInStage, pendingOf } from "@/lib/selectors";
 import { runWithoutAutoAdvance, useStore, type ActivityDraft } from "@/lib/store";
@@ -125,17 +125,17 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
         return (
           <div className="grid grid-cols-[1fr_90px] gap-2">
             <Input placeholder="Cidade" value={fields.cidade ?? company.cidade ?? ""} onChange={(e) => setField("cidade", e.target.value)} />
-            <Select value={fields.uf ?? company.uf ?? ""} onChange={(e) => setField("uf", e.target.value)}>
-              <option value="">UF</option>
-              {UFS.map((u) => (
-                <option key={u}>{u}</option>
-              ))}
-            </Select>
+            <Input
+              placeholder="UF"
+              maxLength={2}
+              value={fields.uf ?? company.uf ?? ""}
+              onChange={(e) => setField("uf", e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2))}
+            />
           </div>
         );
       case "regiao":
         return (
-          <Select value={fields.regiao ?? ""} onChange={(e) => setField("regiao", e.target.value)}>
+          <Select value={fields.regiao ?? company.regiao ?? ""} onChange={(e) => setField("regiao", e.target.value)}>
             <option value="">Selecione…</option>
             {REGIOES.map((r) => (
               <option key={r}>{r}</option>
