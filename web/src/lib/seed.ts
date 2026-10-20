@@ -23,9 +23,10 @@ import type {
   Strategy,
 } from "./types";
 import { normalizeWhatsApp, withValidCNPJCheckDigits } from "./br-ids";
+import { coordsForCity } from "./geo";
 import { quoteTotals } from "./utils";
 
-export const DATA_VERSION = 4;
+export const DATA_VERSION = 5;
 
 export function buildSeed(now = new Date()): DemoData {
   const R = (days: number, h = 9, m = 0) => rel(days, h, m, now);
@@ -34,12 +35,17 @@ export function buildSeed(now = new Date()): DemoData {
   // ---------------------------------------------------------------------------
   // Empresas
   // ---------------------------------------------------------------------------
-  const base = (c: Omit<Company, "status" | "updatedAt"> & Partial<Pick<Company, "status" | "updatedAt">>): Company => ({
-    status: "ativa",
-    updatedAt: c.createdAt,
-    ...c,
-    cnpj: c.cnpj ? withValidCNPJCheckDigits(c.cnpj) : undefined,
-  });
+  const base = (c: Omit<Company, "status" | "updatedAt"> & Partial<Pick<Company, "status" | "updatedAt">>): Company => {
+    const geo = coordsForCity(c.cidade, c.uf);
+    return {
+      status: "ativa",
+      updatedAt: c.createdAt,
+      ...c,
+      latitude: c.latitude ?? geo?.lat,
+      longitude: c.longitude ?? geo?.lng,
+      cnpj: c.cnpj ? withValidCNPJCheckDigits(c.cnpj) : undefined,
+    };
+  };
 
   const companies: Company[] = [
     base({
@@ -896,6 +902,13 @@ export function buildSeed(now = new Date()): DemoData {
         { companyId: "c-alvorada", objetivo: "Coletar medidas e definir as colhedoras do teste", motivo: "Homologação com pendência do cliente" },
         { companyId: "c-ourobranco", objetivo: "Apresentar o treinamento incluso ao Sílvio", motivo: "Orçamento vence em 4 dias" },
         { companyId: "c-boavista", objetivo: "Pós-venda presencial com Tiago", motivo: "Primeira venda há 5 dias" },
+      ],
+    },
+    {
+      id: "r-douglas-2", ownerId: "u-douglas", regiao: "Noroeste Paulista", data: R(5, 8), kmEstimado: 240, status: "planejada",
+      paradas: [
+        { companyId: "c-rioclaro", objetivo: "Retomar contato presencial e fechar cadastro", motivo: "Atividade atrasada e urgência alta" },
+        { companyId: "c-colina", objetivo: "Avançar negociação do contrato de safra", motivo: "Etapa de negociação com potencial alto" },
       ],
     },
   ];

@@ -167,6 +167,10 @@ export async function registerCompany(input: {
       region_id: await regionId(input.company.regiao),
       city: input.company.cidade || null,
       state: input.company.uf || null,
+      postal_code: input.company.cep ? input.company.cep.replace(/\D/g, "").slice(0, 8) || null : null,
+      address: input.company.endereco || null,
+      latitude: input.company.latitude ?? null,
+      longitude: input.company.longitude ?? null,
       industry: input.company.ramo || null,
       economic_group: input.company.grupo || null,
       source: input.company.origem || "manual",
@@ -257,6 +261,10 @@ export async function registerCompany(input: {
     regiao: input.company.regiao,
     cidade: input.company.cidade,
     uf: input.company.uf,
+    cep: input.company.cep,
+    endereco: input.company.endereco,
+    latitude: input.company.latitude,
+    longitude: input.company.longitude,
     ramo: input.company.ramo,
     origem: input.company.origem || "manual",
     urgencia: (input.company.urgencia ?? "Média") as Urgencia,
@@ -316,6 +324,10 @@ export async function updateCompanyRecord(id: string, patch: Partial<Company>, a
   if (Object.prototype.hasOwnProperty.call(patch, "cnpj")) row.cnpj = cnpj(patch.cnpj);
   if (patch.cidade !== undefined) row.city = patch.cidade || null;
   if (patch.uf !== undefined) row.state = patch.uf || null;
+  if (patch.cep !== undefined) row.postal_code = patch.cep ? patch.cep.replace(/\D/g, "").slice(0, 8) || null : null;
+  if (patch.endereco !== undefined) row.address = patch.endereco || null;
+  if (patch.latitude !== undefined) row.latitude = patch.latitude ?? null;
+  if (patch.longitude !== undefined) row.longitude = patch.longitude ?? null;
   if (patch.ramo !== undefined) row.industry = patch.ramo || null;
   if (patch.origem != null) row.source = patch.origem;
   if (patch.urgencia) row.urgency = LEVEL_TO_DB[patch.urgencia] ?? "medium";

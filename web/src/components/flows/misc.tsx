@@ -1,18 +1,23 @@
 "use client";
 
-import { Building2, ExternalLink, Megaphone, Trash2, UserPlus } from "lucide-react";
+import { Building2, ExternalLink, LocateFixed, Megaphone, Trash2, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
 import { DueLabel, StagePill, StatusBadge, UserAvatar } from "@/components/crm/crm";
 import { Modal } from "@/components/ui/overlay";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui/primitives";
+import { getCurrentPosition } from "@/lib/browser-geo";
+import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
+import { formatCEP, isValidCEP, lookupViaCep, normalizeCEP } from "@/lib/cep";
 import { isMuriloLouis, MARCAS, PAPEIS, PRENSAS, RAMOS, REGIOES, UFS } from "@/lib/constants";
+import { pickRegiaoFromLocation } from "@/lib/regions";
 import { currentDealOf, nextStepOf, qualityOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { Company, Papel, Potencial, Prensa, Urgencia } from "@/lib/types";
-import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import { useUI } from "@/lib/ui-store";
+import { cn } from "@/lib/utils";
+import { geocodeCepOrAddress, reverseGeocode } from "@/server/geo/geocode";
 
 export function ContactModal({ companyId, preset }: { companyId: string; preset?: { nome?: string; whatsapp?: string } }) {
   const s = useStore();
@@ -82,14 +87,136 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
   const s = useStore();
   const { close, toast } = useUI();
   const company = s.companies.find((c) => c.id === companyId);
-  const [f, setF] = useState<Partial<Company>>(company ? { ...company, cnpj: formatCNPJ(company.cnpj) } : {});
+  const [f, setF] = useState<Partial<Company>>(
+    company ? { ...company, cnpj: formatCNPJ(company.cnpj), cep: formatCEP(company.cep) } : {},
+  );
+  const [cepStatus, setCepStatus] = useState<"idle" | "loading" | "ok" | "error">(
+    company?.cep && typeof company.latitude === "number" ? "ok" : typeof company?.latitude === "number" ? "ok" : "idle",
+  );
+  const [cepHint, setCepHint] = useState(
+    company?.latitude != null && company?.longitude != null
+      ? `${company.cidade ?? ""}/${company.uf ?? ""} · ${company.latitude.toFixed(5)}, ${company.longitude.toFixed(5)}`.trim()
+      : "",
+  );
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [fromGps, setFromGps] = useState(false);
   if (!company) return null;
   const set = <K extends keyof Company>(k: K, v: Company[K]) => setF((x) => ({ ...x, [k]: v }));
+
+  const resolveCep = async (raw: string) => {
+    const digits = normalizeCEP(raw);
+    if (digits.length !== 8) {
+      setCepStatus("idle");
+      setCepHint("");
+      return;
+    }
+    setFromGps(false);
+    setCepStatus("loading");
+    setCepHint("Consultando CEP…");
+    try {
+      const addr = await lookupViaCep(digits);
+      if (!addr) {
+        setCepStatus("error");
+        setCepHint("CEP não encontrado. Confira os 8 dígitos.");
+        return;
+      }
+      const geo = await geocodeCepOrAddress({
+        cep: addr.cep,
+        cidade: addr.cidade,
+        uf: addr.uf,
+      });
+      if (!geo.ok) {
+        setCepStatus("error");
+        setCepHint(geo.reason);
+        setF((x) => ({
+          ...x,
+          cep: formatCEP(addr.cep),
+          cidade: addr.cidade,
+          uf: addr.uf,
+          regiao: pickRegiaoFromLocation(addr.cidade, addr.uf, x.regiao),
+        }));
+        return;
+      }
+      setF((x) => ({
+        ...x,
+        cep: formatCEP(addr.cep),
+        cidade: addr.cidade,
+        uf: addr.uf,
+        regiao: pickRegiaoFromLocation(addr.cidade, addr.uf, x.regiao),
+        latitude: geo.lat,
+        longitude: geo.lng,
+      }));
+      setCepStatus("ok");
+      const origem = geo.source === "google" ? "Google" : geo.source === "nominatim" ? "OpenStreetMap" : "cidade";
+      setCepHint(`${addr.cidade}/${addr.uf} · mapa ok (${origem})`);
+    } catch {
+      setCepStatus("error");
+      setCepHint("Não foi possível consultar o CEP agora.");
+    }
+  };
+
+  const useCurrentLocation = async () => {
+    setGpsLoading(true);
+    setCepHint("Obtendo GPS…");
+    try {
+      const pos = await getCurrentPosition();
+      setCepHint("Identificando cidade…");
+      const place = await reverseGeocode(pos.lat, pos.lng);
+      if (!place.ok) {
+        setCepStatus("error");
+        setCepHint(place.reason);
+        toast("Não foi possível ler a localização", { tone: "warn", sub: place.reason });
+        return;
+      }
+      setFromGps(true);
+      setF((x) => ({
+        ...x,
+        cidade: place.cidade,
+        uf: place.uf,
+        regiao: pickRegiaoFromLocation(place.cidade, place.uf, x.regiao),
+        cep: place.cep ? formatCEP(place.cep) : x.cep,
+        latitude: place.lat,
+        longitude: place.lng,
+      }));
+      setCepStatus("ok");
+      setCepHint(`GPS · ${place.cidade}/${place.uf} · ${place.lat.toFixed(5)}, ${place.lng.toFixed(5)}`);
+      toast("Localização atual aplicada", {
+        tone: "ok",
+        sub: `${place.cidade}/${place.uf} — coordenadas salvas para as rotas`,
+      });
+    } catch (e) {
+      setCepStatus("error");
+      const msg = e instanceof Error ? e.message : "Falha ao obter GPS";
+      setCepHint(msg);
+      toast("Localização atual", { tone: "warn", sub: msg });
+    } finally {
+      setGpsLoading(false);
+    }
+  };
+
   const save = () => {
-    const keys: (keyof Company)[] = ["nome", "razaoSocial", "cnpj", "cidade", "uf", "regiao", "ramo", "colhedoras", "modelos", "prensa", "marcaAtual", "concorrente", "potencial", "potencialMensal", "urgencia", "ownerId", "observacoes", "influenciadoraId", "condicaoDependencia"];
+    if (String(f.cep ?? "").trim() && !isValidCEP(f.cep)) {
+      toast("CEP inválido", { sub: "Informe 8 dígitos ou deixe em branco.", tone: "warn" });
+      return;
+    }
+    if (isValidCEP(f.cep) && !fromGps && (typeof f.latitude !== "number" || typeof f.longitude !== "number")) {
+      toast("Localização pendente", { sub: "Aguarde o CEP carregar a posição, use o GPS ou limpe o CEP.", tone: "warn" });
+      return;
+    }
+    const keys: (keyof Company)[] = [
+      "nome", "razaoSocial", "cnpj", "cep", "endereco", "cidade", "uf", "latitude", "longitude", "regiao", "ramo",
+      "colhedoras", "modelos", "prensa", "marcaAtual", "concorrente", "potencial", "potencialMensal", "urgencia",
+      "ownerId", "observacoes", "influenciadoraId", "condicaoDependencia",
+    ];
     const patch: Partial<Company> = {};
     keys.forEach((k) => {
-      if (f[k] !== company[k]) (patch as Record<string, unknown>)[k] = f[k];
+      let next = f[k];
+      let prev = company[k];
+      if (k === "cep") {
+        next = f.cep ? normalizeCEP(f.cep) : undefined;
+        prev = company.cep ? normalizeCEP(company.cep) : undefined;
+      }
+      if (next !== prev) (patch as Record<string, unknown>)[k] = next;
     });
     if (String(f.cnpj ?? "").trim() && !isValidCNPJ(f.cnpj)) {
       toast("CNPJ inválido", { sub: "Informe 14 dígitos com os dígitos verificadores corretos.", tone: "warn" });
@@ -112,7 +239,7 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
           <Button variant="ghost" onClick={close}>
             Cancelar
           </Button>
-          <Button variant="primary" onClick={save}>
+          <Button variant="primary" onClick={save} disabled={cepStatus === "loading" || gpsLoading}>
             Salvar
           </Button>
         </>
@@ -128,6 +255,46 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
         <Field label="Razão social" className="lg:col-span-3">
           <Input value={f.razaoSocial ?? ""} onChange={(e) => set("razaoSocial", e.target.value)} />
         </Field>
+        <Field label="CEP" hint={cepHint || (fromGps ? "GPS ativo — CEP opcional" : "preenche cidade, UF e região")}>
+          <Input
+            value={f.cep ?? ""}
+            inputMode="numeric"
+            autoComplete="postal-code"
+            maxLength={9}
+            placeholder="00000-000"
+            className={cn(cepStatus === "ok" && "border-ok", cepStatus === "error" && "border-brand")}
+            onChange={(e) => {
+              const cep = formatCEP(e.target.value);
+              setFromGps(false);
+              setF((x) => ({ ...x, cep, latitude: undefined, longitude: undefined }));
+              setCepStatus("idle");
+              setCepHint("");
+              if (normalizeCEP(cep).length === 8) void resolveCep(cep);
+            }}
+            onBlur={() => {
+              if (normalizeCEP(f.cep).length === 8) void resolveCep(String(f.cep));
+            }}
+          />
+        </Field>
+        <Field label="Endereço" className="lg:col-span-2" hint="rua, número e bairro (manual)">
+          <Input
+            value={f.endereco ?? ""}
+            onChange={(e) => set("endereco", e.target.value)}
+            placeholder="Ex.: Rodovia GO-306, km 12 — Zona Rural"
+          />
+        </Field>
+        <div className="lg:col-span-3">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={gpsLoading || cepStatus === "loading"}
+            onClick={() => void useCurrentLocation()}
+          >
+            <LocateFixed size={14} />
+            {gpsLoading ? "Localizando…" : "Preencher com localização atual"}
+          </Button>
+        </div>
         <Field label="Cidade">
           <Input value={f.cidade ?? ""} onChange={(e) => set("cidade", e.target.value)} />
         </Field>

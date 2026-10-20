@@ -41,6 +41,13 @@ export interface Company {
   regiao?: string;
   cidade?: string;
   uf?: string;
+  /** CEP com 8 dígitos (obrigatório no cadastro novo). */
+  cep?: string;
+  /** Endereço textual (ViaCEP / logradouro). */
+  endereco?: string;
+  /** Coordenadas WGS84 — usadas pelo Google Maps nas rotas. */
+  latitude?: number;
+  longitude?: number;
   ramo?: string;
   grupo?: string;
   influenciadoraId?: string;

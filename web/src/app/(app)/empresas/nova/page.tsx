@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowLeft, Check, GitMerge, MessageCircle, Sparkles } from "lucide-react";
+import { AlertTriangle, ArrowLeft, Check, GitMerge, LocateFixed, MessageCircle, Sparkles } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useEffect, useMemo, useState } from "react";
@@ -8,29 +8,19 @@ import { AIBadge, AIPanel, AIThinking } from "@/components/ai/ai";
 import { StagePill } from "@/components/crm/crm";
 import { Badge, Button, Card, CardHeader, Field, Input, PageHeader, Select, Textarea } from "@/components/ui/primitives";
 import { extractLead } from "@/lib/ai";
+import { getCurrentPosition } from "@/lib/browser-geo";
 import { aiExtractLead } from "@/server/ai/actions";
 import { ACTIVITY_TYPES, MARCAS, ORIGENS, PAPEIS, PRENSAS, RAMOS, REGIOES, UFS } from "@/lib/constants";
 import { fmtDate, fromInputDate, rel, toInputDate } from "@/lib/dates";
+import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, onlyDigits, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
+import { formatCEP, isValidCEP, lookupViaCep, normalizeCEP } from "@/lib/cep";
+import { pickRegiaoFromLocation, regionForCity } from "@/lib/regions";
 import { currentDealOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { ActivityType, Company, Papel, Prensa, Prioridade, Urgencia } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
-import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, onlyDigits, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
-import { cn, nameSimilarity, normalize } from "@/lib/utils";
-
-const CITY_REGION: Record<string, string> = {
-  "pereira barreto": "Noroeste Paulista",
-  "monte aprazivel": "Noroeste Paulista",
-  "sao jose do rio preto": "Noroeste Paulista",
-  catanduva: "Noroeste Paulista",
-  votuporanga: "Noroeste Paulista",
-  olimpia: "Norte Paulista",
-  bebedouro: "Norte Paulista",
-  assis: "Paranapanema",
-  ourinhos: "Paranapanema",
-  frutal: "Triângulo Mineiro",
-  uberaba: "Triângulo Mineiro",
-};
+import { cn, nameSimilarity } from "@/lib/utils";
+import { geocodeCepOrAddress, reverseGeocode } from "@/server/geo/geocode";
 
 function NovaEmpresa() {
   const params = useSearchParams();
@@ -46,14 +36,20 @@ function NovaEmpresa() {
   const [reading, setReading] = useState(Boolean(convId));
   const [filled, setFilled] = useState(false);
   const [f, setF] = useState({
-    nome: "", razaoSocial: "", cnpj: "", cidade: "", uf: "SP", regiao: "", ramo: "", origem: fromChat.whatsapp ? "WhatsApp" : "Visita de prospecção", ownerId: user.id,
+    nome: "", razaoSocial: "", cnpj: "", cep: "", endereco: "", cidade: "", uf: "SP", regiao: "", ramo: "", origem: fromChat.whatsapp ? "WhatsApp" : "Visita de prospecção", ownerId: user.id,
     urgencia: "Média" as Urgencia, colhedoras: "", prensa: "" as Prensa | "", marcaAtual: "", observacoes: "",
+    latitude: undefined as number | undefined, longitude: undefined as number | undefined,
   });
   const [ct, setCt] = useState({ nome: fromChat.nome, cargo: "", papel: "Comprador" as Papel, whatsapp: fromChat.whatsapp ? formatWhatsApp(fromChat.whatsapp) : "", email: "" });
   const [next, setNext] = useState({ titulo: "Qualificar: frota, prensa e fornecedor atual", tipo: "WhatsApp" as ActivityType, due: toInputDate(rel(0)), prioridade: "Alta" as Prioridade });
   const [decision, setDecision] = useState<{ kind: "merge"; id: string } | { kind: "new" } | null>(null);
   const [touched, setTouched] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [cepStatus, setCepStatus] = useState<"idle" | "loading" | "ok" | "error">("idle");
+  const [cepHint, setCepHint] = useState("");
+  const [gpsLoading, setGpsLoading] = useState(false);
+  /** Localização veio do GPS — CEP deixa de ser obrigatório. */
+  const [fromGps, setFromGps] = useState(false);
 
   useEffect(() => {
     if (!conv || filled) return;
@@ -73,13 +69,12 @@ function NovaEmpresa() {
       }
       if (!alive) return;
       setLead(got);
-      const cityKey = normalize(got.cidade);
       setF((x) => ({
         ...x,
         nome: got.empresa,
         cidade: got.cidade,
         uf: got.uf,
-        regiao: CITY_REGION[cityKey] ?? "",
+        regiao: regionForCity(got.cidade),
         ramo: /usina/i.test(got.empresa) ? "Usina sucroenergética" : x.ramo,
         origem: got.origem,
         ownerId: conv.ownerId,
@@ -124,11 +119,120 @@ function NovaEmpresa() {
   }, [f.nome, f.cnpj, f.cidade, ct.whatsapp, s.companies, s.contacts]);
 
   const needsDecision = dups.length > 0 && !decision;
-  const valid = f.nome.trim() && f.cidade.trim() && ct.nome.trim() && next.titulo.trim();
+  const hasCoords = typeof f.latitude === "number" && typeof f.longitude === "number";
+  const hasLocation = hasCoords && f.cidade.trim() && (fromGps || isValidCEP(f.cep));
+  const valid = f.nome.trim() && hasLocation && ct.nome.trim() && next.titulo.trim();
 
-    const save = async () => {
+  const resolveCep = async (raw: string) => {
+    const digits = normalizeCEP(raw);
+    if (digits.length !== 8) {
+      setCepStatus("idle");
+      setCepHint("");
+      if (!fromGps) setF((x) => ({ ...x, latitude: undefined, longitude: undefined }));
+      return;
+    }
+    setFromGps(false);
+    setCepStatus("loading");
+    setCepHint("Consultando CEP…");
+    try {
+      const addr = await lookupViaCep(digits);
+      if (!addr) {
+        setCepStatus("error");
+        setCepHint("CEP não encontrado. Confira os 8 dígitos.");
+        setF((x) => ({ ...x, latitude: undefined, longitude: undefined }));
+        return;
+      }
+      const geo = await geocodeCepOrAddress({
+        cep: addr.cep,
+        cidade: addr.cidade,
+        uf: addr.uf,
+      });
+      if (!geo.ok) {
+        setCepStatus("error");
+        setCepHint(geo.reason);
+        setF((x) => ({
+          ...x,
+          cep: formatCEP(addr.cep),
+          cidade: addr.cidade,
+          uf: addr.uf,
+          regiao: pickRegiaoFromLocation(addr.cidade, addr.uf, x.regiao),
+          latitude: undefined,
+          longitude: undefined,
+        }));
+        return;
+      }
+      setF((x) => ({
+        ...x,
+        cep: formatCEP(addr.cep),
+        cidade: addr.cidade,
+        uf: addr.uf,
+        regiao: pickRegiaoFromLocation(addr.cidade, addr.uf, x.regiao),
+        latitude: geo.lat,
+        longitude: geo.lng,
+      }));
+      setCepStatus("ok");
+      const origem = geo.source === "google" ? "Google" : geo.source === "nominatim" ? "OpenStreetMap" : "cidade";
+      setCepHint(`${addr.cidade}/${addr.uf} · mapa ok (${origem})`);
+    } catch {
+      setCepStatus("error");
+      setCepHint("Não foi possível consultar o CEP agora.");
+      setF((x) => ({ ...x, latitude: undefined, longitude: undefined }));
+    }
+  };
+
+  const useCurrentLocation = async () => {
+    setGpsLoading(true);
+    setCepHint("Obtendo GPS…");
+    try {
+      const pos = await getCurrentPosition();
+      setCepHint("Identificando cidade…");
+      const place = await reverseGeocode(pos.lat, pos.lng);
+      if (!place.ok) {
+        setCepStatus("error");
+        setCepHint(place.reason);
+        toast("Não foi possível ler a localização", { tone: "warn", sub: place.reason });
+        return;
+      }
+      const regiaoAuto = pickRegiaoFromLocation(place.cidade, place.uf);
+      setFromGps(true);
+      setF((x) => ({
+        ...x,
+        cidade: place.cidade,
+        uf: place.uf,
+        regiao: pickRegiaoFromLocation(place.cidade, place.uf, x.regiao),
+        cep: place.cep ? formatCEP(place.cep) : x.cep,
+        latitude: place.lat,
+        longitude: place.lng,
+      }));
+      setCepStatus("ok");
+      setCepHint(
+        `GPS · ${place.cidade}/${place.uf} · ${place.lat.toFixed(5)}, ${place.lng.toFixed(5)}${regiaoAuto ? ` · ${regiaoAuto}` : ""}`,
+      );
+      toast("Localização atual aplicada", {
+        tone: "ok",
+        sub: `${place.cidade}/${place.uf} — coordenadas salvas para as rotas`,
+      });
+    } catch (e) {
+      setCepStatus("error");
+      const msg = e instanceof Error ? e.message : "Falha ao obter GPS";
+      setCepHint(msg);
+      toast("Localização atual", { tone: "warn", sub: msg });
+    } finally {
+      setGpsLoading(false);
+    }
+  };
+
+  const save = async () => {
     setTouched(true);
     if (!valid || needsDecision) return;
+    if (!hasCoords) {
+      toast("Localização pendente", { sub: "Informe um CEP válido ou use “Preencher com localização atual”.", tone: "warn" });
+      return;
+    }
+    if (!fromGps && !isValidCEP(f.cep)) {
+      toast("CEP ou GPS", { sub: "Informe o CEP ou clique em Preencher com localização atual.", tone: "warn" });
+      return;
+    }
     if (f.cnpj.trim() && !isValidCNPJ(f.cnpj)) {
       toast("CNPJ inválido", { sub: "Informe 14 dígitos com os dígitos verificadores corretos.", tone: "warn" });
       return;
@@ -141,8 +245,12 @@ function NovaEmpresa() {
       nome: f.nome.trim(),
       razaoSocial: f.razaoSocial.trim() || f.nome.trim(),
       cnpj: storedCNPJ(f.cnpj),
+      cep: isValidCEP(f.cep) ? normalizeCEP(f.cep) : undefined,
+      endereco: f.endereco.trim() || undefined,
       cidade: f.cidade.trim(),
       uf: f.uf,
+      latitude: f.latitude,
+      longitude: f.longitude,
       regiao: f.regiao || undefined,
       ramo: f.ramo || undefined,
       origem: f.origem,
@@ -248,6 +356,56 @@ function NovaEmpresa() {
               <Field label="CNPJ" hint="opcional" className="lg:col-span-2">
                 <Input value={f.cnpj} inputMode="numeric" autoComplete="off" maxLength={18} onChange={(e) => { setF({ ...f, cnpj: formatCNPJ(e.target.value) }); setDecision(null); }} placeholder="00.000.000/0000-00" />
               </Field>
+              <Field
+                label="CEP"
+                required={!fromGps}
+                className="lg:col-span-2"
+                hint={cepHint || (fromGps ? "GPS ativo — CEP opcional" : "preenche cidade, UF e região")}
+              >
+                <Input
+                  value={f.cep}
+                  inputMode="numeric"
+                  autoComplete="postal-code"
+                  maxLength={9}
+                  placeholder="00000-000"
+                  className={cn(
+                    touched && !fromGps && !isValidCEP(f.cep) && "border-brand",
+                    cepStatus === "ok" && "border-ok",
+                    cepStatus === "error" && "border-brand",
+                  )}
+                  onChange={(e) => {
+                    const cep = formatCEP(e.target.value);
+                    setFromGps(false);
+                    setF((x) => ({ ...x, cep, latitude: undefined, longitude: undefined }));
+                    setCepStatus("idle");
+                    setCepHint("");
+                    if (normalizeCEP(cep).length === 8) void resolveCep(cep);
+                  }}
+                  onBlur={() => {
+                    if (normalizeCEP(f.cep).length === 8) void resolveCep(f.cep);
+                  }}
+                />
+              </Field>
+              <div className="lg:col-span-4 flex flex-col gap-2 sm:flex-row sm:items-end">
+                <Field label="Endereço" className="min-w-0 flex-1" hint="rua, número e bairro (manual)">
+                  <Input
+                    value={f.endereco}
+                    onChange={(e) => setF({ ...f, endereco: e.target.value })}
+                    placeholder="Ex.: Rodovia GO-306, km 12 — Zona Rural"
+                  />
+                </Field>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  className="shrink-0 sm:mb-0.5"
+                  disabled={gpsLoading || cepStatus === "loading"}
+                  onClick={() => void useCurrentLocation()}
+                >
+                  <LocateFixed size={14} />
+                  {gpsLoading ? "Localizando…" : "Preencher com localização atual"}
+                </Button>
+              </div>
               <Field label="Cidade" required className="lg:col-span-3">
                 <Input value={f.cidade} onChange={(e) => setF({ ...f, cidade: e.target.value })} className={cn(req(f.cidade) && "border-brand")} />
               </Field>

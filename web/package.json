@@ -16,6 +16,7 @@
     "@ai-sdk/gateway": "^4.0.116",
     "@fontsource/poppins": "^5.3.0",
     "@supabase/supabase-js": "^2.117.3",
+    "@vis.gl/react-google-maps": "^1.10.1",
     "ai": "^7.0.143",
     "lucide-react": "^1.44.0",
     "next": "^16.4.2",
@@ -28,6 +29,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@types/google.maps": "^3.66.7",
     "@types/node": "^24.19.2",
     "@types/react": "^19",
     "@types/react-dom": "^19",

@@ -27,6 +27,7 @@ import type {
   Notification,
   Prioridade,
   Quote,
+  RouteStop,
   Standby,
   Strategy,
 } from "./types";
@@ -108,6 +109,16 @@ interface Actions {
 
   sendCobranca: (input: { companyId: string; toUserId: string; texto: string }) => void;
   markNotificationsRead: (userId: string) => void;
+  /** Monta um RoutePlan (fluxo 7.8). Com `confirm: true`, já cria as visitas. */
+  planRoute: (input: {
+    regiao: string;
+    data: string;
+    paradas: RouteStop[];
+    kmEstimado: number;
+    ownerId?: string;
+    confirm?: boolean;
+  }) => string;
+  /** Confirma rota planejada: cria atividades de visita e marca como confirmada. */
   confirmRoute: (routeId: string) => void;
 }
 
@@ -789,18 +800,85 @@ export const useStore = create<AppState>()(
           set({ notifications: s.notifications.map((n) => (n.userId === userId ? { ...n, lida: true } : n)) });
         },
 
+        planRoute: (input) => {
+          const s = get();
+          const id = uid("r");
+          const ownerId = input.ownerId ?? me();
+          const status = input.confirm ? "confirmada" : "planejada";
+          const route = {
+            id,
+            ownerId,
+            regiao: input.regiao,
+            data: input.data,
+            paradas: input.paradas,
+            kmEstimado: input.kmEstimado,
+            status: status as "planejada" | "confirmada",
+          };
+          const acts: Activity[] = input.confirm
+            ? input.paradas.map((p, i) => ({
+                id: uid("a"),
+                companyId: p.companyId,
+                ownerId,
+                tipo: "Visita" as const,
+                titulo: `Visita: ${p.objetivo}`,
+                dueAt: new Date(new Date(input.data).getTime() + i * 2.5 * 3_600_000).toISOString(),
+                prioridade: "Média" as const,
+                status: "pendente" as const,
+                origem: "ia" as const,
+                createdAt: nowIso(),
+                dealId: s.deals.find((d) => d.companyId === p.companyId && d.status === "aberta")?.id,
+              }))
+            : [];
+          set({
+            routes: [route, ...s.routes],
+            activities: acts.length ? [...acts, ...s.activities] : s.activities,
+            audit: [
+              auditEntry({
+                autorId: me(),
+                origem: "usuario",
+                entidade: "Rota",
+                entidadeId: id,
+                campo: "status",
+                para: input.confirm ? `confirmada (${acts.length} visitas)` : `planejada (${input.paradas.length} paradas)`,
+              }),
+              ...s.audit,
+            ],
+          });
+          return id;
+        },
+
         confirmRoute: (routeId) => {
           const s = get();
           const r = s.routes.find((x) => x.id === routeId);
-          if (!r) return;
+          if (!r || r.status === "confirmada") return;
           const acts: Activity[] = r.paradas.map((p, i) => ({
-            id: uid("a"), companyId: p.companyId, ownerId: r.ownerId, tipo: "Visita", titulo: `Visita: ${p.objetivo}`, dueAt: new Date(new Date(r.data).getTime() + i * 2.5 * 3_600_000).toISOString(),
-            prioridade: "Média", status: "pendente", origem: "regra", createdAt: nowIso(), dealId: s.deals.find((d) => d.companyId === p.companyId && d.status === "aberta")?.id,
+            id: uid("a"),
+            companyId: p.companyId,
+            ownerId: r.ownerId,
+            tipo: "Visita",
+            titulo: `Visita: ${p.objetivo}`,
+            dueAt: new Date(new Date(r.data).getTime() + i * 2.5 * 3_600_000).toISOString(),
+            prioridade: "Média",
+            status: "pendente",
+            origem: "regra",
+            createdAt: nowIso(),
+            dealId: s.deals.find((d) => d.companyId === p.companyId && d.status === "aberta")?.id,
           }));
           set({
             routes: s.routes.map((x) => (x.id === routeId ? { ...x, status: "confirmada" } : x)),
             activities: [...acts, ...s.activities],
-            audit: [auditEntry({ autorId: me(), origem: "usuario", entidade: "Rota", entidadeId: routeId, campo: "status", de: "planejada", para: `confirmada (${acts.length} visitas)` }), ...s.audit],
+            audit: [
+              auditEntry({
+                autorId: me(),
+                origem: "usuario",
+                entidade: "Rota",
+                entidadeId: routeId,
+                campo: "status",
+                de: "planejada",
+                para: `confirmada (${acts.length} visitas)`,
+              }),
+              ...s.audit,
+            ],
           });
         },
       };
