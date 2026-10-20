@@ -5,6 +5,7 @@ import {
   InfoWindow,
   Map,
   Marker,
+  RenderingType,
   useApiIsLoaded,
   useMap,
   useMapsLibrary,
@@ -60,8 +61,8 @@ type Props = {
 };
 
 const API_KEY = (process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY ?? "").trim();
-/** String vazia no .env NÃO pode virar mapId — Advanced Marker quebra o mapa. */
-const MAP_ID = (process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID ?? "").trim() || "DEMO_MAP_ID";
+/** Só usa Map ID real; DEMO/vazio força vector/WebGL e falha com frequência no Safari. */
+const MAP_ID = (process.env.NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID ?? "").trim();
 
 function stopPosition(stop: RouteMapStop): LatLng | undefined {
   return companyLatLng(stop);
@@ -355,10 +356,12 @@ function InnerMap({ stops, orderedIds, height, onRouteComputed, optimizeWaypoint
     <Map
       defaultCenter={center}
       defaultZoom={points.length ? 9 : 5}
-      mapId={MAP_ID}
+      {...(MAP_ID ? { mapId: MAP_ID } : {})}
+      /* Raster evita WebGL/vector — Safari (macOS/iOS) costuma ficar em branco com vector. */
+      renderingType={RenderingType.RASTER}
       gestureHandling="greedy"
       disableDefaultUI={false}
-      style={{ width: "100%", height: "100%", minHeight: height }}
+      style={{ width: "100%", height: "100%", minHeight: height, position: "relative" }}
       className="h-full w-full"
       onClick={() => setSelectedId(null)}
     >
@@ -422,7 +425,11 @@ export function RouteMap({
   }
 
   return (
-    <div className={cn("relative overflow-hidden rounded-[8px] border border-line bg-soft/30", className)} style={{ height }}>
+    /* overflow:hidden quebra tiles do Maps no Safari/iOS — use clip no border-radius via isolate. */
+    <div
+      className={cn("relative isolate rounded-[8px] border border-line bg-soft/30", className)}
+      style={{ height, WebkitTransform: "translateZ(0)" }}
+    >
       {authError ? (
         <MapLoadError message={authError} />
       ) : (
