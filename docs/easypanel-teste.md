@@ -18,19 +18,25 @@ Não use Nixpacks: o Next.js não está na raiz.
 
 ## Build args (vão para o bundle)
 
-Estas variáveis `NEXT_PUBLIC_*` precisam existir no **build**, não só em runtime:
+Estas variáveis `NEXT_PUBLIC_*` precisam existir no **build**, não só em runtime
+(EasyPanel: marque como build arg / rebuild após alterar):
 
 ```
 NEXT_PUBLIC_SUPABASE_URL
 NEXT_PUBLIC_SUPABASE_ANON_KEY
 NEXT_PUBLIC_TAWPER_USE_SUPABASE=true
+NEXT_PUBLIC_GOOGLE_MAPS_API_KEY
+NEXT_PUBLIC_GOOGLE_MAPS_MAP_ID
 ```
+
+Sem `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` no build, a tela Rotas mostra “Google Maps não configurado”.
 
 ## Runtime env (nunca no Git)
 
 ```
 SUPABASE_SERVICE_ROLE_KEY
 DATABASE_URL=postgresql://postgres.SEU-PROJETO:SENHA_CODIFICADA@aws-0-us-east-1.pooler.supabase.com:5432/postgres
+GOOGLE_GEOCODING_API_KEY
 STEVO_PROOF_ENABLED=true
 STEVO_API_URL=https://sm-cavalo.stevo.chat
 STEVO_INSTANCE=tawper-os
@@ -40,6 +46,8 @@ STEVO_WEBHOOK_TOKEN=
 APP_PUBLIC_URL=https://metricz-tawper-os.dedobd.easypanel.host
 STEVO_SIGN_MESSAGES=true   # opcional; false tira o "*Nome:*" das mensagens dos atendentes
 ```
+
+`GOOGLE_GEOCODING_API_KEY` é só servidor (CEP → coordenadas). Pode ficar só em runtime.
 
 `DATABASE_URL` é obrigatória para o atendimento com vários atendentes: o responsável de cada conversa fica no banco.
 

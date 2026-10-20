@@ -413,8 +413,9 @@ export function RouteMap({
       >
         <div className="text-[13px] font-medium text-ink">Google Maps não configurado</div>
         <div className="max-w-sm text-[12px] text-muted">
-          Defina <code className="text-[11px]">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> em{" "}
-          <code className="text-[11px]">.env.local</code> e ative Maps JavaScript API + Directions API + Geocoding API.
+          Defina <code className="text-[11px]">NEXT_PUBLIC_GOOGLE_MAPS_API_KEY</code> no ambiente de{" "}
+          <strong>build</strong> (EasyPanel / Docker ARG) e faça rebuild. Em local use{" "}
+          <code className="text-[11px]">.env.local</code>. Ative Maps JavaScript + Directions + Geocoding.
         </div>
       </div>
     );
