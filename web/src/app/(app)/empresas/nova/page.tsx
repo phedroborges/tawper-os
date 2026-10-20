@@ -14,7 +14,6 @@ import { ACTIVITY_TYPES, MARCAS, ORIGENS, PAPEIS, PRENSAS, RAMOS, REGIOES } from
 import { fmtDate, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, onlyDigits, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import { formatCEP, isValidCEP, lookupViaCep, normalizeCEP } from "@/lib/cep";
-import { regionForCity } from "@/lib/regions";
 import { currentDealOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { ActivityType, Company, Papel, Prensa, Prioridade, Urgencia } from "@/lib/types";
@@ -74,7 +73,6 @@ function NovaEmpresa() {
         nome: got.empresa,
         cidade: got.cidade,
         uf: got.uf,
-        regiao: regionForCity(got.cidade),
         ramo: /usina/i.test(got.empresa) ? "Usina sucroenergética" : x.ramo,
         origem: got.origem,
         ownerId: conv.ownerId,
