@@ -409,21 +409,26 @@ export async function aiRoute(input: {
   regiao: string;
   candidates: { id: string; nome: string; cidade?: string; score: number; motivos: string[]; etapa?: string }[];
   fallbackIds: string[];
-}): Promise<string[]> {
-  if (!aiConfigured()) return normalizeRouteIds(null, input.candidates, input.fallbackIds);
+}): Promise<{ ids: string[]; descricao: string }> {
+  const idsOf = (raw: unknown) => normalizeRouteIds(raw, input.candidates, input.fallbackIds);
+  if (!aiConfigured()) return { ids: idsOf(null), descricao: "" };
   const plan = { agent: "visit_route", steps: ["read_route_candidates", "rank_route_candidates"], externalSideEffect: false };
-  const raw = await askJSON<{ companyIds?: unknown }>({
+  const raw = await askJSON<{ companyIds?: unknown; descricao?: unknown }>({
     system: `${TAWPER}
-Monte uma rota de visitas para o dia, 3 a 5 paradas. Priorize urgência, atraso, potencial e etapa que pede visita. Evite contas sem motivo.
-JSON: { "companyIds": string[] } com ids exatamente iguais aos dos candidatos, sem repetir.`,
+Monte uma rota de visitas para o dia. Priorize urgência, atraso, potencial e etapa que pede visita. Use somente as contas enviadas, sem repetir.
+JSON: { "companyIds": string[], "descricao": string }
+"companyIds" traz os ids na ordem da rota.
+"descricao" é o roteiro do dia em texto: uma frase de condução e, em seguida, cada parada numerada com nome, cidade e motivo. Cite todas as empresas de companyIds, nessa ordem.`,
     user: `Plano do especialista de rotas:\n${dump(plan)}\nRegião: ${str(input.regiao, "", 60)}\nCandidatos:\n${dump(input.candidates)}\nRascunho (ordem das regras locais):\n${dump(input.fallbackIds)}`,
-    maxTokens: 400,
+    maxTokens: 900,
     temperature: 0.2,
     task: "visit_route",
     agentKey: "visit_route",
     promptVersion: AGENTS.visit_route.promptVersion,
   });
-  return normalizeRouteIds(raw, input.candidates, input.fallbackIds);
+  const ids = idsOf(raw);
+  const descricao = typeof raw?.descricao === "string" ? raw.descricao.trim().slice(0, 1200) : "";
+  return { ids, descricao };
 }
 
 export async function aiExtractLead(input: {

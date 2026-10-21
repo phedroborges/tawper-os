@@ -54,6 +54,35 @@ export function isValidLatLng(pos?: Partial<LatLng> | null): pos is LatLng {
   return true;
 }
 
+/**
+ * Centro geométrico do Brasil. O Geocoding devolve esse ponto com status OK
+ * quando o CEP não casa e o resultado é só o país.
+ */
+export function isCountryCentroid(lat: number, lng: number) {
+  return Math.abs(lat + 14.235004) < 0.02 && Math.abs(lng + 51.92528) < 0.02;
+}
+
+const LOCAL_GEOCODE_TYPES = new Set([
+  "street_address",
+  "premise",
+  "subpremise",
+  "route",
+  "intersection",
+  "postal_code",
+  "neighborhood",
+  "sublocality",
+  "sublocality_level_1",
+  "locality",
+  "administrative_area_level_2",
+]);
+
+/** Aceita rua, CEP ou cidade. Recusa o país inteiro e o centro do Brasil. */
+export function isLocalGeocodeHit(hit: { lat: number; lng: number; types?: string[] }) {
+  if (!isValidLatLng(hit) || isCountryCentroid(hit.lat, hit.lng)) return false;
+  if (!hit.types?.length) return true;
+  return hit.types.some((type) => LOCAL_GEOCODE_TYPES.has(type));
+}
+
 export function coordsForCity(cidade?: string, uf?: string): LatLng | undefined {
   if (!cidade || !uf) return undefined;
   return CITY_COORDS[normalizeCityKey(cidade, uf)];
@@ -65,8 +94,10 @@ export function companyLatLng(c: {
   cidade?: string;
   uf?: string;
 }): LatLng | undefined {
-  if (isValidLatLng({ lat: c.latitude ?? undefined, lng: c.longitude ?? undefined })) {
-    return { lat: c.latitude as number, lng: c.longitude as number };
+  const lat = typeof c.latitude === "number" ? c.latitude : Number(c.latitude);
+  const lng = typeof c.longitude === "number" ? c.longitude : Number(c.longitude);
+  if (isValidLatLng({ lat, lng }) && !isCountryCentroid(lat, lng)) {
+    return { lat, lng };
   }
   return coordsForCity(c.cidade, c.uf);
 }

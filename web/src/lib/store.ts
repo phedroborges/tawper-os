@@ -32,6 +32,7 @@ import type {
   Strategy,
 } from "./types";
 import { formatCNPJ, storedCNPJ, storedWhatsApp } from "./br-ids";
+import { composeRouteDescription, visitRouteDescription } from "./route-text";
 import { money, quoteTotals, uid } from "./utils";
 import { useUI } from "./ui-store";
 
@@ -117,6 +118,7 @@ interface Actions {
     kmEstimado: number;
     ownerId?: string;
     confirm?: boolean;
+    descricao?: string;
   }) => string;
   /** Confirma rota planejada: cria atividades de visita e marca como confirmada. */
   confirmRoute: (routeId: string) => void;
@@ -295,6 +297,36 @@ const memoryStorage: Storage = {
   removeItem() {},
   setItem() {},
 };
+
+function routeNarrative(companies: Company[], paradas: RouteStop[], km: number, aiText?: string) {
+  const stops = paradas.map((stop) => {
+    const company = companies.find((item) => item.id === stop.companyId);
+    return {
+      nome: company?.nome ?? "Conta",
+      cidade: company?.cidade,
+      uf: company?.uf,
+      motivo: stop.motivo || stop.objetivo,
+    };
+  });
+  return composeRouteDescription(aiText, stops, km);
+}
+
+function scheduleRouteVisits(get: () => AppState, route: { ownerId: string; data: string; paradas: RouteStop[]; descricao?: string }) {
+  route.paradas.forEach((stop, index) => {
+    const company = get().companies.find((item) => item.id === stop.companyId);
+    const titulo = company?.nome ?? stop.objetivo.replace(/^Visita:\s*/i, "");
+    get().addActivity({
+      companyId: stop.companyId,
+      ownerId: route.ownerId,
+      tipo: "Visita",
+      titulo: `Visita: ${titulo}`,
+      descricao: visitRouteDescription(route.descricao ?? "", index, route.paradas.length),
+      dueAt: new Date(new Date(route.data).getTime() + index * 2.5 * 3_600_000).toISOString(),
+      prioridade: "Média",
+      origem: "ia",
+    });
+  });
+}
 
 export const useStore = create<AppState>()(
   persist(
@@ -805,6 +837,7 @@ export const useStore = create<AppState>()(
           const id = uid("r");
           const ownerId = input.ownerId ?? me();
           const status = input.confirm ? "confirmada" : "planejada";
+          const descricao = routeNarrative(s.companies, input.paradas, input.kmEstimado, input.descricao);
           const route = {
             id,
             ownerId,
@@ -813,25 +846,10 @@ export const useStore = create<AppState>()(
             paradas: input.paradas,
             kmEstimado: input.kmEstimado,
             status: status as "planejada" | "confirmada",
+            descricao,
           };
-          const acts: Activity[] = input.confirm
-            ? input.paradas.map((p, i) => ({
-                id: uid("a"),
-                companyId: p.companyId,
-                ownerId,
-                tipo: "Visita" as const,
-                titulo: `Visita: ${p.objetivo}`,
-                dueAt: new Date(new Date(input.data).getTime() + i * 2.5 * 3_600_000).toISOString(),
-                prioridade: "Média" as const,
-                status: "pendente" as const,
-                origem: "ia" as const,
-                createdAt: nowIso(),
-                dealId: s.deals.find((d) => d.companyId === p.companyId && d.status === "aberta")?.id,
-              }))
-            : [];
           set({
             routes: [route, ...s.routes],
-            activities: acts.length ? [...acts, ...s.activities] : s.activities,
             audit: [
               auditEntry({
                 autorId: me(),
@@ -839,11 +857,12 @@ export const useStore = create<AppState>()(
                 entidade: "Rota",
                 entidadeId: id,
                 campo: "status",
-                para: input.confirm ? `confirmada (${acts.length} visitas)` : `planejada (${input.paradas.length} paradas)`,
+                para: input.confirm ? `confirmada (${input.paradas.length} visitas)` : `planejada (${input.paradas.length} paradas)`,
               }),
               ...s.audit,
             ],
           });
+          if (input.confirm) scheduleRouteVisits(get, route);
           return id;
         },
 
@@ -851,22 +870,10 @@ export const useStore = create<AppState>()(
           const s = get();
           const r = s.routes.find((x) => x.id === routeId);
           if (!r || r.status === "confirmada") return;
-          const acts: Activity[] = r.paradas.map((p, i) => ({
-            id: uid("a"),
-            companyId: p.companyId,
-            ownerId: r.ownerId,
-            tipo: "Visita",
-            titulo: `Visita: ${p.objetivo}`,
-            dueAt: new Date(new Date(r.data).getTime() + i * 2.5 * 3_600_000).toISOString(),
-            prioridade: "Média",
-            status: "pendente",
-            origem: "regra",
-            createdAt: nowIso(),
-            dealId: s.deals.find((d) => d.companyId === p.companyId && d.status === "aberta")?.id,
-          }));
+          const descricao = r.descricao || routeNarrative(s.companies, r.paradas, r.kmEstimado);
+          const route = { ...r, descricao };
           set({
-            routes: s.routes.map((x) => (x.id === routeId ? { ...x, status: "confirmada" } : x)),
-            activities: [...acts, ...s.activities],
+            routes: s.routes.map((x) => (x.id === routeId ? { ...x, status: "confirmada", descricao } : x)),
             audit: [
               auditEntry({
                 autorId: me(),
@@ -875,11 +882,12 @@ export const useStore = create<AppState>()(
                 entidadeId: routeId,
                 campo: "status",
                 de: "planejada",
-                para: `confirmada (${acts.length} visitas)`,
+                para: `confirmada (${r.paradas.length} visitas)`,
               }),
               ...s.audit,
             ],
           });
+          scheduleRouteVisits(get, route);
         },
       };
     },

@@ -392,6 +392,8 @@ export interface RoutePlan {
   paradas: RouteStop[];
   kmEstimado: number;
   status: "planejada" | "confirmada";
+  /** Roteiro escrito para o vendedor, com a ordem das paradas. */
+  descricao?: string;
 }
 
 export interface DemoData {
