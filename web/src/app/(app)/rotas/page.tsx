@@ -10,7 +10,8 @@ import { REGIOES, isManager } from "@/lib/constants";
 import { addDays, dayDiff, fmtDateShort, longToday, startOfDay } from "@/lib/dates";
 import { useNow } from "@/lib/hooks";
 import { companyLatLng, estimateRoadKm, openGoogleMapsNavigation, openGoogleMapsRoute } from "@/lib/geo";
-import { regionForCity } from "@/lib/regions";
+import { regionForLocation } from "@/lib/regions";
+import { composeRouteDescription } from "@/lib/route-text";
 import { alertsOf, daysInStage, lastInteractionAt, openDealOf, stageOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
@@ -58,15 +59,16 @@ export default function RotasPage() {
   const [picked, setPicked] = useState<string[] | null>(null);
   const [driving, setDriving] = useState<DrivingRouteSummary | null>(null);
   const [optimizeWaypoints, setOptimizeWaypoints] = useState(true);
+  const [aiRouteText, setAiRouteText] = useState("");
   const data = useMemo(
     () => ({ companies, contacts, deals, activities, interactions, quotes, suggestions, strategies, users, conversations }),
     [companies, contacts, deals, activities, interactions, quotes, suggestions, strategies, users, conversations],
   );
 
-  const inRegion = (c: { regiao?: string; cidade?: string }) => {
+  const inRegion = (c: { regiao?: string; cidade?: string; uf?: string }) => {
     if (regiao === TODAS_REGIOES) return true;
     if (c.regiao === regiao) return true;
-    return regionForCity(c.cidade) === regiao;
+    return regionForLocation(c.cidade, c.uf) === regiao;
   };
 
   const candidates = useMemo(() => {
@@ -132,10 +134,25 @@ export default function RotasPage() {
 
   const kmEstimado = driving?.distanceKm ?? kmFallback;
 
+  const routeDescricao = useMemo(() => {
+    const ids = stopOrder.length ? stopOrder : picked ?? [];
+    const stops = ids.map((id) => {
+      const row = candidates.find((item) => item.c.id === id);
+      return {
+        nome: row?.c.nome ?? "Conta",
+        cidade: row?.c.cidade,
+        uf: row?.c.uf,
+        motivo: row?.motivos[0],
+      };
+    });
+    return composeRouteDescription(aiRouteText, stops, kmEstimado);
+  }, [stopOrder, picked, candidates, aiRouteText, kmEstimado]);
+
   const resetSelection = () => {
     setPicked(null);
     setDriving(null);
     setOptimizeWaypoints(true);
+    setAiRouteText("");
   };
 
   const navigateStop = (companyId: string) => {
@@ -192,8 +209,9 @@ export default function RotasPage() {
     const fallbackIds = selected.map((x) => x.c.id);
     void (async () => {
       let ids = fallbackIds;
+      let descricao = "";
       try {
-        ids = await aiRoute({
+        const planned = await aiRoute({
           regiao: routeRegiaoLabel,
           candidates: selected.map((x) => ({
             id: x.c.id,
@@ -205,6 +223,8 @@ export default function RotasPage() {
           })),
           fallbackIds,
         });
+        ids = planned.ids;
+        descricao = planned.descricao;
       } catch {
         ids = fallbackIds;
       }
@@ -214,6 +234,7 @@ export default function RotasPage() {
       if (ids.length < fallbackIds.length) {
         for (const id of fallbackIds) if (!ids.includes(id)) ids.push(id);
       }
+      setAiRouteText(descricao);
       setPicked(ids);
       setThinking(false);
     })();
@@ -238,6 +259,7 @@ export default function RotasPage() {
       kmEstimado,
       ownerId: user.id,
       confirm: false,
+      descricao: routeDescricao,
     });
     toast(`Rota planejada: ${stopOrder.length} paradas · ${kmEstimado} km`, {
       tone: "ai",
@@ -255,6 +277,7 @@ export default function RotasPage() {
       kmEstimado,
       ownerId: user.id,
       confirm: true,
+      descricao: routeDescricao,
     });
     toast(`Rota confirmada: ${stopOrder.length} visitas · ${kmEstimado} km`, {
       tone: "ai",
@@ -411,12 +434,18 @@ export default function RotasPage() {
             <Card className="border-ai/30">
               <CardHeader
                 kicker="Rota sugerida"
-                title={`${stopOrder.length} visitas · ${fmtDateShort(fromDateInputValue(dataVisita))} · ${regiao}`}
+                title={`${stopOrder.length} visitas · ${fmtDateShort(fromDateInputValue(dataVisita))} · ${routeRegiaoLabel}`}
                 action={<AIBadge label="IA + Maps" />}
               />
+              {routeDescricao && (
+                <p className="mx-4 mt-3 whitespace-pre-line rounded-[6px] bg-ai-soft/70 px-3 py-2 text-[12.5px] leading-relaxed text-ink">
+                  {routeDescricao}
+                </p>
+              )}
               <ol className="px-4 py-3">
                 {stopOrder.map((id, i) => {
-                  const x = candidates.find((k) => k.c.id === id)!;
+                  const x = candidates.find((k) => k.c.id === id);
+                  if (!x) return null;
                   const canNav = !!companyLatLng(x.c);
                   return (
                     <li key={id} className="flex items-start gap-3 py-1.5">
@@ -499,6 +528,11 @@ export default function RotasPage() {
                   )
                 }
               />
+              {route.descricao && (
+                <p className="mx-4 mt-3 whitespace-pre-line rounded-[6px] bg-soft px-3 py-2 text-[12.5px] leading-relaxed text-ink">
+                  {route.descricao}
+                </p>
+              )}
               <ol className="px-4 py-3">
                 {route.paradas.map((p, i) => (
                   <li key={p.companyId} className="flex gap-3 py-1.5">

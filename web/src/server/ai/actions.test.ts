@@ -65,8 +65,8 @@ describe("ações dos especialistas", () => {
   });
 
   it("rota de visitas não aceita empresa inventada", async () => {
-    askJSON.mockResolvedValue({ companyIds: ["inventada", "c2", "c1"] });
-    await expect(aiRoute({ regiao: "SP", candidates: [{ id: "c1", nome: "A", score: 1, motivos: [] }, { id: "c2", nome: "B", score: 2, motivos: [] }], fallbackIds: ["c1"] })).resolves.toEqual(["c2", "c1"]);
+    askJSON.mockResolvedValue({ companyIds: ["inventada", "c2", "c1"], descricao: "  1. B e depois A.  " });
+    await expect(aiRoute({ regiao: "SP", candidates: [{ id: "c1", nome: "A", score: 1, motivos: [] }, { id: "c2", nome: "B", score: 2, motivos: [] }], fallbackIds: ["c1"] })).resolves.toEqual({ ids: ["c2", "c1"], descricao: "1. B e depois A." });
     expect(askJSON.mock.calls[0][0]).toMatchObject({ task: "visit_route", agentKey: "visit_route" });
   });
 

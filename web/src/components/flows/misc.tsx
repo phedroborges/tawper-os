@@ -15,6 +15,7 @@ import { currentDealOf, nextStepOf, qualityOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { Company, Papel, Potencial, Prensa, Urgencia } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
+import { pickRegiaoFromLocation } from "@/lib/regions";
 import { cn } from "@/lib/utils";
 import { geocodeCepOrAddress, reverseGeocode } from "@/server/geo/geocode";
 
@@ -132,6 +133,7 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
           cep: formatCEP(addr.cep),
           cidade: addr.cidade,
           uf: addr.uf,
+          regiao: pickRegiaoFromLocation(addr.cidade, addr.uf, x.regiao),
         }));
         return;
       }
@@ -140,6 +142,7 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
         cep: formatCEP(addr.cep),
         cidade: addr.cidade,
         uf: addr.uf,
+        regiao: pickRegiaoFromLocation(addr.cidade, addr.uf, x.regiao),
         latitude: geo.lat,
         longitude: geo.lng,
       }));
@@ -170,6 +173,7 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
         ...x,
         cidade: place.cidade,
         uf: place.uf,
+        regiao: pickRegiaoFromLocation(place.cidade, place.uf, x.regiao),
         cep: place.cep ? formatCEP(place.cep) : x.cep,
         latitude: place.lat,
         longitude: place.lng,

@@ -43,6 +43,12 @@ const STATUS: Record<string, Company["status"]> = {
   merged: "arquivada",
 };
 
+function asCoord(value: unknown) {
+  if (value == null || value === "") return undefined;
+  const n = Number(value);
+  return Number.isFinite(n) ? n : undefined;
+}
+
 const DEAL_STATUS: Record<string, Deal["status"]> = {
   open: "aberta",
   won: "ganha",
@@ -164,6 +170,10 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
     regiao: row.region_id ? regionName.get(row.region_id as string) : undefined,
     cidade: (row.city as string) ?? undefined,
     uf: (row.state as string) ?? undefined,
+    cep: (row.postal_code as string) ?? undefined,
+    endereco: (row.address as string) ?? undefined,
+    latitude: asCoord(row.latitude),
+    longitude: asCoord(row.longitude),
     ramo: (row.industry as string) ?? undefined,
     grupo: (row.economic_group as string) ?? undefined,
     origem: (row.source as string) ?? "manual",

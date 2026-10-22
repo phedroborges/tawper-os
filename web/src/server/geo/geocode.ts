@@ -1,7 +1,7 @@
 "use server";
 
 import { normalizeCEP } from "@/lib/cep";
-import { coordsForCity } from "@/lib/geo";
+import { coordsForCity, isLocalGeocodeHit } from "@/lib/geo";
 
 export type GeocodeResult = { lat: number; lng: number; formatted?: string; source: "google" | "nominatim" | "cidade" };
 export type GeocodeFailure = { ok: false; reason: string };
@@ -19,12 +19,23 @@ async function googleGeocode(query: string, key: string): Promise<GeocodeSuccess
   const body = (await res.json()) as {
     status: string;
     error_message?: string;
-    results?: { geometry?: { location?: { lat: number; lng: number } }; formatted_address?: string }[];
+    results?: {
+      types?: string[];
+      formatted_address?: string;
+      geometry?: { location?: { lat: number; lng: number } };
+    }[];
   };
 
-  if (body.status === "OK" && body.results?.[0]?.geometry?.location) {
-    const loc = body.results[0].geometry.location;
-    return { ok: true, lat: loc.lat, lng: loc.lng, formatted: body.results[0].formatted_address, source: "google" };
+  const hit = (body.results ?? []).find((result) => {
+    const loc = result.geometry?.location;
+    return !!loc && isLocalGeocodeHit({ lat: loc.lat, lng: loc.lng, types: result.types });
+  });
+  if (body.status === "OK" && hit?.geometry?.location) {
+    const loc = hit.geometry.location;
+    return { ok: true, lat: loc.lat, lng: loc.lng, formatted: hit.formatted_address, source: "google" };
+  }
+  if (body.status === "OK") {
+    return { ok: false, reason: "Google devolveu só o país, sem a cidade." };
   }
 
   if (body.status === "REQUEST_DENIED") {
@@ -56,10 +67,13 @@ async function nominatimGeocode(query: string): Promise<GeocodeSuccess | null> {
     const rows = (await res.json()) as { lat: string; lon: string; display_name?: string }[];
     const hit = rows[0];
     if (!hit) return null;
+    const lat = Number(hit.lat);
+    const lng = Number(hit.lon);
+    if (!isLocalGeocodeHit({ lat, lng })) return null;
     return {
       ok: true,
-      lat: Number(hit.lat),
-      lng: Number(hit.lon),
+      lat,
+      lng,
       formatted: hit.display_name,
       source: "nominatim",
     };
@@ -85,11 +99,17 @@ export async function geocodeCepOrAddress(input: {
   ).trim();
 
   const cep = normalizeCEP(input.cep);
+  const cepLabel = cep.length === 8 ? `${cep.slice(0, 5)}-${cep.slice(5)}` : "";
   const queries = [
-    cep.length === 8 ? `${cep.slice(0, 5)}-${cep.slice(5)}, Brasil` : "",
-    [input.endereco, input.cidade, input.uf, "Brasil"].filter(Boolean).join(", "),
-    [input.cidade, input.uf, "Brasil"].filter(Boolean).join(", "),
-  ].filter(Boolean);
+    ...new Set(
+      [
+        [cepLabel, input.cidade, input.uf, "Brasil"].filter(Boolean).join(", "),
+        [input.endereco, input.cidade, input.uf, "Brasil"].filter(Boolean).join(", "),
+        [input.cidade, input.uf, "Brasil"].filter(Boolean).join(", "),
+        cepLabel ? `${cepLabel}, Brasil` : "",
+      ].filter(Boolean),
+    ),
+  ];
 
   let lastGoogleError = "";
   if (key) {
