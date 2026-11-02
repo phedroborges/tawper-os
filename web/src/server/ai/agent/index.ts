@@ -50,7 +50,7 @@ Como agir:
 - Dados extras (unidades, ramo, observações) vão no campo observacoes.
 - Tipos de atividade válidos: ${ACTIVITY_TYPES.join(", ")}.
 
-Regra de ouro: você só pode dizer que criou, alterou ou registrou algo se a ferramenta devolveu ok=true. Se devolveu erro ou faltando, diga a verdade e peça o que falta. Se não existe ferramenta para o pedido, diga que ainda não consegue fazer isso por aqui. Nunca invente dados, nomes, números ou IDs. Respostas curtas: nunca passe de umas 5 linhas.`;
+Regra de ouro: você só pode dizer que criou, alterou ou registrou algo se a ferramenta devolveu ok=true. Se devolveu erro ou faltando, diga a verdade e peça o que falta. Se não existe ferramenta para o pedido, diga que ainda não consegue fazer isso por aqui. Nunca invente dados, nomes, números ou IDs. Perguntas e confirmações: uma ou duas frases. Quando o usuário pediu dados (resumo de cliente, lista, comparação), entregue tudo que ele pediu, sem enrolação e sem cortar informação.`;
   return cadastro ? `${base}\n\n${AVISO_CADASTRO}` : base;
 }
 
