@@ -1,5 +1,7 @@
 import "server-only";
 
+import { AUDIO_FAILED, AUDIO_PREFIX } from "./audio";
+import { transcribeInboundAudio } from "./audio-transcribe";
 import { findWhatsAppAgentIdentity, whatsappAgentEnabled } from "./config";
 import { parseWhatsAppAgentInbound } from "./inbound";
 import { enqueueWhatsAppAgentMessage } from "./store";
@@ -23,6 +25,13 @@ export async function ingestWhatsAppAgentPayload(payload: unknown): Promise<What
   const identity = findWhatsAppAgentIdentity(message.sender);
   if (!identity) return { ignored: "unauthorized_sender" };
 
-  const result = await enqueueWhatsAppAgentMessage({ ...message, displayName: identity.name });
+  // Só transcreve depois de confirmar que o remetente é autorizado: áudio de estranho não gasta IA.
+  let text = message.text;
+  if (message.audio) {
+    if (!message.audio.base64) console.warn("[agente] áudio chegou sem o arquivo no webhook; a Stevo precisa enviar o base64");
+    const heard = await transcribeInboundAudio(message.audio).catch(() => null);
+    text = heard ? `${AUDIO_PREFIX}${heard}` : AUDIO_FAILED;
+  }
+  const result = await enqueueWhatsAppAgentMessage({ eventId: message.eventId, sender: message.sender, displayName: identity.name, text });
   return { duplicate: result.duplicate, queued: !result.duplicate };
 }

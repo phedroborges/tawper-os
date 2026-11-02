@@ -88,4 +88,30 @@ describe("execução de ações pelo WhatsApp", () => {
     expect(mocks.aiAssistant).toHaveBeenCalledWith(expect.objectContaining({ actorId: actor.id }));
     expect(mocks.recordReply).toHaveBeenCalledWith(expect.objectContaining({ action }));
   });
+
+  it("entende CONFIRMAR dito em áudio, com pontuação", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("[áudio] Confirmar.")).mockResolvedValue(null);
+    mocks.claimAction.mockResolvedValue({ id: "message-1", action });
+    mocks.executeAction.mockResolvedValue({ ok: true, message: "Tarefa concluída.", action: { ...action, status: "executed" } });
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.executeAction).toHaveBeenCalledWith({ actorId: actor.id, action });
+  });
+
+  it("avisa que não ouviu quando o áudio não foi transcrito, sem chamar a IA", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("[áudio sem transcrição]")).mockResolvedValue(null);
+    await expect(processWhatsAppAgentQueue(2)).resolves.toEqual({ processed: 1, failed: 0 });
+    expect(mocks.send).toHaveBeenCalledWith("5517999999999", expect.stringContaining("Não consegui ouvir"));
+    expect(mocks.aiAssistant).not.toHaveBeenCalled();
+  });
+
+  it("responde o áudio repetindo o que entendeu e passa só a transcrição à IA", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("[áudio] Quais tarefas tenho hoje?")).mockResolvedValue(null);
+    mocks.aiAssistant.mockResolvedValue({ texto: "Você tem 3 tarefas." });
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.aiAssistant).toHaveBeenCalledWith(expect.objectContaining({ question: "Quais tarefas tenho hoje?" }));
+    expect(mocks.send).toHaveBeenCalledWith("5517999999999", "🎙️ Entendi: “Quais tarefas tenho hoje?”\n\nVocê tem 3 tarefas.");
+  });
 });

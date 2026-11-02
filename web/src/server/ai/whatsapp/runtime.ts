@@ -9,6 +9,7 @@ import { aiAssistant } from "../actions";
 import { executeAssistantAction } from "../action-engine";
 import { agentToolsEnabled, runToolAgent } from "../agent";
 import { resolveWhatsAppAgentUser } from "./access";
+import { AUDIO_FAILED, AUDIO_PREFIX } from "./audio";
 import { findWhatsAppAgentIdentity } from "./config";
 import { renderWhatsAppAnswer } from "./render";
 import { sendWhatsAppAgentText } from "./stevo";
@@ -35,9 +36,11 @@ function payloadString(job: WhatsAppAgentJob, key: keyof WhatsAppAgentJob["paylo
 async function answerJob(job: WhatsAppAgentJob) {
   const sessionId = payloadString(job, "session_id") || job.aggregate_id;
   const sender = canonicalWhatsApp(payloadString(job, "sender"));
-  const question = payloadString(job, "question").slice(0, 4000);
+  const received = payloadString(job, "question").slice(0, 4000);
+  const fromAudio = received.startsWith(AUDIO_PREFIX);
+  const question = fromAudio ? received.slice(AUDIO_PREFIX.length).trim() : received;
   const externalMessageId = payloadString(job, "external_message_id");
-  if (!sessionId || !sender || !question) throw new Error("Evento do agente interno está incompleto.");
+  if (!sessionId || !sender || !received) throw new Error("Evento do agente interno está incompleto.");
 
   const existing = await findWhatsAppAgentReply(job.id);
   if (existing) return;
@@ -55,7 +58,14 @@ async function answerJob(job: WhatsAppAgentJob) {
   }
 
   await bindWhatsAppAgentSessionProfile(sessionId, uuid(resolved.user.id));
-  const normalizedQuestion = question.normalize("NFD").replace(/[\u0300-\u036f]/g, "").trim().toLowerCase();
+  if (received === AUDIO_FAILED || !question) {
+    const text = "N\u00e3o consegui ouvir esse \u00e1udio. Pode mandar de novo, ou escrever o pedido?";
+    const sent = await sendWhatsAppAgentText(sender, text);
+    await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
+    return;
+  }
+  // Pontua\u00e7\u00e3o e mai\u00fasculas n\u00e3o contam: "Confirmar." dito em \u00e1udio tamb\u00e9m confirma.
+  const normalizedQuestion = question.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9, ]/g, "").trim().toLowerCase();
   if (/^(confirmar|confirmo|pode confirmar|sim,? confirmar)$/.test(normalizedQuestion)) {
     const pending = await claimPendingWhatsAppAction(sessionId);
     if (!pending) {
@@ -101,7 +111,9 @@ async function answerJob(job: WhatsAppAgentJob) {
     });
   const viaFerramentas = agentToolsEnabled() ? await runToolAgent({ actor: resolved.user, question, history, consultar: (pergunta) => ask(pergunta, true) }) : null;
   const answer = viaFerramentas ?? (await ask(question, false));
-  const text = renderWhatsAppAnswer(answer);
+  // Em áudio, repete o que foi entendido: se a transcrição errou, o usuário percebe antes de confiar na resposta.
+  const heard = fromAudio ? `🎙️ Entendi: “${question.length > 300 ? `${question.slice(0, 300)}…` : question}”\n\n` : "";
+  const text = `${heard}${renderWhatsAppAnswer(answer)}`;
   const sent = await sendWhatsAppAgentText(sender, text);
   await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId, action: answer.acao });
 }
