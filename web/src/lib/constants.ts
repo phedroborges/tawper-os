@@ -57,6 +57,17 @@ export const USERS: User[] = [
     phone: "(17) 99701-2205",
     regions: ["Triângulo Mineiro", "Oeste Paulista"],
   },
+  {
+    id: "u-phedro",
+    name: "Phedro Borges",
+    short: "Phedro",
+    role: "admin",
+    title: "Desenvolvedor",
+    initials: "PB",
+    color: "#123a7b",
+    phone: "(64) 99943-0898",
+    regions: [],
+  },
 ];
 
 export const ROLE_LABEL: Record<User["role"], string> = {

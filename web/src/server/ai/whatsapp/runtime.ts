@@ -4,7 +4,8 @@ import { assistantAnswer } from "@/lib/ai";
 import { systemContext } from "@/lib/ai-context";
 import { canonicalWhatsApp } from "@/lib/br-ids";
 import { visibleCompanies, type Data } from "@/lib/selectors";
-import { loadCrmSnapshot } from "@/server/crm";
+import { invalidateCrmReadCache, loadCrmSnapshot } from "@/server/crm";
+import { ensureOperators } from "@/server/persist";
 import { aiAssistant } from "../actions";
 import { executeAssistantAction } from "../action-engine";
 import { agentToolsEnabled, runToolAgent } from "../agent";
@@ -48,8 +49,19 @@ async function answerJob(job: WhatsAppAgentJob) {
   const identity = findWhatsAppAgentIdentity(sender);
   if (!identity) throw new Error("Remetente não está mais autorizado.");
 
-  const snapshot = await loadCrmSnapshot();
-  const resolved = resolveWhatsAppAgentUser(identity, snapshot.users);
+  let snapshot = await loadCrmSnapshot();
+  let resolved = resolveWhatsAppAgentUser(identity, snapshot.users);
+  if (!resolved.linked) {
+    // Pessoa da equipe fixa que ainda não tem perfil no banco: cria os perfis que faltam e procura de novo.
+    try {
+      await ensureOperators();
+      invalidateCrmReadCache();
+      snapshot = await loadCrmSnapshot();
+      resolved = resolveWhatsAppAgentUser(identity, snapshot.users);
+    } catch (error) {
+      console.warn("[agente] não foi possível criar os perfis da equipe", error instanceof Error ? error.message : error);
+    }
+  }
   if (identity.role === "vendedor" && !resolved.linked) {
     const text = `Olá, ${resolved.user.short}. Seu número está autorizado, mas seu perfil de vendedor ainda não está vinculado à carteira no Tawper. Peça a um gestor para concluir esse vínculo.`;
     const sent = await sendWhatsAppAgentText(sender, text);

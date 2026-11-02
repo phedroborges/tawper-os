@@ -10,6 +10,8 @@ const mocks = vi.hoisted(() => ({
   claimAction: vi.fn(),
   finishAction: vi.fn(),
   loadSnapshot: vi.fn(),
+  ensureOperators: vi.fn(),
+  resolveUser: vi.fn(),
   aiAssistant: vi.fn(),
   executeAction: vi.fn(),
   send: vi.fn(),
@@ -17,10 +19,11 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock("@/lib/ai", () => ({ assistantAnswer: vi.fn(() => ({ texto: "fallback" })) }));
 vi.mock("@/lib/ai-context", () => ({ systemContext: vi.fn(() => ({})) }));
-vi.mock("@/server/crm", () => ({ loadCrmSnapshot: mocks.loadSnapshot }));
+vi.mock("@/server/crm", () => ({ loadCrmSnapshot: mocks.loadSnapshot, invalidateCrmReadCache: vi.fn() }));
+vi.mock("@/server/persist", () => ({ ensureOperators: mocks.ensureOperators }));
 vi.mock("../actions", () => ({ aiAssistant: mocks.aiAssistant }));
 vi.mock("../action-engine", () => ({ executeAssistantAction: mocks.executeAction }));
-vi.mock("./access", () => ({ resolveWhatsAppAgentUser: vi.fn((_identity, snapshotUsers) => ({ user: snapshotUsers[0], linked: true })) }));
+vi.mock("./access", () => ({ resolveWhatsAppAgentUser: mocks.resolveUser }));
 vi.mock("./config", () => ({ findWhatsAppAgentIdentity: vi.fn(() => ({ phone: "5517999999999", name: "Murilo", role: "gestor" })) }));
 vi.mock("./render", () => ({ renderWhatsAppAnswer: vi.fn((answer) => answer.texto) }));
 vi.mock("./stevo", () => ({ sendWhatsAppAgentText: mocks.send }));
@@ -62,6 +65,8 @@ describe("execução de ações pelo WhatsApp", () => {
     mocks.loadSnapshot.mockResolvedValue({ companies: [], contacts: [], deals: [], activities: [], users: [actor], quotes: [], interactions: [], audit: [], strategies: [], strategyHistory: [] });
     mocks.send.mockResolvedValue({ messageId: "out-1" });
     mocks.history.mockResolvedValue([]);
+    mocks.ensureOperators.mockResolvedValue({});
+    mocks.resolveUser.mockImplementation((_identity: unknown, users: unknown[]) => ({ user: users[0], linked: true }));
   });
 
   it("executa a proposta pendente ao receber CONFIRMAR", async () => {
@@ -113,5 +118,25 @@ describe("execução de ações pelo WhatsApp", () => {
     await processWhatsAppAgentQueue(2);
     expect(mocks.aiAssistant).toHaveBeenCalledWith(expect.objectContaining({ question: "Quais tarefas tenho hoje?" }));
     expect(mocks.send).toHaveBeenCalledWith("5517999999999", "🎙️ Entendi: “Quais tarefas tenho hoje?”\n\nVocê tem 3 tarefas.");
+  });
+
+  it("cria os perfis que faltam e tenta de novo quando o número ainda não tem perfil", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("Quais tarefas tenho hoje?")).mockResolvedValue(null);
+    mocks.aiAssistant.mockResolvedValue({ texto: "Você tem 3 tarefas." });
+    mocks.resolveUser
+      .mockReturnValueOnce({ user: { ...actor, id: "whatsapp-5564999430898" }, linked: false })
+      .mockReturnValueOnce({ user: actor, linked: true });
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.ensureOperators).toHaveBeenCalledTimes(1);
+    expect(mocks.aiAssistant).toHaveBeenCalledWith(expect.objectContaining({ actorId: actor.id }));
+  });
+
+  it("não tenta criar perfis quando o número já está vinculado", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("Quais tarefas tenho hoje?")).mockResolvedValue(null);
+    mocks.aiAssistant.mockResolvedValue({ texto: "ok" });
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.ensureOperators).not.toHaveBeenCalled();
   });
 });
