@@ -78,11 +78,13 @@ describe("execução de ações pelo WhatsApp", () => {
     expect(mocks.aiAssistant).not.toHaveBeenCalled();
   });
 
-  it("não repete a ação quando não existe mais proposta pendente", async () => {
+  it("sem proposta pendente, CONFIRMAR é resposta a uma pergunta do agente e segue para a conversa", async () => {
     mocks.claimAction.mockResolvedValue(null);
+    mocks.aiAssistant.mockResolvedValue({ texto: "Certo, seguindo com o cadastro." });
     await processWhatsAppAgentQueue(2);
     expect(mocks.executeAction).not.toHaveBeenCalled();
-    expect(mocks.send).toHaveBeenCalledWith("5517999999999", expect.stringContaining("Não há uma ação pendente"));
+    expect(mocks.aiAssistant).toHaveBeenCalledWith(expect.objectContaining({ question: "CONFIRMAR" }));
+    expect(mocks.send).toHaveBeenCalledWith("5517999999999", "Certo, seguindo com o cadastro.");
   });
 
   it("guarda a proposta gerada para uma confirmação posterior", async () => {

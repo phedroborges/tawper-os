@@ -17,10 +17,23 @@ const ok = { nome: "Usina Boa Vista", cidade: "Quirinópolis", contato_nome: "Jo
 const actor = base.users[0];
 
 describe("planNewClient", () => {
-  it("lista o que falta em vez de inventar", () => {
+  it("só nome e cidade são indispensáveis; lista o que falta em vez de inventar", () => {
     const plan = planNewClient({ nome: "Usina X" }, base, actor);
     expect(plan).toMatchObject({ ok: false });
-    expect((plan as { faltando: string[] }).faltando).toEqual(["cidade", "nome do contato", "próximo passo (o que fazer com esse cliente e quando)"]);
+    expect((plan as { faltando: string[] }).faltando).toEqual(["cidade"]);
+  });
+
+  it("cadastra sem contato e sem próximo passo, com um passo padrão", () => {
+    const plan = planNewClient({ nome: "Ativos de Mineiros", cidade: "Mineiros", uf: "GO" }, base, actor, new Date("2026-11-02T15:00:00Z"));
+    expect(plan.ok).toBe(true);
+    if (!plan.ok) return;
+    expect(plan.input.contacts).toEqual([]);
+    expect(plan.input.firstActivity).toMatchObject({ tipo: "Ligação", titulo: "Descobrir o contato certo e qualificar frota e prensa", dueAt: "2026-11-03T12:00:00.000Z" });
+  });
+
+  it("com contato e sem próximo passo, o passo padrão cita o contato", () => {
+    const plan = planNewClient({ nome: "Ativos de Mineiros", cidade: "Mineiros", contato_nome: "João", contato_whatsapp: "(64) 99999-1234" }, base, actor);
+    expect(plan.ok && plan.input.firstActivity).toMatchObject({ tipo: "WhatsApp", titulo: "Ligar para João e qualificar frota e prensa" });
   });
 
   it("monta o cadastro completo com responsável e prazo", () => {

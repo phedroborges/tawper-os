@@ -75,29 +75,27 @@ async function answerJob(job: WhatsAppAgentJob) {
     await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
     return;
   }
-  // Pontua\u00e7\u00e3o e mai\u00fasculas n\u00e3o contam: "Confirmar." dito em \u00e1udio tamb\u00e9m confirma.
+  // Pontuação e maiúsculas não contam: "Confirmar." dito em áudio também confirma.
   const normalizedQuestion = question.normalize("NFD").replace(/[\u0300-\u036f]/g, "").replace(/[^a-zA-Z0-9, ]/g, "").trim().toLowerCase();
   if (/^(confirmar|confirmo|pode confirmar|sim,? confirmar)$/.test(normalizedQuestion)) {
     const pending = await claimPendingWhatsAppAction(sessionId);
-    if (!pending) {
-      const text = "Não há uma ação pendente para confirmar. Faça o pedido novamente com a empresa e os dados da ação.";
+    // Sem proposta guardada, "confirmo" é resposta a uma pergunta do próprio agente: segue para a conversa normal.
+    if (pending) {
+      const result = await executeAssistantAction({ actorId: resolved.user.id, action: pending.action });
+      await finishPendingWhatsAppAction(pending.id, result.ok ? "executed" : "failed");
+      const sent = await sendWhatsAppAgentText(sender, result.message);
+      await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: result.message, externalMessageId: sent.messageId });
+      return;
+    }
+  } else if (/^(cancelar|cancela|cancelado|nao confirmar)$/.test(normalizedQuestion)) {
+    const pending = await claimPendingWhatsAppAction(sessionId);
+    if (pending) {
+      await finishPendingWhatsAppAction(pending.id, "cancelled");
+      const text = "Ação cancelada. Nada foi alterado no CRM.";
       const sent = await sendWhatsAppAgentText(sender, text);
       await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
       return;
     }
-    const result = await executeAssistantAction({ actorId: resolved.user.id, action: pending.action });
-    await finishPendingWhatsAppAction(pending.id, result.ok ? "executed" : "failed");
-    const sent = await sendWhatsAppAgentText(sender, result.message);
-    await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: result.message, externalMessageId: sent.messageId });
-    return;
-  }
-  if (/^(cancelar|cancela|cancelado|nao confirmar)$/.test(normalizedQuestion)) {
-    const pending = await claimPendingWhatsAppAction(sessionId);
-    const text = pending ? "Ação cancelada. Nada foi alterado no CRM." : "Não há uma ação pendente para cancelar.";
-    if (pending) await finishPendingWhatsAppAction(pending.id, "cancelled");
-    const sent = await sendWhatsAppAgentText(sender, text);
-    await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
-    return;
   }
   const data: Data = { ...snapshot, suggestions: [], conversations: [] };
   const allowedCompanies = visibleCompanies(data, resolved.user);

@@ -28,18 +28,21 @@ function pickOwner(args: Record<string, unknown>, actor: User, users: User[]): {
   return { erro: "Seu perfil não está vinculado ao Tawper. Diga quem será o responsável por este cliente." };
 }
 
+function minutesAgo(iso: string | undefined, now: Date) {
+  const at = iso ? new Date(iso).getTime() : NaN;
+  return Number.isFinite(at) ? Math.max(0, Math.round((now.getTime() - at) / 60_000)) : undefined;
+}
+
 /** Valida o pedido e monta o cadastro. Não grava nada: devolve o que falta ou o que bloqueia. */
 export function planNewClient(args: Record<string, unknown>, base: Base, actor: User, now = new Date()): NewClientPlan {
   const nome = str(args.nome, 120);
   const cidade = str(args.cidade, 80);
   const contatoNome = str(args.contato_nome, 120);
-  const passoTitulo = str(args.proximo_passo_titulo, 160);
-  const faltando = [
-    !nome && "nome da empresa",
-    !cidade && "cidade",
-    !contatoNome && "nome do contato",
-    !passoTitulo && "próximo passo (o que fazer com esse cliente e quando)",
-  ].filter((item): item is string => Boolean(item));
+  // Só nome e cidade são indispensáveis. Sem contato ou sem próximo passo dito, o cadastro nasce com um passo padrão.
+  const passoTitulo =
+    str(args.proximo_passo_titulo, 160) ||
+    (contatoNome ? `Ligar para ${contatoNome} e qualificar frota e prensa` : "Descobrir o contato certo e qualificar frota e prensa");
+  const faltando = [!nome && "nome da empresa", !cidade && "cidade"].filter((item): item is string => Boolean(item));
   if (faltando.length) return { ok: false, faltando };
 
   const rawCnpj = str(args.cnpj, 30);
@@ -62,8 +65,8 @@ export function planNewClient(args: Record<string, unknown>, base: Base, actor: 
   if (similar.length && args.confirmar_duplicado !== true) {
     return {
       ok: false,
-      duplicados: similar.map((match) => ({ nome: match.company.nome, cidade: match.company.cidade, motivos: match.motivos })),
-      erro: "Parece que esse cliente já existe. Pergunte se é o mesmo; só chame de novo com confirmar_duplicado=true se o usuário disser que é outra empresa.",
+      duplicados: similar.map((match) => ({ nome: match.company.nome, cidade: match.company.cidade, motivos: match.motivos, cadastrado_ha_minutos: minutesAgo(match.company.createdAt, now) })),
+      erro: "Parece que esse cliente já existe. Se cadastrado_ha_minutos for pequeno e foi você mesmo quem cadastrou nesta conversa, ele JÁ está cadastrado: diga isso. Senão, pergunte se é o mesmo; só chame de novo com confirmar_duplicado=true se o usuário disser que é outra empresa.",
     };
   }
 
@@ -79,7 +82,7 @@ export function planNewClient(args: Record<string, unknown>, base: Base, actor: 
   const origem = ORIGENS.find((item) => normalize(item) === normalize(origemRaw)) ?? "WhatsApp";
   const uf = str(args.uf, 2).toUpperCase();
 
-  const contact: Omit<Contact, "id" | "companyId"> = {
+  const contact: Omit<Contact, "id" | "companyId"> | null = !contatoNome ? null : {
     nome: contatoNome,
     cargo: str(args.contato_cargo, 80),
     papel: papel as Papel,
@@ -97,6 +100,7 @@ export function planNewClient(args: Record<string, unknown>, base: Base, actor: 
       actorId: owner.id,
       company: {
         nome,
+        razaoSocial: str(args.razao_social, 160) || undefined,
         cidade,
         uf: uf || undefined,
         cnpj: cnpj || undefined,
@@ -106,7 +110,7 @@ export function planNewClient(args: Record<string, unknown>, base: Base, actor: 
         observacoes: str(args.observacoes, 500) || undefined,
         ownerId: owner.id,
       },
-      contacts: [contact],
+      contacts: contact ? [contact] : [],
       firstActivity: { tipo: tipo as ActivityType, titulo: passoTitulo, dueAt: due.toISOString(), ownerId: owner.id },
     },
   };
@@ -115,12 +119,13 @@ export function planNewClient(args: Record<string, unknown>, base: Base, actor: 
 export const criarCliente: AgentTool = {
   name: "criar_cliente",
   description:
-    "Cadastra um cliente novo no CRM: empresa, contato principal, negócio no funil de Aquisição (etapa Lead) e o primeiro próximo passo, tudo de uma vez. Só chame quando já tiver nome da empresa, cidade, nome do contato e o próximo passo; se faltar algo, pergunte ao usuário (uma mensagem curta, só o que falta). Verifica duplicidade e devolve erro claro.",
+    "Cadastra um cliente novo no CRM: empresa, contato principal (se houver), negócio no funil de Aquisição (etapa Lead) e o primeiro próximo passo, tudo de uma vez. Só nome da empresa e cidade são indispensáveis. Contato e próximo passo são opcionais: sem eles, o sistema cria um próximo passo padrão. Verifica duplicidade e CNPJ e devolve erro claro.",
   writes: true,
   parameters: {
     type: "object",
     properties: {
       nome: { type: "string", description: "Nome fantasia da empresa." },
+      razao_social: { type: "string", description: "Opcional. Só se o usuário disser a razão social. Não confundir com CNPJ." },
       cidade: { type: "string" },
       uf: { type: "string", description: "Sigla do estado, ex.: SP." },
       cnpj: { type: "string", description: "Opcional. 14 dígitos." },
@@ -128,7 +133,7 @@ export const criarCliente: AgentTool = {
       regiao: { type: "string", description: `Opcional. Uma de: ${REGIOES.join(", ")}.` },
       origem: { type: "string", description: `Opcional. Uma de: ${ORIGENS.join(", ")}. Padrão WhatsApp.` },
       observacoes: { type: "string", description: "Opcional. O que o usuário contou de relevante sobre o cliente." },
-      contato_nome: { type: "string" },
+      contato_nome: { type: "string", description: "Opcional. Pergunte uma vez; se o usuário não souber, siga sem." },
       contato_cargo: { type: "string" },
       contato_papel: { type: "string", description: `Opcional. Um de: ${PAPEIS.join(", ")}.` },
       contato_whatsapp: { type: "string", description: "Celular com DDD." },
@@ -139,7 +144,7 @@ export const criarCliente: AgentTool = {
       responsavel: { type: "string", description: "Opcional. Nome de quem fica responsável. Padrão: o próprio usuário." },
       confirmar_duplicado: { type: "boolean", description: "true só depois do usuário confirmar que NÃO é o cliente parecido já existente." },
     },
-    required: ["nome", "cidade", "contato_nome", "proximo_passo_titulo"],
+    required: ["nome", "cidade"],
     additionalProperties: false,
   },
   async run(args, ctx) {

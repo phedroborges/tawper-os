@@ -82,7 +82,7 @@ export async function loadWhatsAppAgentHistory(sessionId: string, excludeExterna
      where session_id = ${sessionId}::uuid
        and (${excludeExternalMessageId ?? null}::text is null or external_message_id is distinct from ${excludeExternalMessageId ?? null})
      order by created_at desc
-     limit 12
+     limit 24
   `;
   return rows.reverse().map((row) => ({
     role: row.direction === "in" ? ("user" as const) : ("assistant" as const),

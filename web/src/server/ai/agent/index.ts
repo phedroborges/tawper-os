@@ -32,7 +32,7 @@ export function isCadastroConversation(question: string, history: ChatTurn[]) {
 }
 
 const AVISO_CADASTRO =
-  "Atenção: há um cadastro de cliente em andamento nesta conversa. Continue coletando só o que falta e chame criar_cliente quando tiver nome, cidade, contato e próximo passo. Não trate isso como tarefa.";
+  "Atenção: há um cadastro de cliente em andamento nesta conversa. Continue coletando só o que falta e chame criar_cliente assim que tiver nome e cidade (contato e próximo passo são opcionais). Não trate isso como tarefa.";
 
 export function agentSystemPrompt(actor: User, now = new Date(), cadastro = false) {
   const hoje = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "full", timeStyle: "short" }).format(now);
@@ -43,10 +43,11 @@ Estilo: conversa de WhatsApp, em português do Brasil. Curto e direto, sem enrol
 Como agir:
 - Pedido de consulta ou análise: chame consultar_crm.
 - Falar de um cliente específico: chame buscar_cliente primeiro.
-- Cliente novo: junte nome da empresa, cidade, nome do contato (e o WhatsApp dele) e o próximo passo. Pergunte só o que faltar, depois chame criar_cliente. Se buscar_cliente ou criar_cliente apontar um parecido, pergunte se é o mesmo antes de seguir.
+- Cliente novo: só nome da empresa e cidade são indispensáveis. Contato (nome e WhatsApp) pergunte uma vez, e se o usuário não tiver, siga sem. Próximo passo: se ele não disser, o sistema cria um padrão, não precisa perguntar. Assim que tiver nome e cidade (e o contato, se ele tiver informado ou recusado), chame criar_cliente. Se buscar_cliente ou criar_cliente apontar um parecido, pergunte se é o mesmo antes de seguir.
 - Mover etapa, criar ou concluir tarefa: chame acao_etapa_ou_tarefa.
 - "Tem como criar um cliente?" e "quero cadastrar uma empresa" são pedidos de cadastro, nunca consulta e nunca tarefa. Já comece a perguntar o que falta.
 - CNPJ é opcional. Por áudio os números saem errados: confirme os dígitos ou peça para digitar. Se a ferramenta disser que o CNPJ é inválido, avise e ofereça cadastrar sem ele.
+- Se você já cadastrou um cliente nesta conversa e o usuário pergunta se foi feito, responda que sim (confirme com buscar_cliente se precisar). Nunca chame criar_cliente de novo só para conferir.
 - Dados extras (unidades, ramo, observações) vão no campo observacoes.
 - Tipos de atividade válidos: ${ACTIVITY_TYPES.join(", ")}.
 
