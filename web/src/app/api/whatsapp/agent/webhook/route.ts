@@ -1,5 +1,7 @@
 import { timingSafeEqual } from "node:crypto";
 import { after, NextResponse } from "next/server";
+import { agentToolsEnabled } from "@/server/ai/agent";
+import { aiConfigured } from "@/server/ai/openai";
 import {
   whatsappAgentBotNumber,
   whatsappAgentEnabled,
@@ -56,6 +58,13 @@ export async function GET(request: Request) {
       enabled: whatsappAgentEnabled(),
       botNumberConfigured: Boolean(whatsappAgentBotNumber()),
       authorizedUsers: whatsappAgentUsers().length,
+      // Conferência rápida das chaves que decidem se o agente usa ferramentas (nenhum segredo aparece aqui).
+      agente: {
+        ferramentasLigadas: agentToolsEnabled(),
+        iaConfigurada: aiConfigured(),
+        escritaLiberada: process.env.TAWPER_AGENT_WRITES_ENABLED === "true",
+        flagFerramentas: process.env.TAWPER_AGENT_TOOLS_ENABLED === "true",
+      },
       service: "tawper-whatsapp-internal-agent",
     });
   } catch (error) {
