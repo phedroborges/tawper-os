@@ -38,8 +38,7 @@ async function answerJob(job: WhatsAppAgentJob) {
   const sessionId = payloadString(job, "session_id") || job.aggregate_id;
   const sender = canonicalWhatsApp(payloadString(job, "sender"));
   const received = payloadString(job, "question").slice(0, 4000);
-  const fromAudio = received.startsWith(AUDIO_PREFIX);
-  const question = fromAudio ? received.slice(AUDIO_PREFIX.length).trim() : received;
+  const question = received.startsWith(AUDIO_PREFIX) ? received.slice(AUDIO_PREFIX.length).trim() : received;
   const externalMessageId = payloadString(job, "external_message_id");
   if (!sessionId || !sender || !received) throw new Error("Evento do agente interno está incompleto.");
 
@@ -121,11 +120,11 @@ async function answerJob(job: WhatsAppAgentJob) {
       escopo,
       skipActions,
     });
-  const viaFerramentas = agentToolsEnabled() ? await runToolAgent({ actor: resolved.user, question, history, consultar: (pergunta) => ask(pergunta, true) }) : null;
+  const toolsOn = agentToolsEnabled();
+  const viaFerramentas = toolsOn ? await runToolAgent({ actor: resolved.user, question, history, consultar: (pergunta) => ask(pergunta, true) }) : null;
+  console.info("[agente] caminho da resposta", toolsOn ? (viaFerramentas ? "ferramentas" : "fluxo antigo (o modelo não respondeu com ferramentas)") : "fluxo antigo (TAWPER_AGENT_TOOLS_ENABLED ou TAWPER_AGENT_WRITES_ENABLED desligada)");
   const answer = viaFerramentas ?? (await ask(question, false));
-  // Em áudio, repete o que foi entendido: se a transcrição errou, o usuário percebe antes de confiar na resposta.
-  const heard = fromAudio ? `🎙️ Entendi: “${question.length > 300 ? `${question.slice(0, 300)}…` : question}”\n\n` : "";
-  const text = `${heard}${renderWhatsAppAnswer(answer)}`;
+  const text = renderWhatsAppAnswer(answer);
   const sent = await sendWhatsAppAgentText(sender, text);
   await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId, action: answer.acao });
 }

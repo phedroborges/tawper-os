@@ -111,7 +111,7 @@ describe("execução de ações pelo WhatsApp", () => {
     expect(mocks.aiAssistant).not.toHaveBeenCalled();
   });
 
-  it("responde o áudio repetindo o que entendeu e passa só a transcrição à IA", async () => {
+  it("responde o áudio direto, passando só a transcrição à IA", async () => {
     mocks.claimJob.mockReset();
     mocks.claimJob.mockResolvedValueOnce(job("[áudio] Quais tarefas tenho hoje?")).mockResolvedValue(null);
     mocks.aiAssistant.mockResolvedValue({ texto: "Você tem 3 tarefas." });
