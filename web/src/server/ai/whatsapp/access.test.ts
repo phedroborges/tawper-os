@@ -28,4 +28,16 @@ describe("vínculo do WhatsApp com o perfil comercial", () => {
     expect(result.user.role).toBe("admin");
     expect(result.user.id).toContain("whatsapp-");
   });
+
+  it("vincula pelo profileId mesmo que nome e telefone não batam", () => {
+    const result = resolveWhatsAppAgentUser({ phone: "5564999430898", name: "Phedro", role: "admin", profileId: users[0].id }, users);
+    expect(result.linked).toBe(true);
+    expect(result.user.id).toBe(users[0].id);
+    expect(result.user.role).toBe("admin");
+  });
+
+  it("profileId que não está na equipe ativa não vira vínculo", () => {
+    const result = resolveWhatsAppAgentUser({ phone: "5564999430898", name: "Phedro", role: "admin", profileId: "00000000-0000-4000-8000-0000000000ff" }, users);
+    expect(result.linked).toBe(false);
+  });
 });

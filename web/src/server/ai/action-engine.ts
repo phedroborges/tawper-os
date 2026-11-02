@@ -246,7 +246,7 @@ export async function planAssistantAction(input: {
   if (!input.actorId) return { texto: "Eu entendi que você quer alterar o CRM, mas não consegui identificar quem está operando. Entre novamente e tente de novo." };
   const snapshot = await loadCrmSnapshot();
   const actor = actorFrom(snapshot, input.actorId);
-  if (!actor) return { texto: "Seu perfil não foi encontrado na equipe ativa. Não vou alterar o CRM sem identificar o responsável." };
+  if (!actor) return { texto: "Seu número está autorizado, mas não está vinculado a um perfil ativo da equipe no Tawper, e sem isso não altero o CRM. Peça a um administrador para informar o profileId do seu perfil na lista do agente." };
   const catalog = await actionCatalog(snapshot, actor);
   const raw = await askJSON<RawActionPlan>({
     system: `Você é o planejador de ações do CRM Tawper. Interprete o pedido e o histórico, mas nunca execute nada.

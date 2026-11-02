@@ -41,4 +41,10 @@ describe("configuração do agente interno no WhatsApp", () => {
   it("recusa lista malformada", () => {
     expect(() => parseWhatsAppAgentUsers('[{"phone":"123"}]')).toThrow(/phone, name e role/);
   });
+
+  it("aceita profileId e recusa valor que não é UUID", () => {
+    const id = "00000000-0000-4000-8000-000000000123";
+    expect(parseWhatsAppAgentUsers(JSON.stringify([{ phone: "64999430898", name: "Phedro", role: "admin", profileId: id }]))[0]).toMatchObject({ profileId: id, role: "admin" });
+    expect(() => parseWhatsAppAgentUsers(JSON.stringify([{ phone: "64999430898", name: "Phedro", role: "admin", profileId: "abc" }]))).toThrow("profileId");
+  });
 });

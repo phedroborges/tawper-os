@@ -6,9 +6,13 @@ export type WhatsAppAgentIdentity = {
   phone: string;
   name: string;
   role: WhatsAppAgentRole;
+  /** Perfil do Tawper (profiles.id) a que este número pertence. Vence qualquer busca por telefone ou nome. */
+  profileId?: string;
 };
 
-type RawIdentity = { phone?: unknown; name?: unknown; role?: unknown };
+type RawIdentity = { phone?: unknown; name?: unknown; role?: unknown; profileId?: unknown };
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function roleOf(value: unknown): WhatsAppAgentRole | null {
   if (value === "admin" || value === "gestor" || value === "vendedor") return value;
@@ -32,7 +36,9 @@ export function parseWhatsAppAgentUsers(raw: string | undefined): WhatsAppAgentI
     const name = typeof item?.name === "string" ? item.name.trim().slice(0, 120) : "";
     const role = roleOf(item?.role);
     if (!phone || !name || !role) throw new Error("Cada usuário do agente precisa de phone, name e role válidos.");
-    identities.set(canonicalWhatsApp(phone), { phone: canonicalWhatsApp(phone), name, role });
+    const profileId = typeof item?.profileId === "string" ? item.profileId.trim() : "";
+    if (profileId && !UUID.test(profileId)) throw new Error("profileId do agente precisa ser o UUID do perfil no Tawper.");
+    identities.set(canonicalWhatsApp(phone), { phone: canonicalWhatsApp(phone), name, role, ...(profileId ? { profileId } : {}) });
   }
   return [...identities.values()];
 }

@@ -11,7 +11,8 @@ export function resolveWhatsAppAgentUser(identity: WhatsAppAgentIdentity, users:
   const byPhone = users.find((user) => canonicalWhatsApp(user.phone) === identity.phone);
   const exactName = users.find((user) => [user.name, user.short].some((name) => normalized(name) === targetName));
   const sameFirstName = users.filter((user) => [user.name, user.short].some((name) => normalized(name).split(" ")[0] === firstName));
-  const matched = byPhone ?? exactName ?? (sameFirstName.length === 1 ? sameFirstName[0] : undefined);
+  const byProfile = identity.profileId ? users.find((user) => user.id === identity.profileId) : undefined;
+  const matched = byProfile ?? byPhone ?? exactName ?? (sameFirstName.length === 1 ? sameFirstName[0] : undefined);
   const role = identity.role;
   return {
     linked: Boolean(matched),
