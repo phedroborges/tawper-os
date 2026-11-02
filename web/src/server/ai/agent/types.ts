@@ -17,6 +17,8 @@ export interface AgentContext {
   consultar: (pergunta: string) => Promise<AssistantAnswer>;
   /** Ação que aguarda "confirmar" no WhatsApp; preenchida por ferramentas que propõem em vez de executar. */
   acao?: AssistantActionProposal;
+  /** Conversa de cadastro de cliente em andamento: consulta não encerra a conversa e a ponte de tarefas fica fora. */
+  modoCadastro?: boolean;
 }
 
 export interface AgentTool {

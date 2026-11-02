@@ -44,7 +44,7 @@ export function planNewClient(args: Record<string, unknown>, base: Base, actor: 
 
   const rawCnpj = str(args.cnpj, 30);
   const cnpj = rawCnpj ? storedCNPJ(rawCnpj) : undefined;
-  if (rawCnpj && !cnpj) return { ok: false, erro: "CNPJ inválido. Peça os 14 dígitos corretos ou siga sem CNPJ." };
+  if (rawCnpj && !cnpj) return { ok: false, erro: "CNPJ inválido: os dígitos verificadores não conferem (por voz é fácil errar um número). Peça para a pessoa digitar o CNPJ, ou ofereça cadastrar sem CNPJ por enquanto." };
   const rawPhone = str(args.contato_whatsapp, 30);
   const phone = rawPhone ? storedWhatsApp(rawPhone) : undefined;
   if (rawPhone && !phone) return { ok: false, erro: "WhatsApp inválido. Precisa de celular brasileiro com DDD." };

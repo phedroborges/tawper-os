@@ -65,3 +65,22 @@ describe("planNewClient", () => {
     expect(named.ok && named.input.company.ownerId).toBe(U2);
   });
 });
+
+describe("CNPJ no cadastro por voz", () => {
+  const user1 = base.users[0];
+  it("recusa o CNPJ ditado errado e explica o motivo ao modelo", () => {
+    const plan = planNewClient({ ...ok, cnpj: "37.989.167/0001-01" }, base, user1);
+    expect(plan).toMatchObject({ ok: false, erro: expect.stringContaining("dígitos verificadores") });
+  });
+
+  it("aceita um CNPJ válido, com ou sem máscara", () => {
+    const plan = planNewClient({ ...ok, cnpj: "11.222.333/0001-81" }, base, user1);
+    expect(plan.ok && plan.input.company.cnpj).toBe("11222333000181");
+    expect(planNewClient({ ...ok, cnpj: "11222333000181" }, base, user1).ok).toBe(true);
+  });
+
+  it("cadastra sem CNPJ e guarda os dados extras nas observações", () => {
+    const plan = planNewClient({ ...ok, observacoes: "Unidades: Morro Vermelho e Água Emendada" }, base, user1);
+    expect(plan.ok && plan.input.company).toMatchObject({ cnpj: undefined, observacoes: "Unidades: Morro Vermelho e Água Emendada" });
+  });
+});

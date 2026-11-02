@@ -16,6 +16,7 @@ export const consultarCrm: AgentTool = {
   async run(args, ctx) {
     const answer = await ctx.consultar(str(args.pergunta, 2000) || ctx.question);
     const text = renderWhatsAppAnswer(answer);
-    return { data: { ok: true, resposta: text }, reply: text };
+    // Durante um cadastro a resposta volta ao modelo em vez de encerrar a conversa, para ele continuar coletando os dados.
+    return { data: { ok: true, resposta: text }, reply: ctx.modoCadastro ? undefined : text };
   },
 };

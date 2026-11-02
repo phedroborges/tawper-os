@@ -112,7 +112,9 @@ export async function runAgent(input: {
         else {
           try {
             output = await tool.run(args, input.ctx);
+            console.info("[agente] ferramenta", { nome: tool.name, ok: (output.data as { ok?: unknown } | null)?.ok ?? null });
           } catch (error) {
+            console.warn("[agente] ferramenta falhou", { nome: tool.name, erro: error instanceof Error ? error.message : String(error) });
             output = { data: { ok: false, erro: error instanceof Error ? error.message : "Falha ao executar a ferramenta." } };
           }
           if (key) done.set(key, output);
