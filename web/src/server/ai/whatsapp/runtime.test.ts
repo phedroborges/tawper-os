@@ -117,7 +117,7 @@ describe("execução de ações pelo WhatsApp", () => {
     mocks.aiAssistant.mockResolvedValue({ texto: "Você tem 3 tarefas." });
     await processWhatsAppAgentQueue(2);
     expect(mocks.aiAssistant).toHaveBeenCalledWith(expect.objectContaining({ question: "Quais tarefas tenho hoje?" }));
-    expect(mocks.send).toHaveBeenCalledWith("5517999999999", "🎙️ Entendi: “Quais tarefas tenho hoje?”\n\nVocê tem 3 tarefas.");
+    expect(mocks.send).toHaveBeenCalledWith("5517999999999", "Você tem 3 tarefas.");
   });
 
   it("cria os perfis que faltam e tenta de novo quando o número ainda não tem perfil", async () => {
