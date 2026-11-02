@@ -14,6 +14,9 @@ import type { AgentContext, AgentResult, AgentTool } from "./types";
 /** Ferramentas disponíveis. Cada nova capacidade do agente entra aqui. */
 export const AGENT_TOOLS: AgentTool[] = [buscarCliente, criarCliente, consultarCrm, acoesBasicas];
 
+/** Troque a cada mudança do agente: aparece em /api/health e mostra qual versão está no ar. */
+export const AGENT_VERSION = "2026-11-02.5";
+
 export function agentToolsEnabled() {
   return process.env.TAWPER_AGENT_TOOLS_ENABLED === "true" && process.env.TAWPER_AGENT_WRITES_ENABLED === "true";
 }

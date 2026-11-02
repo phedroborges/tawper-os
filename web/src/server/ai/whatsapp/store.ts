@@ -146,6 +146,7 @@ export async function claimPendingWhatsAppAction(sessionId: string) {
        where session_id = ${sessionId}::uuid
          and direction = 'out'
          and metadata ->> 'action_status' = 'pending'
+         and created_at > now() - interval '15 minutes'
        order by created_at desc
        limit 1
        for update skip locked
