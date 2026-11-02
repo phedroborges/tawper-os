@@ -191,9 +191,11 @@ export async function aiAssistant(input: {
   fallback: AssistantAnswer;
   allowedCompanyIds: string[];
   escopo?: { gestor: boolean; telefones: string[] };
+  /** Só leitura: o agente com ferramentas cuida das ações. */
+  skipActions?: boolean;
 }): Promise<AssistantAnswer> {
   if (!aiConfigured()) return input.fallback;
-  const action = await planAssistantAction({ question: input.question, history: input.history, actorId: input.actorId });
+  const action = input.skipActions ? null : await planAssistantAction({ question: input.question, history: input.history, actorId: input.actorId });
   if (action) return action;
   const allowed = new Set(input.allowedCompanyIds);
   const plan = planForQuestion(input.question);

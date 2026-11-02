@@ -20,7 +20,7 @@ function positive(value: unknown, fallback: number, ceiling: number) {
   const parsed = Number(value);
   return Number.isFinite(parsed) && parsed > 0 ? Math.min(Math.floor(parsed), ceiling) : fallback;
 }
-function candidates(task: AITask) {
+export function candidates(task: AITask) {
   const result: { provider: string; model: string; key: string; url: string }[] = [];
   if (process.env.AI_GATEWAY_API_KEY) {
     const profile = modelProfileFor(task);

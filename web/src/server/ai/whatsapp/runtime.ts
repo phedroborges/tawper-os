@@ -7,6 +7,7 @@ import { visibleCompanies, type Data } from "@/lib/selectors";
 import { loadCrmSnapshot } from "@/server/crm";
 import { aiAssistant } from "../actions";
 import { executeAssistantAction } from "../action-engine";
+import { agentToolsEnabled, runToolAgent } from "../agent";
 import { resolveWhatsAppAgentUser } from "./access";
 import { findWhatsAppAgentIdentity } from "./config";
 import { renderWhatsAppAnswer } from "./render";
@@ -83,18 +84,23 @@ async function answerJob(job: WhatsAppAgentJob) {
   const allowed = new Set(allowedCompanyIds);
   const history = await loadWhatsAppAgentHistory(sessionId, externalMessageId);
   const fallback = assistantAnswer(data, resolved.user, question);
-  const answer = await aiAssistant({
-    question,
-    history: history.slice(-6),
-    actorId: resolved.user.id,
-    sistema: systemContext(data, resolved.user),
-    fallback,
-    allowedCompanyIds,
-    escopo: {
-      gestor: resolved.user.role === "admin" || resolved.user.role === "gestor",
-      telefones: snapshot.contacts.filter((contact) => allowed.has(contact.companyId) && contact.whatsapp).map((contact) => contact.whatsapp!),
-    },
-  });
+  const escopo = {
+    gestor: resolved.user.role === "admin" || resolved.user.role === "gestor",
+    telefones: snapshot.contacts.filter((contact) => allowed.has(contact.companyId) && contact.whatsapp).map((contact) => contact.whatsapp!),
+  };
+  const ask = (pergunta: string, skipActions: boolean) =>
+    aiAssistant({
+      question: pergunta,
+      history: history.slice(-6),
+      actorId: resolved.user.id,
+      sistema: systemContext(data, resolved.user),
+      fallback: pergunta === question ? fallback : assistantAnswer(data, resolved.user, pergunta),
+      allowedCompanyIds,
+      escopo,
+      skipActions,
+    });
+  const viaFerramentas = agentToolsEnabled() ? await runToolAgent({ actor: resolved.user, question, history, consultar: (pergunta) => ask(pergunta, true) }) : null;
+  const answer = viaFerramentas ?? (await ask(question, false));
   const text = renderWhatsAppAnswer(answer);
   const sent = await sendWhatsAppAgentText(sender, text);
   await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId, action: answer.acao });
