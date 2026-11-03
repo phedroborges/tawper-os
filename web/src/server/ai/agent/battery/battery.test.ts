@@ -74,6 +74,13 @@ function nextWeekday(weekday: number) {
   return new Date(now.getTime() + delta * 86_400_000).toISOString().slice(0, 10);
 }
 const tomorrow = () => new Date(Date.now() - 3 * 3_600_000 + 86_400_000).toISOString().slice(0, 10);
+/** "Quinta-feira da semana que vem": a quinta da semana seguinte (semana de segunda a domingo). */
+function weekdayNextWeek(weekday: number) {
+  const now = new Date(Date.now() - 3 * 3_600_000);
+  const isoDay = now.getUTCDay() || 7;
+  const nextMonday = new Date(now.getTime() + (8 - isoDay) * 86_400_000);
+  return new Date(nextMonday.getTime() + ((weekday || 7) - 1) * 86_400_000).toISOString().slice(0, 10);
+}
 
 // ---------- leitura das gravações simuladas ----------
 type Rodada = { calls: Call[]; respostas: string[]; ferramentas: string[][]; marcas: string[] };
@@ -276,6 +283,63 @@ const CASOS: Caso[] = [
       named(r, "cancelActivityRow").length > 0 && "cancelou em vez de concluir",
     ],
   },
+  // ---------- da conversa real no WhatsApp, 03/11/2026 (gpt-4o-mini, versão 2026-11-03.1); dados pessoais trocados ----------
+  {
+    nome: "Real: apagar dois contatos errados, um de cada vez",
+    turnos: ["Pode apagar o contato Phedro da Ativos de Mineiros, foi cadastrado errado.", "Faltou você apagar o outro contato \"Contato Certo\" que está no sistema"],
+    checar: (r) => {
+      const del = named(r, "deleteContactRow").map((call) => arg<string>(call, 1));
+      return [
+        !del.includes(IDS.contatoPhedro) && "não excluiu o Phedro",
+        !del.includes(IDS.contatoCerto) && "não excluiu o Contato Certo",
+        del.length > 2 && `excluiu ${del.length} contatos`,
+        (named(r, "runCommand").length || named(r, "addContactRecord").length || named(r, "addActivityRecord").length) && "registrou ou criou algo em vez de só excluir",
+      ];
+    },
+  },
+  {
+    nome: "Real: \"essa tarefa eu já fiz\" logo depois da lista",
+    turnos: ["Quais tarefas eu tenho na Ativos?", "Essa do Marcelo eu já fiz"],
+    checar: (r) => [
+      named(r, "addContactRecord").length && "inventou um contato",
+      !named(r, "completeActivityRecord").some((call) => arg(call) === IDS.tarefaMarcelo) && !/\?/.test(ultima(r)) && "nem concluiu nem perguntou o próximo passo",
+    ],
+  },
+  {
+    nome: "Real: contato novo em lista, depois de o agente pedir os dados",
+    turnos: [
+      "Quero cadastrar um contato na Ativos de Mineiros",
+      "1. Nome do contato: Tereza Lima\n2. Cargo do contato: Supervisor\n3. Número de WhatsApp (com DDD): 64998760000\n4. E-mail (opcional): tereza@exemplo.com.br",
+    ],
+    checar: (r) => {
+      const tereza = named(r, "addContactRecord").map((call) => arg<{ nome: string; whatsapp?: string; companyId: string }>(call)).filter((c) => /tereza/i.test(c.nome));
+      return [
+        tereza.length !== 1 && `cadastrou a Tereza ${tereza.length} vez(es)`,
+        tereza[0] && tereza[0].companyId !== IDS.ativos && "Tereza no cliente errado",
+        tereza[0] && !tereza[0].whatsapp && "Tereza sem WhatsApp",
+        named(r, "registerCompany").length && "cadastrou empresa",
+        r.ferramentas.flat().some((name) => name.startsWith("criar_cliente")) && "chamou criar_cliente",
+      ];
+    },
+  },
+  {
+    nome: "Real: falou com a contato e marcou visita pra quinta da semana que vem",
+    turnos: ["Eu queria documentar que eu falei com a Joana lá da Santa Helena e eu conversei com ela e consegui marcar a visita pra quinta-feira da semana que vem."],
+    checar: (r) => {
+      const quinta = weekdayNextWeek(4);
+      const cmd = named(r, "runCommand").map((call) => arg<Cmd>(call)).filter((item) => item.command === "addInteraction" && item.companyId === IDS.santaHelena);
+      return [
+        registros(r, IDS.santaHelena) !== 1 && `registrou ${registros(r, IDS.santaHelena)} vez(es)`,
+        cmd.some((item) => item.canal === "Visita") && "registrou como visita feita (foi só a conversa)",
+        !futuras(r).some((act) => act.companyId === IDS.santaHelena && act.tipo === "Visita" && brDay(act.dueAt) === quinta) && `não marcou a visita na quinta ${quinta}`,
+      ];
+    },
+  },
+  {
+    nome: "Real: pedido de estratégia não vira tarefa",
+    turnos: ["Você pode me dar uma estratégia de como eu posso entrar em contato com a Joana da Santa Helena?"],
+    checar: (r) => [escritas(r) - named(r, "consultar").length > 0 && "gravou algo num pedido de estratégia"],
+  },
   {
     nome: "Avançar etapa",
     turnos: ["A Ativos já pode ir pra qualificação, o Marcelo confirmou que eles têm 12 colhedoras e prensa própria"],
@@ -323,8 +387,9 @@ describe.skipIf(!ON)("bateria do cotidiano (modelo real)", () => {
       process.env.OPENAI_MODEL = modelo;
       const jobs = casos.flatMap((caso) => Array.from({ length: reps }, () => caso));
       // Poucas rodadas ao mesmo tempo, para não estourar o limite da OpenAI.
-      for (let index = 0; index < jobs.length; index += 6) {
-        const batch = jobs.slice(index, index + 6);
+      const par = Math.max(1, Number(process.env.BATTERY_PARALLEL || 6));
+      for (let index = 0; index < jobs.length; index += par) {
+        const batch = jobs.slice(index, index + par);
         const results = await Promise.all(batch.map(async (caso) => ({ caso, r: await rodar(caso) })));
         for (const { caso, r } of results) {
           const falhas = [...caso.checar(r), ...geral(r)].filter((item): item is string => typeof item === "string");

@@ -55,8 +55,11 @@ export function userAsked(ctx: Pick<AgentContext, "question" | "history">, patte
  * não conclui a tarefa do Marcelo. Devolve o nome citado, para o erro dizer ao modelo o que perguntar.
  */
 export function otherContactInTask(task: Activity, contacts: Contact[], ctx: Pick<AgentContext, "question" | "history">) {
-  const said = [ctx.question, ...ctx.history.filter((turn) => turn.role === "user").slice(-3).map((turn) => turn.content)].map(normalize).join(" ");
   const title = normalize(task.titulo);
+  // "Essa tarefa eu já fiz" logo depois do agente listar a tarefa: o usuário está falando dela.
+  const lastAssistant = normalize(ctx.history.filter((turn) => turn.role === "assistant").at(-1)?.content.split("[interno")[0] ?? "");
+  if (lastAssistant.includes(title)) return undefined;
+  const said = [ctx.question, ...ctx.history.filter((turn) => turn.role === "user").slice(-3).map((turn) => turn.content)].map(normalize).join(" ");
   for (const contact of contacts.filter((item) => item.companyId === task.companyId)) {
     const first = normalize(contact.nome).split(" ")[0];
     if (first.length >= 3 && new RegExp(`\\b${first}\\b`).test(title) && !new RegExp(`\\b${first}\\b`).test(said)) return contact.nome;

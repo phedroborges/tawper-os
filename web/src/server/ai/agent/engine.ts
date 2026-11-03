@@ -45,6 +45,8 @@ async function callModel(messages: Message[], tools: AgentTool[], deadline: numb
       });
       if (!response.ok) {
         console.warn("[agente] modelo falhou", { model: route.model, status: response.status });
+        // Limite de requisições ou instabilidade da OpenAI: espera um pouco antes da próxima tentativa.
+        if (response.status === 429 || response.status >= 500) await new Promise((resolve) => setTimeout(resolve, Math.min(4000, Math.max(0, deadline - Date.now() - 1000))));
         continue;
       }
       const body = (await response.json()) as {

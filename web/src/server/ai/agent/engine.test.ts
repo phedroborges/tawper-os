@@ -116,8 +116,13 @@ describe("runAgent", () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
+  it("no limite de requisições da OpenAI, espera e tenta de novo em vez de cair no fluxo antigo", { timeout: 10_000 }, async () => {
+    fetchMock.mockResolvedValueOnce({ ok: false, status: 429 } as Response).mockResolvedValueOnce(model({ content: "Oi!" }));
+    expect((await run([]))?.texto).toBe("Oi!");
+  });
+
   it("devolve null se o modelo não responde de primeira (cai no fluxo antigo)", async () => {
-    fetchMock.mockResolvedValue({ ok: false, status: 500 } as Response);
+    fetchMock.mockResolvedValue({ ok: false, status: 400 } as Response);
     expect(await run([])).toBeNull();
   });
 

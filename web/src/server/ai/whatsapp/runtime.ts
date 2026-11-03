@@ -118,7 +118,7 @@ async function answerJob(job: WhatsAppAgentJob) {
     const sent = await sendWhatsAppAgentText(sender, text);
     await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
     return;
-  } else if (/^(errou|errado|ta errado|esta errado)$/.test(normalizedQuestion)) {
+  } else if (/^(voce )?(errou|errado|ta errado|esta errado|ta tudo errado|esta tudo errado|errou de novo)$/.test(normalizedQuestion)) {
     // Marcação manual para a revisão: o atendimento anterior entra na lista de falhas.
     const flagged = await flagLastWhatsAppAgentRun(sessionId, "usuario_marcou_erro").catch(() => false);
     const text = flagged

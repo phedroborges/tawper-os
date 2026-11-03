@@ -18,6 +18,8 @@ export const IDS = {
   tarefaJoana: "e0000000-0000-4000-8000-000000000002",
   visitaSantaHelena: "e0000000-0000-4000-8000-000000000003",
   tarefaColorado: "e0000000-0000-4000-8000-000000000004",
+  contatoCerto: "f0000000-0000-4000-8000-000000000004",
+  contatoPhedro: "f0000000-0000-4000-8000-000000000005",
 };
 
 const day = (offset: number, hour = 9) => {
@@ -55,6 +57,9 @@ export function batteryBase() {
       contact("f0000000-0000-4000-8000-000000000001", IDS.ativos, "Marcelo Souza", "Comprador", "Comprador"),
       contact("f0000000-0000-4000-8000-000000000002", IDS.santaHelena, "Joana Ribeiro", "Compras", "Comprador"),
       contact("f0000000-0000-4000-8000-000000000003", IDS.santaHelena, "João Batista", "Supervisor de manutenção", "Técnico"),
+      // Os dois que o agente antigo criou por engano na conversa real do Phedro (03/11).
+      contact(IDS.contatoCerto, IDS.ativos, "Contato Certo", "Cargo do Contato", "Outro"),
+      contact(IDS.contatoPhedro, IDS.ativos, "Phedro", "", "Outro"),
     ],
     deals: [deal(IDS.dealAtivos, IDS.ativos, IDS.douglas, "lead"), deal(IDS.dealSantaHelena, IDS.santaHelena, IDS.douglas, "lead")],
     activities: [
