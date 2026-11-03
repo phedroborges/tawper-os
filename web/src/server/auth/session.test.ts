@@ -23,9 +23,10 @@ describe("sessão assinada", () => {
     expect(decodeSession(`${body}.assinatura-falsa`)).toBeNull();
   });
 
-  it("valida a senha do aplicativo em tempo constante", () => {
+  it("valida a senha legada do aplicativo em tempo constante", () => {
     process.env.TAWPER_APP_PASSWORD = "porta-fechada";
     expect(verifyAppPassword("porta-fechada")).toBe(true);
     expect(verifyAppPassword("outra")).toBe(false);
   });
 });
+

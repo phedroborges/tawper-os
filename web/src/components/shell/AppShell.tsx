@@ -206,13 +206,10 @@ function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavig
 
 function UserSwitcher() {
   const user = useCurrentUser();
-  const users = useStore((s) => s.users);
-  const login = useStore((s) => s.login);
-  const toast = useUI((s) => s.toast);
   const router = useRouter();
   return (
     <Popover
-      className="w-72 py-1.5"
+      className="w-64 py-1.5"
       trigger={(open) => (
         <button type="button" className={cn("flex items-center gap-2 rounded-[6px] py-1 pr-1.5 pl-1 hover:bg-soft", open && "bg-soft")}>
           <Avatar name={user.name} initials={user.initials} color={user.color} size={30} />
@@ -226,38 +223,11 @@ function UserSwitcher() {
     >
       {(close) => (
         <div>
-          <div className="px-3 pt-1 pb-2 text-[11.5px] text-muted">Ver o sistema como:</div>
-          {users.map((u) => (
-            <button
-              key={u.id}
-              type="button"
-              onClick={() => {
-                void (async () => {
-                  const res = await fetch("/api/auth/switch", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ userId: u.id }),
-                  });
-                  if (!res.ok) {
-                    const body = (await res.json().catch(() => ({}))) as { error?: string };
-                    toast(body.error || "Não foi possível trocar o perfil.", { tone: "warn" });
-                    return;
-                  }
-                  login(u.id);
-                  close();
-                  toast(`Visualizando como ${u.short}`, { tone: "info", sub: ROLE_LABEL[u.role] });
-                  if (!isManager(u) && ["/gestao", "/dashboard", "/auditoria"].some((p) => window.location.pathname.startsWith(p))) router.push("/meu-dia");
-                })();
-              }}
-              className={cn("flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-soft", u.id === user.id && "bg-soft")}
-            >
-              <Avatar name={u.name} initials={u.initials} color={u.color} size={28} />
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium text-ink">{u.name}</span>
-                <span className="block truncate text-[11.5px] text-muted">{ROLE_LABEL[u.role]}</span>
-              </span>
-            </button>
-          ))}
+          <div className="px-3 pt-2 pb-1">
+            <div className="text-[13px] font-medium text-ink">{user.name}</div>
+            <div className="text-[11.5px] text-muted">{ROLE_LABEL[user.role]}</div>
+            <div className="mt-0.5 text-[11px] text-muted">{`${user.id.replace(/^u-/, "")}@tawper.com.br`}</div>
+          </div>
           <div className="mt-1 border-t border-line px-3 py-2">
             <button
               type="button"

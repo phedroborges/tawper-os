@@ -1,30 +1,14 @@
 import { NextResponse } from "next/server";
-import { USERS } from "@/lib/constants";
-import {
-  AuthError,
-  createSessionForUser,
-  encodeSession,
-  requireSession,
-  sessionCookie,
-} from "@/server/auth/session";
+import { AuthError, requireSession } from "@/server/auth/session";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-/** Troca o perfil da sessão. Só depois do login; o papel vem do servidor, nunca do body. */
+/** Impersonação desligada: cada pessoa entra com o próprio e-mail no Supabase Auth. */
 export async function POST(request: Request) {
   try {
     requireSession(request);
-    const body = (await request.json()) as { userId?: string };
-    if (typeof body.userId !== "string") throw new AuthError("Escolha um perfil.");
-    const session = createSessionForUser(body.userId);
-    const response = NextResponse.json({
-      ok: true,
-      user: USERS.find((user) => user.id === session.userId),
-    });
-    const cookie = sessionCookie(encodeSession(session));
-    response.cookies.set(cookie.name, cookie.value, cookie);
-    return response;
+    throw new AuthError("Troca de perfil desligada. Saia e entre com o e-mail do operador.");
   } catch (error) {
     const message = error instanceof Error ? error.message : "Não foi possível trocar o perfil.";
     const status = error instanceof AuthError ? error.status : 400;

@@ -1,27 +1,39 @@
 import { NextResponse } from "next/server";
-import { USERS } from "@/lib/constants";
-import {
-  AuthError,
-  createSessionForUser,
-  encodeSession,
-  sessionCookie,
-  verifyAppPassword,
-} from "@/server/auth/session";
+import { getSupabaseAnon } from "@/lib/supabase/anon";
+import { findUserByOperatorEmail } from "@/server/auth/operators";
+import { AuthError, createSessionForUser, encodeSession, sessionCookie } from "@/server/auth/session";
+import { ensureOperators } from "@/server/persist";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const body = (await request.json()) as { password?: string; userId?: string };
-    if (!verifyAppPassword(String(body.password ?? ""))) {
-      throw new AuthError("Senha do aplicativo incorreta.");
+    const body = (await request.json()) as { email?: string; password?: string };
+    const email = String(body.email ?? "")
+      .trim()
+      .toLowerCase();
+    const password = String(body.password ?? "");
+    if (!email || !password) throw new AuthError("Informe e-mail e senha.");
+
+    // Garante que os operadores existem no Auth com e-mail/senha atuais.
+    const actors = await ensureOperators();
+
+    const auth = getSupabaseAnon();
+    const signed = await auth.auth.signInWithPassword({ email, password });
+    if (signed.error || !signed.data.user) {
+      throw new AuthError("E-mail ou senha incorretos.");
     }
-    const userId = typeof body.userId === "string" ? body.userId : USERS[0]?.id;
-    const session = createSessionForUser(userId);
+
+    const appUser = findUserByOperatorEmail(signed.data.user.email ?? email);
+    if (!appUser) throw new AuthError("Este usuário não está autorizado no Tawper OS.");
+
+    const profileId = actors[appUser.id] ?? signed.data.user.id;
+    const session = createSessionForUser(appUser.id);
     const response = NextResponse.json({
       ok: true,
-      user: USERS.find((user) => user.id === session.userId),
+      user: appUser,
+      profileId,
     });
     const cookie = sessionCookie(encodeSession(session));
     response.cookies.set(cookie.name, cookie.value, cookie);

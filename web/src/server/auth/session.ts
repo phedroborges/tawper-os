@@ -25,7 +25,7 @@ export function authEnforced() {
 
 function secret() {
   const value = process.env.TAWPER_APP_SECRET || process.env.TAWPER_APP_PASSWORD;
-  if (!value) throw new AuthError("Defina TAWPER_APP_SECRET ou TAWPER_APP_PASSWORD no servidor.");
+  if (!value) throw new AuthError("Defina TAWPER_APP_SECRET no servidor (assinatura do cookie de sessão).");
   return value;
 }
 

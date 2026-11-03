@@ -86,7 +86,9 @@ function GuideBody({ onClose }: { onClose: () => void }) {
   };
 
   const go = (st: Step) => {
-    if (st.asUser && st.asUser !== currentUserId) login(st.asUser);
+    // Com login real (Supabase), não troca de perfil: cada um usa o próprio e-mail.
+    const useSupabase = process.env.NEXT_PUBLIC_TAWPER_USE_SUPABASE === "true";
+    if (!useSupabase && st.asUser && st.asUser !== currentUserId) login(st.asUser);
     if (st.href) router.push(st.href);
     const next = { ...done, [st.id]: true };
     setDone(next);

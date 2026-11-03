@@ -4,7 +4,8 @@ import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useMemo, useState } from "react";
 import { Avatar } from "@/components/ui/primitives";
-import { ROLE_LABEL, USERS } from "@/lib/constants";
+import { ROLE_LABEL } from "@/lib/constants";
+import { OPERATOR_LOGIN_HINTS } from "@/lib/operator-emails";
 import { useStore } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -12,8 +13,8 @@ function EnterForm() {
   const router = useRouter();
   const params = useSearchParams();
   const loginLocal = useStore((s) => s.login);
+  const [email, setEmail] = useState(OPERATOR_LOGIN_HINTS[0]?.email ?? "");
   const [password, setPassword] = useState("");
-  const [userId, setUserId] = useState(USERS[0]?.id ?? "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const next = useMemo(() => {
@@ -29,11 +30,13 @@ function EnterForm() {
       const res = await fetch("/api/auth/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password, userId }),
+        body: JSON.stringify({ email, password }),
       });
-      const body = (await res.json()) as { error?: string; user?: { id: string } };
+      const body = (await res.json()) as { error?: string; user?: { id: string }; profileId?: string };
       if (!res.ok) throw new Error(body.error || "Não foi possível entrar.");
-      if (body.user?.id) loginLocal(body.user.id);
+      // No Supabase o CRM usa o UUID do profile; o cookie guarda o id de app (u-murilo…).
+      if (body.profileId) loginLocal(body.profileId);
+      else if (body.user?.id) loginLocal(body.user.id);
       router.replace(next);
       router.refresh();
     } catch (cause) {
@@ -50,12 +53,25 @@ function EnterForm() {
           <Image src="/brand/tawper-logo.png" alt="Tawper" width={112} height={32} className="h-8 w-auto" />
           <div>
             <h1 className="text-[18px] font-semibold text-ink">Entrar no Tawper OS</h1>
-            <p className="text-[12.5px] text-muted">Senha do aplicativo + perfil. Sem isso a API não grava nada.</p>
+            <p className="text-[12.5px] text-muted">Login com e-mail e senha (Supabase Auth).</p>
           </div>
         </div>
 
         <label className="grid gap-1.5 text-[12.5px] font-medium text-ink">
-          Senha do aplicativo
+          E-mail
+          <input
+            type="email"
+            autoComplete="username"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="nome@tawper.com.br"
+            className="rounded-[6px] border border-line px-3 py-2 text-[14px] font-normal outline-none focus:border-brand"
+            required
+          />
+        </label>
+
+        <label className="grid gap-1.5 text-[12.5px] font-medium text-ink">
+          Senha
           <input
             type="password"
             autoComplete="current-password"
@@ -67,21 +83,24 @@ function EnterForm() {
         </label>
 
         <fieldset className="grid gap-2">
-          <legend className="mb-1 text-[12.5px] font-medium text-ink">Perfil</legend>
-          {USERS.map((user) => (
+          <legend className="mb-1 text-[12.5px] font-medium text-ink">Operadores</legend>
+          <p className="text-[11.5px] text-muted">Toque para preencher o e-mail. Cada um entra com a própria conta.</p>
+          {OPERATOR_LOGIN_HINTS.map((user) => (
             <button
               key={user.id}
               type="button"
-              onClick={() => setUserId(user.id)}
+              onClick={() => setEmail(user.email)}
               className={cn(
                 "flex items-center gap-2.5 rounded-[6px] border px-3 py-2 text-left",
-                userId === user.id ? "border-brand bg-brand-soft" : "border-line hover:bg-soft",
+                email.toLowerCase() === user.email ? "border-brand bg-brand-soft" : "border-line hover:bg-soft",
               )}
             >
               <Avatar name={user.name} initials={user.initials} color={user.color} size={28} />
               <span className="min-w-0 flex-1">
                 <span className="block text-[13px] font-medium text-ink">{user.name}</span>
-                <span className="block truncate text-[11.5px] text-muted">{ROLE_LABEL[user.role]}</span>
+                <span className="block truncate text-[11.5px] text-muted">
+                  {user.email} · {ROLE_LABEL[user.role]}
+                </span>
               </span>
             </button>
           ))}
