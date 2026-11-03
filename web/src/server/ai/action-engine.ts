@@ -12,6 +12,7 @@ import { visibleCompanies, type Data } from "@/lib/selectors";
 import type { ActivityType, Prioridade, User } from "@/lib/types";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import { addActivityRecord, completeActivityRecord, moveDealRecord } from "@/server/persist";
+import { runCommand } from "@/server/commands";
 import { invalidateCrmReadCache, loadCrmSnapshot } from "@/server/crm";
 import { askJSON, type ChatTurn } from "./openai";
 
@@ -76,6 +77,11 @@ function validActionPayload(action: AssistantActionProposal) {
   if (payload.kind === "complete_task") {
     return uuid(payload.activityId) && typeof payload.result === "string" && payload.result.trim().length > 0 && payload.result.length <= 1000;
   }
+  const filled = (value: unknown, max: number) => typeof value === "string" && value.trim().length >= 3 && value.length <= max;
+  if (payload.kind === "win_deal") return uuid(payload.dealId) && typeof payload.valor === "number" && payload.valor > 0;
+  if (payload.kind === "lose_deal") return uuid(payload.dealId) && filled(payload.motivo, 300);
+  if (payload.kind === "set_standby") return filled(payload.motivo, 300) && filled(payload.condicao, 500) && uuid(payload.responsavelId) && new Date(payload.reavaliacao).getTime() > Date.now();
+  if (payload.kind === "resume_standby") return true;
   return uuid(payload.ownerId) && (!payload.dealId || uuid(payload.dealId)) && typeof payload.title === "string" && payload.title.trim().length > 0 && payload.title.length <= 180 && !Number.isNaN(new Date(payload.dueAt).getTime()) && ACTIVITY_TYPES.includes(payload.activityType) && PRIORITIES.includes(payload.priority);
 }
 
@@ -89,7 +95,7 @@ export function isAssistantActionRequest(question: string) {
   );
 }
 
-function proposal(input: Omit<AssistantActionProposal, "id" | "createdAt" | "expiresAt">): AssistantActionProposal {
+export function proposal(input: Omit<AssistantActionProposal, "id" | "createdAt" | "expiresAt">): AssistantActionProposal {
   const now = Date.now();
   return {
     ...input,
@@ -364,6 +370,27 @@ export async function executeAssistantAction(input: { actorId: string; action: A
         await completeActivityRecord(payload.activityId, payload.result, undefined, { actorId: actor.id, actorType: "ai", requestId: input.action.id });
         message = `Pronto: a tarefa “${task.titulo}” foi concluída.`;
       }
+    } else if (payload.kind === "win_deal" || payload.kind === "lose_deal") {
+      const deal = snapshot.deals.find((item) => item.id === payload.dealId && item.companyId === payload.companyId);
+      if (!deal || deal.status !== "aberta") return fail("O negócio não está mais aberto e não foi alterado.");
+      const nome = snapshot.companies.find((item) => item.id === payload.companyId)?.nome ?? "empresa";
+      if (payload.kind === "win_deal") {
+        await runCommand({ command: "winDeal", dealId: payload.dealId, valor: payload.valor, obs: payload.obs, actorId: actor.id });
+        message = `✅ Venda ganha na ${nome}: ${payload.valor.toLocaleString("pt-BR", { style: "currency", currency: "BRL" })}. O cliente entrou na recorrência e o pós-venda foi criado.`;
+      } else {
+        await runCommand({ command: "loseDeal", dealId: payload.dealId, motivo: payload.motivo, obs: payload.obs, actorId: actor.id });
+        message = `✅ Negócio da ${nome} marcado como perdido. Motivo: ${payload.motivo}. As tarefas abertas foram encerradas.`;
+      }
+    } else if (payload.kind === "set_standby") {
+      const company = snapshot.companies.find((item) => item.id === payload.companyId);
+      if (company?.status !== "ativa") return fail("Só uma conta ativa pode ser colocada em espera.");
+      await runCommand({ command: "setStandby", companyId: payload.companyId, motivo: payload.motivo, condicao: payload.condicao, reavaliacao: payload.reavaliacao, responsavelId: payload.responsavelId, actorId: actor.id });
+      message = `⏸️ ${company.nome} em espera. Motivo: ${payload.motivo}. Volta quando: ${payload.condicao}. Reavaliação em ${new Date(payload.reavaliacao).toLocaleDateString("pt-BR", { timeZone: "America/Sao_Paulo" })}.`;
+    } else if (payload.kind === "resume_standby") {
+      const company = snapshot.companies.find((item) => item.id === payload.companyId);
+      if (company?.status !== "espera") return fail("Esta conta não está em espera.");
+      await runCommand({ command: "resumeStandby", companyId: payload.companyId, actorId: actor.id });
+      message = `▶️ ${company.nome} voltou para o funil. Combine o próximo passo com o cliente.`;
     } else {
       const owner = snapshot.users.find((user) => user.id === payload.ownerId);
       if (!owner) return fail("O responsável não pertence mais à equipe ativa.");

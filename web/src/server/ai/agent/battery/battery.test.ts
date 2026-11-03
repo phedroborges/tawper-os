@@ -52,7 +52,9 @@ vi.mock("../undo", async () => {
 });
 vi.mock("../../action-engine", async () => {
   const { recorder } = await import("./recorder");
-  return { planAssistantAction: recorder("planAssistantAction", () => ({ texto: "Para mover para Qualificação, confirme os requisitos. Responda CONFIRMAR." })) };
+  return {
+    proposal: (input: object) => ({ ...input, id: crypto.randomUUID(), createdAt: new Date().toISOString(), expiresAt: new Date(Date.now() + 900_000).toISOString() }),
+    planAssistantAction: recorder("planAssistantAction", () => ({ texto: "Para mover para Qualificação, confirme os requisitos. Responda CONFIRMAR." })) };
 });
 
 const ON = Boolean(process.env.AGENT_BATTERY);
@@ -83,7 +85,7 @@ function weekdayNextWeek(weekday: number) {
 }
 
 // ---------- leitura das gravações simuladas ----------
-type Rodada = { calls: Call[]; respostas: string[]; ferramentas: string[][]; marcas: string[] };
+type Rodada = { calls: Call[]; respostas: string[]; ferramentas: string[][]; marcas: string[]; acoes: { kind: string; payload?: Record<string, unknown> }[] };
 const named = (r: Rodada, name: string) => r.calls.filter((call) => call.name === name);
 const arg = <T>(call: Call, index = 0) => call.args[index] as T;
 type Act = { companyId: string; tipo: string; titulo: string; dueAt: string };
@@ -341,6 +343,36 @@ const CASOS: Caso[] = [
     checar: (r) => [escritas(r) - named(r, "consultar").length > 0 && "gravou algo num pedido de estratégia"],
   },
   {
+    nome: "Venda fechada",
+    turnos: ["Fechei com a Ativos! Mandaram o pedido de 48 mil e quinhentos reais, primeira compra deles."],
+    checar: (r) => {
+      const win = r.acoes.find((acao) => acao.kind === "win_deal");
+      return [!win && "não propôs a venda", win && win.payload?.valor !== 48500 && `valor errado: ${win.payload?.valor}`, escritas(r) > 0 && "gravou sem esperar o CONFIRMAR", !/CONFIRMAR|confirm/i.test(ultima(r)) && "não pediu confirmação"];
+    },
+  },
+  {
+    nome: "Venda sem valor",
+    turnos: ["A Santa Helena fechou com a gente!"],
+    checar: (r) => [r.acoes.some((acao) => acao.kind === "win_deal") && "propôs venda sem valor", !/valor|quanto/i.test(ultima(r)) && "não perguntou o valor"],
+  },
+  {
+    nome: "Perdeu para o concorrente",
+    turnos: ["Perdi a Santa Helena, fecharam com a concorrência por causa de preço."],
+    checar: (r) => {
+      const lose = r.acoes.find((acao) => acao.kind === "lose_deal");
+      return [!lose && "não propôs a perda", lose && lose.payload?.companyId !== IDS.santaHelena && "perda no cliente errado", escritas(r) > 0 && "gravou sem esperar o CONFIRMAR"];
+    },
+  },
+  {
+    nome: "Cliente pediu para voltar na próxima safra",
+    turnos: ["A Ativos pediu pra gente voltar a conversar só depois da entressafra, lá pra março. Coloca ela em espera."],
+    checar: (r) => {
+      const sb = r.acoes.find((acao) => acao.kind === "set_standby");
+      const quando = String(sb?.payload?.reavaliacao ?? "");
+      return [!sb && !/\?/.test(ultima(r)) && "nem propôs a espera nem perguntou o que falta", sb && !/-03-/.test(quando) && `reavaliação fora de março: ${quando}`, escritas(r) > 0 && "gravou sem esperar o CONFIRMAR"];
+    },
+  },
+  {
     nome: "Avançar etapa",
     turnos: ["A Ativos já pode ir pra qualificação, o Marcelo confirmou que eles têm 12 colhedoras e prensa própria"],
     checar: (r) => [!named(r, "planAssistantAction").length && "não chamou mover_etapa"],
@@ -353,6 +385,7 @@ async function rodar(caso: Caso): Promise<Rodada> {
   const respostas: string[] = [];
   const ferramentas: string[][] = [];
   const marcas: string[] = [];
+  const acoes: Rodada["acoes"] = [];
   const history: ChatTurn[] = [];
   await rodada.run(calls, async () => {
     for (const turno of caso.turnos) {
@@ -369,10 +402,11 @@ async function rodar(caso: Caso): Promise<Rodada> {
       respostas.push(texto);
       ferramentas.push(result?.passos.filter((step) => step.kind === "tool").map((step) => `${step.tool}${step.ok ? "" : "✗"}`) ?? []);
       marcas.push(...(result?.marcas ?? []));
+      if (result?.acao) acoes.push({ kind: result.acao.kind, payload: result.acao.payload as Record<string, unknown> | undefined });
       history.push({ role: "user", content: turno }, { role: "assistant", content: result?.contexto.length ? `${texto}\n[interno: ${result.contexto.join(" | ")}]` : texto });
     }
   });
-  return { calls, respostas, ferramentas, marcas };
+  return { calls, respostas, ferramentas, marcas, acoes };
 }
 
 describe.skipIf(!ON)("bateria do cotidiano (modelo real)", () => {

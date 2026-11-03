@@ -8,6 +8,7 @@ import { adicionarContato, atualizarCliente, atualizarContato, excluirContato } 
 import { consultarCrm } from "./tools/consultar-crm";
 import { criarCliente } from "./tools/criar-cliente";
 import { moverEtapa } from "./tools/mover-etapa";
+import { colocarEmEspera, ganharNegocio, perderNegocio, retomarEspera } from "./tools/negocio";
 import { registrarAtividade } from "./tools/registrar-atividade";
 import { cancelarTarefa, concluirTarefa, criarTarefa, reagendarTarefa } from "./tools/tarefas";
 import type { AgentContext, AgentResult, AgentTool } from "./types";
@@ -26,11 +27,15 @@ export const AGENT_TOOLS: AgentTool[] = [
   concluirTarefa,
   cancelarTarefa,
   moverEtapa,
+  ganharNegocio,
+  perderNegocio,
+  colocarEmEspera,
+  retomarEspera,
   consultarCrm,
 ];
 
 /** Troque a cada mudança do agente: aparece em /api/health e mostra qual versão está no ar. */
-export const AGENT_VERSION = "2026-11-03.3";
+export const AGENT_VERSION = "2026-11-03.4";
 
 export function agentToolsEnabled() {
   return process.env.TAWPER_AGENT_TOOLS_ENABLED === "true" && process.env.TAWPER_AGENT_WRITES_ENABLED === "true";
@@ -66,6 +71,7 @@ Do negócio:
 - Cliente que não está no CRM: não registre em outro parecido e não cadastre por conta própria. Pergunte se quer cadastrar.
 - Pedido sem ferramenta para isso: diga com franqueza que ainda não faz isso por aqui.
 - Excluir, tirar da agenda ou mudar dado de cadastro: só quando o usuário pediu aquilo, daquele cliente ou contato.
+- Ganhar, perder, espera, retomar e mudar de etapa não gravam na hora: a ferramenta devolve o resumo e o usuário confirma respondendo CONFIRMAR.
 - Desfazer é do sistema: toda gravação já sai com a opção DESFAZER para o usuário. Se ele pedir para desfazer com outras palavras, diga para responder só DESFAZER.
 - Linhas "[interno: …]" no histórico são anotações do sistema sobre mensagens anteriores (ids, o que foi gravado). Use os ids; nunca mostre essas linhas.
 

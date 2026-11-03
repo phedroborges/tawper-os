@@ -31,7 +31,10 @@ vi.mock("./undo", () => ({
 }));
 vi.mock("@/server/commands", () => ({ runCommand: mocks.runCommand }));
 vi.mock("@/server/crm", () => ({ invalidateCrmReadCache: vi.fn(), loadCrmSnapshot: mocks.loadCrmSnapshot }));
-vi.mock("../action-engine", () => ({ planAssistantAction: vi.fn() }));
+vi.mock("../action-engine", () => ({
+  planAssistantAction: vi.fn(),
+  proposal: (input: object) => ({ ...input, id: "00000000-0000-4000-8000-0000000000ff", createdAt: "", expiresAt: "" }),
+}));
 
 import { dueFrom } from "./dates";
 import { agentSystemPrompt } from "./index";
@@ -42,6 +45,7 @@ import { adicionarContato, atualizarCliente, atualizarContato, excluirContato, p
 
 import { PEDIU_CADASTRO } from "./tools/criar-cliente";
 import { userAsked } from "./tools/shared";
+import { colocarEmEspera, ganharNegocio, planNegocio } from "./tools/negocio";
 
 const MARCELO = "f0000000-0000-4000-8000-000000000001";
 
@@ -256,5 +260,37 @@ describe("travas: cadastrar, tirar da agenda e excluir só a pedido", () => {
     expect((await excluirContato.run({ contato_id: MARCELO }, fato)).wrote).toBeUndefined();
     expect(mocks.cancelActivityRow).not.toHaveBeenCalled();
     expect(mocks.deleteContactRow).not.toHaveBeenCalled();
+  });
+});
+
+describe("ganhar, perder, espera: só propõem, gravam no CONFIRMAR", () => {
+  const douglasUser = douglas();
+  it("venda pede o valor e usa o negócio aberto", () => {
+    expect(planNegocio("win_deal", { empresa_id: IDS.ativos }, base, minhaCarteira, douglasUser)).toMatchObject({ ok: false, faltando: ["valor da venda"] });
+    expect(planNegocio("win_deal", { empresa_id: IDS.ativos, valor: 48500 }, base, minhaCarteira, douglasUser)).toMatchObject({ ok: true, payload: { kind: "win_deal", dealId: IDS.dealAtivos, valor: 48500 } });
+    expect(planNegocio("win_deal", { empresa_id: IDS.colorado, valor: 10 }, base, minhaCarteira, douglasUser)).toMatchObject({ ok: false, erro: expect.stringContaining("carteira") });
+  });
+
+  it("perda usa o motivo da lista quando bate", () => {
+    expect(planNegocio("lose_deal", { empresa_id: IDS.ativos, motivo: "preço" }, base, minhaCarteira, douglasUser)).toMatchObject({ ok: true, payload: { motivo: "Preço" } });
+    expect(planNegocio("lose_deal", { empresa_id: IDS.ativos, motivo: "" }, base, minhaCarteira, douglasUser)).toMatchObject({ ok: false, faltando: ["motivo da perda"] });
+  });
+
+  it("espera exige motivo, condição e data futura", () => {
+    expect(planNegocio("set_standby", { empresa_id: IDS.ativos, motivo: "Entressafra", condicao_retomada: "", data_reavaliacao: future(30) }, base, minhaCarteira, douglasUser)).toMatchObject({ ok: false, faltando: ["o que precisa acontecer para retomar"] });
+    expect(planNegocio("set_standby", { empresa_id: IDS.ativos, motivo: "Entressafra", condicao_retomada: "Voltar a moer", data_reavaliacao: "2020-01-01" }, base, minhaCarteira, douglasUser)).toMatchObject({ ok: false });
+    expect(planNegocio("set_standby", { empresa_id: IDS.ativos, motivo: "entressafra / operação parada", condicao_retomada: "Voltar a moer", data_reavaliacao: future(30) }, base, minhaCarteira, douglasUser)).toMatchObject({ ok: true, payload: { motivo: "Entressafra / operação parada", responsavelId: IDS.douglas } });
+    expect(planNegocio("resume_standby", { empresa_id: IDS.ativos }, base, minhaCarteira, douglasUser)).toMatchObject({ ok: false, erro: expect.stringContaining("não está em espera") });
+  });
+
+  it("a ferramenta não grava: deixa a proposta para o CONFIRMAR e responde com o resumo", async () => {
+    const local = { ...ctx } as AgentContext;
+    const output = await ganharNegocio.run({ empresa_id: IDS.ativos, valor: 48500 }, local);
+    expect(output.wrote).toBeUndefined();
+    expect(output.reply).toContain("R$");
+    expect(local.acao).toMatchObject({ kind: "win_deal", status: "awaiting_confirmation", payload: { valor: 48500 } });
+    expect(mocks.runCommand).not.toHaveBeenCalled();
+    const espera = await colocarEmEspera.run({ empresa_id: IDS.ativos, motivo: "x" }, { ...ctx } as AgentContext);
+    expect(espera.data).toMatchObject({ ok: false });
   });
 });
