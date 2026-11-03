@@ -67,11 +67,15 @@ export function ChatThread({ conv, className, showHeader = true }: { conv: Conve
     if (!nota) simulateClientReply(conv.id, v);
   };
 
-  const sendCatalog = () => {
-    s.sendMessage(conv.id, "Segue o nosso catálogo com a linha de mangueiras 4SH, terminais e os kits prontos para colhedoras.", {
-      attachment: { nome: "Catalogo_Tawper_2026.pdf", tipo: "pdf", detalhe: "Mangueiras, conexões e kits para colhedoras" },
+  const sendProposal = () => {
+    if (company) {
+      window.open(`/propostas?empresa=${company.id}`, "_blank");
+      return;
+    }
+    s.sendMessage(conv.id, "Segue a proposta comercial Tawper com a linha de mangueiras, terminais e kits para colhedoras.", {
+      attachment: { nome: "Proposta_Tawper.pdf", tipo: "pdf", detalhe: "Apresentação comercial Tawper" },
     });
-    simulateClientReply(conv.id, "catálogo");
+    simulateClientReply(conv.id, "proposta");
   };
 
   return (
@@ -160,8 +164,8 @@ export function ChatThread({ conv, className, showHeader = true }: { conv: Conve
 
       <div className="border-t border-line bg-[#f6f6f4] px-3 py-2.5">
         <div className="no-scrollbar mb-2 flex gap-1.5 overflow-x-auto">
-          <button type="button" onClick={sendCatalog} className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-[11.5px] font-medium text-ink hover:border-navy/40">
-            <BookOpen size={12} /> Enviar catálogo
+          <button type="button" onClick={sendProposal} className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-[11.5px] font-medium text-ink hover:border-navy/40">
+            <BookOpen size={12} /> Proposta comercial
           </button>
           {draftQuote && draftQuote.status === "enviado" && (
             <span className="inline-flex shrink-0 items-center gap-1 rounded-full bg-soft px-2.5 py-1 text-[11.5px] text-navy-3">

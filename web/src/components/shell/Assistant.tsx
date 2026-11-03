@@ -111,7 +111,7 @@ export function AssistantPanel() {
                 <Sparkles size={15} className="text-ai" /> Olá, {user.short}.
               </div>
               <p className="mt-1 text-[12.5px] leading-relaxed text-muted">
-                Leio a base inteira do Tawper OS: cadastro, funil, tarefas, orçamentos, histórico, catálogo e WhatsApp. Se o dado não estiver registrado, eu digo. {user.role === "vendedor" ? "Você vê apenas a sua carteira." : "Você vê a operação inteira."}
+                Leio a base inteira do Tawper OS: cadastro, funil, tarefas, orçamentos, histórico, linha de produtos (só nomes) e WhatsApp. Se o dado não estiver registrado, eu digo. {user.role === "vendedor" ? "Você vê apenas a sua carteira." : "Você vê a operação inteira."}
               </p>
             </div>
           )}

@@ -211,8 +211,8 @@ const AQUISICAO: StageDef[] = [
     objetivo: "Enviar proposta e controlar validade, valor e decisão.",
     limiteDias: 10,
     probabilidade: 70,
-    criterios: [{ id: "orcamento_enviado", label: "Orçamento enviado ao cliente", kind: "quote" }],
-    tarefas: [{ titulo: "Montar e enviar orçamento", tipo: "Cotação", prazoDias: 1 }],
+    criterios: [{ id: "proposta_enviada", label: "Proposta comercial enviada ao cliente", kind: "check" }],
+    tarefas: [{ titulo: "Gerar e enviar a proposta comercial Tawper", tipo: "Cotação", prazoDias: 1 }],
   },
   {
     id: "negociacao",
@@ -295,8 +295,8 @@ const RECORRENCIA: StageDef[] = [
     objetivo: "Transformar a necessidade em proposta.",
     limiteDias: 10,
     probabilidade: 70,
-    criterios: [{ id: "orcamento_enviado", label: "Orçamento enviado ao cliente", kind: "quote" }],
-    tarefas: [{ titulo: "Montar e enviar orçamento de reposição", tipo: "Cotação", prazoDias: 1 }],
+    criterios: [{ id: "proposta_enviada", label: "Proposta comercial enviada ao cliente", kind: "check" }],
+    tarefas: [{ titulo: "Gerar e enviar a proposta comercial Tawper", tipo: "Cotação", prazoDias: 1 }],
   },
   {
     id: "negociacao_r",
@@ -447,6 +447,7 @@ export interface CatalogItem {
   linha: string;
 }
 
+/** Catálogo legado (preço/SKU) — só para seed/demo. A IA e o produto usam PRODUCT_NAMES. */
 export const CATALOG: CatalogItem[] = [
   { sku: "MH-R2-12", descricao: 'Mangueira hidráulica 2 tramas SAE 100 R2AT 1/2"', unidade: "m", preco: 38.9, linha: "Mangueiras" },
   { sku: "MH-R2-34", descricao: 'Mangueira hidráulica 2 tramas SAE 100 R2AT 3/4"', unidade: "m", preco: 54.5, linha: "Mangueiras" },
@@ -465,6 +466,16 @@ export const CATALOG: CatalogItem[] = [
   { sku: "KIT-A9000-CB", descricao: "Kit mangueiras corte de base — Case A9000", unidade: "kit", preco: 5980.0, linha: "Kits para colhedoras" },
   { sku: "PR-CMD", descricao: "Prensa hidráulica em comodato (contrato 12 meses)", unidade: "un", preco: 0, linha: "Serviços" },
   { sku: "SV-ACAD", descricao: "Treinamento Tawper Academy — prensagem (até 8 mecânicos)", unidade: "turma", preco: 1800.0, linha: "Serviços" },
+];
+
+/** Nomes de produto para contexto da IA e da proposta — sem preço, sem SKU operacional. */
+export const PRODUCT_NAMES: string[] = [
+  "Mangueiras hidráulicas (2 tramas, 4 espirais, R13)",
+  "Terminais e conexões (JIC, ORFS, flange SAE)",
+  "Adaptadores e capas de proteção",
+  "Kits para colhedoras (corte de base, elevador, picador)",
+  "Prensa hidráulica em comodato",
+  "Treinamento Tawper Academy",
 ];
 
 export const FIELD_LABELS: Partial<Record<keyof Company, string>> = {

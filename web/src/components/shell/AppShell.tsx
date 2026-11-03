@@ -6,12 +6,12 @@ import {
   Building2,
   ChevronDown,
   Columns3,
+  FileText,
   History,
   LayoutDashboard,
   ListChecks,
   Menu,
   MessageCircle,
-  Package,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -57,7 +57,7 @@ interface NavItem {
 }
 
 /** Telas de dados que aproveitam toda a largura do monitor. */
-const FLUID_ROUTES = ["/funis", "/carteira", "/auditoria", "/dashboard", "/catalogo"];
+const FLUID_ROUTES = ["/funis", "/carteira", "/auditoria", "/dashboard", "/propostas"];
 
 function useNav(): NavItem[] {
   const user = useCurrentUser();
@@ -88,7 +88,7 @@ function useNav(): NavItem[] {
     { href: "/carteira", label: "Carteira", icon: <Building2 size={18} /> },
     { href: "/funis", label: "Funis", icon: <Columns3 size={18} /> },
     { href: "/conversas", label: "Conversas", icon: <MessageCircle size={18} />, badge: liveUnread ?? unread },
-    { href: "/catalogo", label: "Catálogo", icon: <Package size={18} /> },
+    { href: "/propostas", label: "Propostas", icon: <FileText size={18} /> },
     { href: "/rotas", label: "Rotas", icon: <Route size={18} /> },
     { href: "/implementacao", label: "Implementação", icon: <ListChecks size={18} /> },
     { href: "/gestao", label: "Gestão", icon: <ShieldCheck size={18} />, badge: exceptions, manager: true },

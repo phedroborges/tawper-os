@@ -1,7 +1,7 @@
 // Contexto enviado ao modelo de linguagem: só o necessário, já resumido e em texto legível.
 // Funções puras sobre o estado do app, para rodar no navegador antes de chamar a ação do servidor.
 
-import { CATALOG, CONDICOES_PAGAMENTO, FUNNELS, MOTIVOS_PERDA, REGIOES, isManager } from "./constants";
+import { CONDICOES_PAGAMENTO, FUNNELS, MOTIVOS_PERDA, PRODUCT_NAMES, REGIOES, isManager } from "./constants";
 import { dayDiff, daysSince } from "./dates";
 import {
   alertsOf,
@@ -176,7 +176,7 @@ export function systemContext(d: SystemData, user: User, now = new Date()) {
         regioes: REGIOES,
         condicoesDePagamento: CONDICOES_PAGAMENTO,
         motivosDePerda: MOTIVOS_PERDA,
-        catalogo: CATALOG.map((item) => ({ sku: item.sku, descricao: item.descricao, unidade: item.unidade, preco: money(item.preco), linha: item.linha })),
+        produtos: PRODUCT_NAMES,
         funis: Object.values(FUNNELS).map((f) => ({
           nome: f.nome,
           etapas: f.stages.map((st) => clean({ id: st.id, nome: st.nome, objetivo: st.objetivo, limiteDias: st.limiteDias || undefined, terminal: st.terminal || undefined })),
@@ -355,7 +355,7 @@ export function systemContext(d: SystemData, user: User, now = new Date()) {
   const budget = 100_000;
   const pack = (ctx: ReturnType<typeof build>, cobertura: string) => ({ ...ctx, cobertura });
   let ctx = build(1200, {});
-  if (JSON.stringify(ctx).length <= budget) return pack(ctx, "Base completa: cadastro, pessoas, negócios, tarefas, histórico, orçamentos, estratégias, rotas, alertas e catálogo. Nada foi omitido.");
+  if (JSON.stringify(ctx).length <= budget) return pack(ctx, "Base completa: cadastro, pessoas, negócios, tarefas, histórico, orçamentos, estratégias, rotas, alertas e nomes de produtos. Nada foi omitido.");
   ctx = build(400, {});
   if (JSON.stringify(ctx).length <= budget) return pack(ctx, "Todos os registros estão incluídos. Textos muito longos de histórico e mensagens foram encurtados.");
   ctx = build(180, { interacoes: 800, mensagens: 40, auditoria: 200 });

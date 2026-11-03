@@ -533,7 +533,7 @@ export function QuoteModal({ dealId, quoteId }: { dealId: string; quoteId?: stri
               <ul className="scrollbar-thin max-h-72 space-y-1 overflow-y-auto pr-1">
                 {catalogLoading && !products.length && <li className="py-4 text-center text-[12px] text-muted">Carregando catálogo…</li>}
                 {catalogError && <li className="py-2 text-[12px] text-brand">{catalogError}</li>}
-                {!catalogLoading && !catalogError && catalog.length === 0 && <li className="py-4 text-center text-[12px] text-muted">{products.length ? "Nada encontrado." : "Catálogo vazio. Cadastre produtos em Catálogo."}</li>}
+                {!catalogLoading && !catalogError && catalog.length === 0 && <li className="py-4 text-center text-[12px] text-muted">{products.length ? "Nada encontrado." : "Catálogo desativado. Use item avulso ou a proposta comercial em Propostas."}</li>}
                 {catalog.map((p) => (
                   <li key={p.id}>
                     <button type="button" onClick={() => addProduct(p)} className="flex w-full items-start gap-2 rounded-[5px] border border-line bg-white px-2.5 py-2 text-left hover:border-navy/40">

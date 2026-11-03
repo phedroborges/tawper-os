@@ -454,6 +454,7 @@ export const useStore = create<AppState>()(
               ...s.audit,
             ],
           });
+          queueAdvance(get, dealId);
           return id;
         },
 

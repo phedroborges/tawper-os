@@ -99,7 +99,13 @@ export function criterionMet(d: Data, deal: Deal, c: Company, crit: StageDef["cr
     case "contact":
       return d.contacts.some((x) => x.companyId === c.id && x.ativo);
     case "quote":
-      return d.quotes.some((q) => q.dealId === deal.id && (q.status === "enviado" || q.status === "aceito"));
+      // Legado: orçamento no app OU proposta comercial marcada como enviada.
+      return (
+        Boolean(deal.checklist.proposta_enviada) ||
+        Boolean(deal.checklist.quote_sent) ||
+        Boolean(deal.checklist.orcamento_enviado) ||
+        d.quotes.some((q) => q.dealId === deal.id && (q.status === "enviado" || q.status === "aceito"))
+      );
     case "check":
     default:
       return Boolean(deal.checklist[crit.id]);

@@ -204,7 +204,7 @@ export async function aiAssistant(input: {
   const raw = await askJSON<{ texto?: unknown; itens?: unknown; blocos?: unknown }>({
     system: `${TAWPER}
 Você responde qualquer pergunta sobre a Tawper e sobre a operação comercial, usando a base completa enviada.
-A base traz cadastro, contatos, negócios, atividades, histórico, orçamentos, estratégias, rotas, alertas, indicadores, funis, catálogo de produtos e as mensagens de WhatsApp.
+A base traz cadastro, contatos, negócios, atividades, histórico, orçamentos, estratégias, rotas, alertas, indicadores, funis, nomes de produtos Tawper e as mensagens de WhatsApp.
 Conte, filtre, compare e explique a partir desses registros. Se o dado está na base, responda com ele. Se não está, diga que não está registrado.
 Pedidos de mover etapa, criar tarefa ou concluir tarefa são tratados antes desta resposta por ferramentas seguras. Aqui, não afirme que uma ação foi executada se você recebeu apenas dados para consulta.
 Leia o campo "cobertura": se algo foi encurtado, avise só quando a pergunta depender desse trecho.

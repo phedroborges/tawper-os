@@ -112,17 +112,26 @@ export function DealTab({ company }: { company: Company }) {
 
       <Card className="self-start shadow-none">
         <CardHeader
-          title="Orçamentos"
-          kicker={quotes.length ? `${quotes.length} no total` : "nenhum ainda"}
+          title="Proposta e orçamentos"
+          kicker={quotes.length ? `${quotes.length} orçamento(s)` : "proposta comercial"}
           action={
-            deal && (
-              <Button size="xs" variant="primary" onClick={() => open({ kind: "quote", dealId: deal.id })}>
-                <Plus size={13} /> Novo orçamento
+            <div className="flex flex-wrap gap-1.5">
+              <Button size="xs" variant="primary" onClick={() => { window.location.href = `/propostas?empresa=${company.id}`; }}>
+                <FileText size={13} /> Gerar proposta
               </Button>
-            )
+              {deal && (
+                <Button size="xs" variant="outline" onClick={() => open({ kind: "quote", dealId: deal.id })}>
+                  <Plus size={13} /> Orçamento (preço)
+                </Button>
+              )}
+            </div>
           }
         />
-        {quotes.length === 0 && <div className="px-4 py-8 text-center text-[12.5px] text-muted">Monte o primeiro orçamento com a sugestão da IA baseada na frota.</div>}
+        {quotes.length === 0 && (
+          <div className="px-4 py-8 text-center text-[12.5px] text-muted">
+            Use <b>Gerar proposta</b> para o deck comercial Tawper. Orçamento com preço é opcional e separado.
+          </div>
+        )}
         <ul>
           {quotes.map((q) => {
             const t = quoteTotals(q.itens, q.desconto).total;

@@ -37,7 +37,7 @@ const ATOS: { titulo: string; sub: string; steps: Step[] }[] = [
       { id: "etapas", titulo: "Avançar com validação", texto: "Na página da empresa, use “Avançar etapa”. O sistema mostra o que falta e cria as tarefas de cada etapa.", asUser: "u-douglas" },
       { id: "quick", titulo: "Registro em texto livre", texto: "Clique em “Registrar” e use o exemplo 2 (visita + apresentação + teste). A IA propõe etapa, critérios e próximo passo.", asUser: "u-douglas" },
       { id: "homolog", titulo: "Cadastro e homologação", texto: "Marque os critérios (documentação, medidas, teste, aprovação) e chegue em Produto aprovado.", asUser: "u-douglas" },
-      { id: "orcamento", titulo: "Orçamento em 1 minuto", texto: "“Sugerir itens pela frota” monta o orçamento. Envie: o PDF vai para o WhatsApp e o follow-up é agendado.", asUser: "u-douglas" },
+      { id: "orcamento", titulo: "Proposta comercial", texto: "Em Propostas, escolha a empresa, gere o deck Tawper e marque como enviada. Isso cumpre o critério da etapa Orçamento.", href: "/propostas", asUser: "u-douglas" },
       { id: "copiloto", titulo: "Copiloto estratégico", texto: "Na aba Estratégia, gere a sugestão da IA: diagnóstico, hipóteses, perguntas e rascunho. Aprove e crie as ações.", asUser: "u-douglas" },
       { id: "venda", titulo: "Venda ganha → recorrência", texto: "Registre a venda. O sistema cria o pós-venda, move a conta para Recorrência e prevê a recompra — sozinho.", asUser: "u-douglas" },
     ],

@@ -116,8 +116,8 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
       );
     if (c.kind === "quote")
       return (
-        <Button size="xs" variant="dark" onClick={() => { close(); setTimeout(() => open({ kind: "quote", dealId: deal.id }), 100); }}>
-          <FileText size={13} /> Montar orçamento agora
+        <Button size="xs" variant="dark" onClick={() => { close(); window.location.href = `/propostas?empresa=${deal.companyId}`; }}>
+          <FileText size={13} /> Gerar proposta comercial
         </Button>
       );
     switch (c.field) {

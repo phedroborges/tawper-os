@@ -201,7 +201,7 @@ function ClientCard({ company, contact, onNavigate }: { company: Company; contac
         <div className="mt-3 grid grid-cols-4 gap-1.5">
           <QuickButton tone="primary" icon={<Sparkles size={15} />} label="Registrar" onClick={() => open({ kind: "quick", companyId: company.id })} />
           <QuickButton icon={<Plus size={15} />} label="Tarefa" onClick={() => open({ kind: "newActivity", companyId: company.id })} />
-          <QuickButton icon={<FileText size={15} />} label="Orçamento" onClick={() => (deal ? open({ kind: "quote", dealId: deal.id }) : toast("Sem negócio aberto", { tone: "warn", sub: "Abra ou retome um negócio para orçar." }))} />
+          <QuickButton icon={<FileText size={15} />} label="Proposta" href={`/propostas?empresa=${company.id}`} onNavigate={onNavigate} />
           <QuickButton icon={<UserPlus size={15} />} label="Contato" onClick={() => open({ kind: "contact", companyId: company.id })} />
         </div>
       </Section>
