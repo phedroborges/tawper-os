@@ -1,6 +1,7 @@
 import { FUNNELS } from "@/lib/constants";
 import type { Activity, Company, Contact, Deal } from "@/lib/types";
 import { nameSimilarity, normalize } from "@/lib/utils";
+import { fmtWhen } from "./dates";
 
 export type CompanyMatch = { company: Company; score: number; motivos: string[] };
 
@@ -61,9 +62,9 @@ export function companyBrief(
   ownerName: (id: string) => string,
 ) {
   const deal = base.deals.find((item) => item.companyId === company.id && item.status === "aberta");
-  const next = base.activities
+  const pending = base.activities
     .filter((activity) => activity.companyId === company.id && activity.status === "pendente")
-    .sort((a, b) => a.dueAt.localeCompare(b.dueAt))[0];
+    .sort((a, b) => a.dueAt.localeCompare(b.dueAt));
   return {
     id: company.id,
     codigo: company.codigo,
@@ -76,6 +77,6 @@ export function companyBrief(
       .slice(0, 4)
       .map((contact) => ({ nome: contact.nome, cargo: contact.cargo, papel: contact.papel, whatsapp: contact.whatsapp })),
     negocio_aberto: deal ? { id: deal.id, funil: FUNNELS[deal.funnel]?.nome ?? deal.funnel, etapa: stageName(deal) } : null,
-    proximo_passo: next ? { titulo: next.titulo, prazo: next.dueAt } : null,
+    tarefas_pendentes: pending.slice(0, 6).map((task) => ({ id: task.id, tipo: task.tipo, titulo: task.titulo, prazo: fmtWhen(task.dueAt) })),
   };
 }

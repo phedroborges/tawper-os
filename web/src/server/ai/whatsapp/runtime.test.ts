@@ -15,6 +15,10 @@ const mocks = vi.hoisted(() => ({
   aiAssistant: vi.fn(),
   executeAction: vi.fn(),
   send: vi.fn(),
+  recordRun: vi.fn(),
+  flagRun: vi.fn(),
+  toolsOn: vi.fn(() => false),
+  runTool: vi.fn(),
 }));
 
 vi.mock("@/lib/ai", () => ({ assistantAnswer: vi.fn(() => ({ texto: "fallback" })) }));
@@ -23,6 +27,7 @@ vi.mock("@/server/crm", () => ({ loadCrmSnapshot: mocks.loadSnapshot, invalidate
 vi.mock("@/server/persist", () => ({ ensureOperators: mocks.ensureOperators }));
 vi.mock("../actions", () => ({ aiAssistant: mocks.aiAssistant }));
 vi.mock("../action-engine", () => ({ executeAssistantAction: mocks.executeAction }));
+vi.mock("../agent", () => ({ AGENT_VERSION: "teste", agentToolsEnabled: mocks.toolsOn, runToolAgent: mocks.runTool }));
 vi.mock("./access", () => ({ resolveWhatsAppAgentUser: mocks.resolveUser }));
 vi.mock("./config", () => ({ findWhatsAppAgentIdentity: vi.fn(() => ({ phone: "5517999999999", name: "Murilo", role: "gestor" })) }));
 vi.mock("./render", () => ({ renderWhatsAppAnswer: vi.fn((answer) => answer.texto) }));
@@ -36,6 +41,8 @@ vi.mock("./store", () => ({
   finishWhatsAppAgentJob: mocks.finishJob,
   loadWhatsAppAgentHistory: mocks.history,
   recordWhatsAppAgentReply: mocks.recordReply,
+  recordWhatsAppAgentRun: mocks.recordRun,
+  flagLastWhatsAppAgentRun: mocks.flagRun,
 }));
 
 import { processWhatsAppAgentQueue } from "./runtime";
@@ -132,6 +139,43 @@ describe("execução de ações pelo WhatsApp", () => {
     await processWhatsAppAgentQueue(2);
     expect(mocks.ensureOperators).toHaveBeenCalledTimes(1);
     expect(mocks.aiAssistant).toHaveBeenCalledWith(expect.objectContaining({ actorId: actor.id }));
+  });
+
+  it("guarda o atendimento para a revisão, marcando quando caiu no fluxo antigo", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("[áudio] Quais tarefas tenho hoje?")).mockResolvedValue(null);
+    mocks.toolsOn.mockReturnValue(true);
+    mocks.runTool.mockResolvedValue(null);
+    mocks.aiAssistant.mockResolvedValue({ texto: "Você tem 3 tarefas." });
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.recordRun).toHaveBeenCalledWith(
+      expect.objectContaining({ question: "Quais tarefas tenho hoje?", audio: true, caminho: "fluxo_antigo", resposta: "Você tem 3 tarefas.", marcas: ["caiu_no_fluxo_antigo"], versao: "teste" }),
+    );
+    mocks.toolsOn.mockReturnValue(false);
+  });
+
+  it("com ferramentas: guarda os passos e a anotação interna, que volta na próxima mensagem", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("liguei pro Pedro da Ativos")).mockResolvedValue(null);
+    mocks.toolsOn.mockReturnValue(true);
+    mocks.history.mockResolvedValue([{ role: "assistant", content: "Qual cliente?", contexto: "Ativos empresa_id=c1" }]);
+    const passos = [{ kind: "tool", tool: "registrar_atividade", ok: true, request: {}, response: {}, ms: 5 }];
+    mocks.runTool.mockResolvedValue({ texto: "✅ Registrado.", gravou: ["registrar_atividade"], passos, contexto: ["Ativos empresa_id=c1: registrada Ligação"], marcas: [], empresaId: "c1", modelo: "gpt", tokens: { entrada: 1, saida: 1 } });
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.runTool).toHaveBeenCalledWith(expect.objectContaining({ history: [{ role: "assistant", content: "Qual cliente?\n[interno: Ativos empresa_id=c1]" }] }));
+    expect(mocks.recordReply).toHaveBeenCalledWith(expect.objectContaining({ body: "✅ Registrado.", contexto: "Ativos empresa_id=c1: registrada Ligação" }));
+    expect(mocks.recordRun).toHaveBeenCalledWith(expect.objectContaining({ caminho: "ferramentas", gravou: ["registrar_atividade"], passos, companyId: "c1" }));
+    mocks.toolsOn.mockReturnValue(false);
+  });
+
+  it("\"errou\" marca o atendimento anterior para revisão, sem chamar a IA", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("Errou!")).mockResolvedValue(null);
+    mocks.flagRun.mockResolvedValue(true);
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.flagRun).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000090", "usuario_marcou_erro");
+    expect(mocks.send).toHaveBeenCalledWith("5517999999999", expect.stringContaining("revisão"));
+    expect(mocks.aiAssistant).not.toHaveBeenCalled();
   });
 
   it("não tenta criar perfis quando o número já está vinculado", async () => {

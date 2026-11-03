@@ -4,6 +4,7 @@ import type { ActivityType, Company, Contact, Papel, User } from "@/lib/types";
 import { normalize } from "@/lib/utils";
 import { invalidateCrmReadCache } from "@/server/crm";
 import { registerCompany } from "@/server/persist";
+import { fmtWhen } from "../dates";
 import { findCompanies } from "../search";
 import type { AgentTool } from "../types";
 import { isUuid, loadScope, str } from "./shared";
@@ -36,7 +37,8 @@ function minutesAgo(iso: string | undefined, now: Date) {
 /** Valida o pedido e monta o cadastro. Não grava nada: devolve o que falta ou o que bloqueia. */
 export function planNewClient(args: Record<string, unknown>, base: Base, actor: User, now = new Date()): NewClientPlan {
   const nome = str(args.nome, 120);
-  const cidade = str(args.cidade, 80);
+  // "não informada", "?" e afins são o modelo tapando buraco: contam como cidade faltando.
+  const cidade = /^(n[aã]o (informad[ao]|sei|tem)|desconhecid[ao]|sem cidade|n\/?a|\?+|-+)$/i.test(str(args.cidade, 80)) ? "" : str(args.cidade, 80);
   const contatoNome = str(args.contato_nome, 120);
   // Só nome e cidade são indispensáveis. Sem contato ou sem próximo passo dito, o cadastro nasce com um passo padrão.
   const passoTitulo =
@@ -119,7 +121,7 @@ export function planNewClient(args: Record<string, unknown>, base: Base, actor: 
 export const criarCliente: AgentTool = {
   name: "criar_cliente",
   description:
-    "Cadastra um cliente novo no CRM: empresa, contato principal (se houver), negócio no funil de Aquisição (etapa Lead) e o primeiro próximo passo, tudo de uma vez. Só nome da empresa e cidade são indispensáveis. Contato e próximo passo são opcionais: sem eles, o sistema cria um próximo passo padrão. Verifica duplicidade e CNPJ e devolve erro claro.",
+    "Cadastra um cliente novo no CRM: empresa, contato principal (se houver), negócio no funil de Aquisição (etapa Lead) e o primeiro próximo passo, tudo de uma vez. Use só quando o usuário pediu ou confirmou o cadastro; nunca invente a cidade. Chame direto, sem buscar antes: ela mesma confere duplicidade e CNPJ e devolve erro claro. Só nome da empresa e cidade são indispensáveis. Contato e próximo passo são opcionais: sem eles, o sistema cria um próximo passo padrão.",
   writes: true,
   parameters: {
     type: "object",
@@ -153,8 +155,17 @@ export const criarCliente: AgentTool = {
     if (!plan.ok) return { data: plan };
     const saved = await registerCompany(plan.input);
     invalidateCrmReadCache();
+    const contato = saved.contacts[0]?.nome;
+    const when = fmtWhen(saved.activity.dueAt);
     return {
       wrote: true,
+      empresaId: saved.company.id,
+      recibo: [
+        `✅ Cliente cadastrado: ${saved.company.nome}${saved.company.cidade ? ` (${saved.company.cidade})` : ""}, no funil de Aquisição, etapa Lead.`,
+        contato && `✅ Contato: ${contato}.`,
+        `📅 Próximo passo: ${saved.activity.titulo}, ${when}.`,
+      ].filter(Boolean).join("\n"),
+      memo: `${saved.company.nome} empresa_id=${saved.company.id}: cadastrada agora nesta conversa; próximo passo tarefa_id=${saved.activity.id} "${saved.activity.titulo}" ${when}`,
       data: {
         ok: true,
         empresa: { id: saved.company.id, codigo: saved.company.codigo, nome: saved.company.nome },

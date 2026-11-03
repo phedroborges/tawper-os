@@ -3,6 +3,7 @@ import "server-only";
 import postgres from "postgres";
 import { TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import type { AssistantActionProposal } from "@/lib/assistant-actions";
+import type { AgentStep } from "../agent/types";
 
 let sql: ReturnType<typeof postgres> | null = null;
 
@@ -70,14 +71,16 @@ export async function finishWhatsAppAgentJob(eventId: string, succeeded: boolean
   await db()`select app.finish_ai_outbox(${eventId}::uuid, ${succeeded}, ${error?.slice(0, 1800) ?? null})`;
 }
 
+/** Histórico da conversa. `contexto` é a anotação interna da resposta (ids do que foi lido ou gravado). */
 export async function loadWhatsAppAgentHistory(sessionId: string, excludeExternalMessageId?: string) {
   const rows = await db()<{
     direction: "in" | "out";
     body: string;
+    contexto: string | null;
     external_message_id: string | null;
     created_at: Date;
   }[]>`
-    select direction, body, external_message_id, created_at
+    select direction, body, metadata ->> 'contexto' as contexto, external_message_id, created_at
       from public.ai_channel_messages
      where session_id = ${sessionId}::uuid
        and (${excludeExternalMessageId ?? null}::text is null or external_message_id is distinct from ${excludeExternalMessageId ?? null})
@@ -87,7 +90,91 @@ export async function loadWhatsAppAgentHistory(sessionId: string, excludeExterna
   return rows.reverse().map((row) => ({
     role: row.direction === "in" ? ("user" as const) : ("assistant" as const),
     content: row.body,
+    contexto: row.contexto ?? undefined,
   }));
+}
+
+export type AgentRunRecord = {
+  sessionId: string;
+  correlationId: string;
+  profileId: string | null;
+  companyId?: string;
+  question: string;
+  audio: boolean;
+  caminho: "ferramentas" | "fluxo_antigo";
+  versao: string;
+  modelo?: string;
+  resposta: string;
+  gravou: string[];
+  marcas: string[];
+  passos: AgentStep[];
+  tokens?: { entrada: number; saida: number };
+  inicio: Date;
+  fim: Date;
+};
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/**
+ * Guarda o atendimento inteiro (pergunta, cada chamada do modelo e de ferramenta, resposta) em ai_agent_runs/ai_agent_steps,
+ * para a revisão semanal. Nunca derruba a resposta: se falhar, só registra no log.
+ */
+export async function recordWhatsAppAgentRun(run: AgentRunRecord) {
+  try {
+    await db().begin(async (tx) => {
+      const rows = await tx<{ id: string }[]>`
+        insert into public.ai_agent_runs (
+          organization_id, session_id, actor_profile_id, company_id, agent_key, task_key, status, provider, model, prompt_version,
+          correlation_id, input_summary, output_summary, input_tokens, output_tokens, latency_ms, started_at, finished_at
+        ) values (
+          ${TAWPER_ORG_ID}::uuid, ${run.sessionId}::uuid, ${run.profileId && UUID.test(run.profileId) ? run.profileId : null}::uuid,
+          ${run.companyId && UUID.test(run.companyId) ? run.companyId : null}::uuid, 'whatsapp_agent', 'conversa', 'completed',
+          ${run.modelo ? "openai" : null}, ${run.modelo ?? null}, ${run.versao}, ${run.correlationId},
+          ${tx.json({ pergunta: run.question, audio: run.audio, caminho: run.caminho })},
+          ${tx.json({ resposta: run.resposta, gravou: run.gravou, marcas: run.marcas })},
+          ${run.tokens?.entrada ?? null}, ${run.tokens?.saida ?? null}, ${run.fim.getTime() - run.inicio.getTime()},
+          ${run.inicio}, ${run.fim}
+        )
+        on conflict (organization_id, correlation_id) do update set
+          model = excluded.model, prompt_version = excluded.prompt_version, company_id = excluded.company_id,
+          input_summary = excluded.input_summary, output_summary = excluded.output_summary,
+          input_tokens = excluded.input_tokens, output_tokens = excluded.output_tokens, latency_ms = excluded.latency_ms,
+          started_at = excluded.started_at, finished_at = excluded.finished_at
+        returning id::text
+      `;
+      const runId = rows[0]?.id;
+      if (!runId) return;
+      await tx`delete from public.ai_agent_steps where run_id = ${runId}::uuid`;
+      for (const [index, step] of run.passos.slice(0, 50).entries()) {
+        await tx`
+          insert into public.ai_agent_steps (run_id, step_number, kind, tool_name, status, request_summary, response_summary, duration_ms)
+          values (
+            ${runId}::uuid, ${index + 1}, ${step.kind}, ${step.tool ?? null}, ${step.ok ? "completed" : "failed"},
+            ${tx.json((step.request ?? {}) as Parameters<typeof tx.json>[0])}, ${tx.json((step.response ?? null) as Parameters<typeof tx.json>[0])}, ${step.ms}
+          )
+        `;
+      }
+    });
+  } catch (error) {
+    console.warn("[agente] não gravou o registro do atendimento", error instanceof Error ? error.message : error);
+  }
+}
+
+/** O usuário respondeu "errou": marca o último atendimento da conversa para a revisão. */
+export async function flagLastWhatsAppAgentRun(sessionId: string, marca: string) {
+  const rows = await db()<{ id: string }[]>`
+    update public.ai_agent_runs
+       set output_summary = jsonb_set(
+             coalesce(output_summary, '{}'::jsonb), '{marcas}',
+             coalesce(output_summary -> 'marcas', '[]'::jsonb) || to_jsonb(${marca}::text), true)
+     where id = (
+       select id from public.ai_agent_runs
+        where session_id = ${sessionId}::uuid and agent_key = 'whatsapp_agent'
+        order by created_at desc limit 1
+     )
+    returning id::text
+  `;
+  return Boolean(rows[0]);
 }
 
 export async function bindWhatsAppAgentSessionProfile(sessionId: string, profileId: string | null) {
@@ -119,8 +206,11 @@ export async function recordWhatsAppAgentReply(input: {
   body: string;
   externalMessageId: string;
   action?: AssistantActionProposal;
+  /** Anotação interna (ids do que foi lido ou gravado) que volta ao modelo nas próximas mensagens. */
+  contexto?: string;
 }) {
   const action = input.action?.status === "awaiting_confirmation" ? JSON.stringify(input.action) : null;
+  const contexto = input.contexto?.slice(0, 1500) || null;
   await db()`
     insert into public.ai_channel_messages (
       organization_id, session_id, channel, direction, external_message_id, body, metadata
@@ -130,7 +220,9 @@ export async function recordWhatsAppAgentReply(input: {
       ${input.externalMessageId || null}, ${input.body},
       jsonb_build_object('outbox_event_id', ${input.outboxEventId}::text) ||
       case when ${action}::text is null then '{}'::jsonb
-           else jsonb_build_object('action', ${action}::jsonb, 'action_status', 'pending') end
+           else jsonb_build_object('action', ${action}::jsonb, 'action_status', 'pending') end ||
+      case when ${contexto}::text is null then '{}'::jsonb
+           else jsonb_build_object('contexto', ${contexto}::text) end
     )
   `;
 }

@@ -22,6 +22,8 @@ export async function GET() {
         flagFerramentas: process.env.TAWPER_AGENT_TOOLS_ENABLED === "true",
         escritaLiberada: process.env.TAWPER_AGENT_WRITES_ENABLED === "true",
         iaConfigurada: aiConfigured(),
+        // Nome do modelo não é segredo, e a bateria de testes precisa saber qual roda em produção.
+        modelo: process.env.AI_GATEWAY_API_KEY ? "gateway" : process.env.OPENAI_MODEL || "gpt-4o-mini",
         gateway: Boolean(process.env.AI_GATEWAY_API_KEY),
       },
     },

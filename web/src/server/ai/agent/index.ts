@@ -1,61 +1,62 @@
 import "server-only";
 
-import type { AssistantAnswer } from "@/lib/ai";
-import { ACTIVITY_TYPES } from "@/lib/constants";
 import type { User } from "@/lib/types";
 import type { ChatTurn } from "../openai";
 import { runAgent } from "./engine";
-import { acoesBasicas } from "./tools/acoes-basicas";
 import { buscarCliente } from "./tools/buscar-cliente";
 import { consultarCrm } from "./tools/consultar-crm";
 import { criarCliente } from "./tools/criar-cliente";
+import { moverEtapa } from "./tools/mover-etapa";
+import { registrarAtividade } from "./tools/registrar-atividade";
+import { criarTarefa, reagendarTarefa } from "./tools/tarefas";
 import type { AgentContext, AgentResult, AgentTool } from "./types";
 
 /** Ferramentas disponíveis. Cada nova capacidade do agente entra aqui. */
-export const AGENT_TOOLS: AgentTool[] = [buscarCliente, criarCliente, consultarCrm, acoesBasicas];
+export const AGENT_TOOLS: AgentTool[] = [buscarCliente, criarCliente, registrarAtividade, criarTarefa, reagendarTarefa, moverEtapa, consultarCrm];
 
 /** Troque a cada mudança do agente: aparece em /api/health e mostra qual versão está no ar. */
-export const AGENT_VERSION = "2026-11-02.5";
+export const AGENT_VERSION = "2026-11-03.1";
 
 export function agentToolsEnabled() {
   return process.env.TAWPER_AGENT_TOOLS_ENABLED === "true" && process.env.TAWPER_AGENT_WRITES_ENABLED === "true";
 }
 
-const CADASTRO =
-  /\b(cadastr\w*|cri(?:ar|e|a)|nov[oa]|adicion\w*|inclu\w*)\b[^.?!\n]{0,60}\b(cliente|empresa|usina|lead|prospect)\b|\b(cliente|empresa|usina)\s+nov[oa]\b/;
-
-function plain(value: string) {
-  return value.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+/** Os próximos 14 dias com o dia da semana: o modelo erra conta de calendário ("segunda que vem"), mas não erra ao ler uma lista. */
+export function calendar(now = new Date()) {
+  const fmt = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", weekday: "long" });
+  const iso = new Intl.DateTimeFormat("en-CA", { timeZone: "America/Sao_Paulo" });
+  return Array.from({ length: 15 }, (_, index) => {
+    const at = new Date(now.getTime() + index * 86_400_000);
+    return `${fmt.format(at)} ${iso.format(at)}${index === 0 ? " (hoje)" : index === 1 ? " (amanhã)" : ""}`;
+  }).join("; ");
 }
 
-/** Está no meio de um cadastro de cliente? Olha a mensagem atual e as últimas falas do usuário. */
-export function isCadastroConversation(question: string, history: ChatTurn[]) {
-  const recent = history.filter((turn) => turn.role === "user").slice(-4).map((turn) => turn.content);
-  return [question, ...recent].some((text) => CADASTRO.test(plain(text)));
-}
-
-const AVISO_CADASTRO =
-  "Atenção: há um cadastro de cliente em andamento nesta conversa. Continue coletando só o que falta e chame criar_cliente assim que tiver nome e cidade (contato e próximo passo são opcionais). Não trate isso como tarefa.";
-
-export function agentSystemPrompt(actor: User, now = new Date(), cadastro = false) {
+/** Princípios, não regras por caso: cada exceção vira teste na bateria, e só vira regra aqui se valer para todo pedido. */
+export function agentSystemPrompt(actor: User, now = new Date()) {
   const hoje = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "full", timeStyle: "short" }).format(now);
-  const base = `Você é o agente interno da Tawper (fabricante de mangueiras hidráulicas para usinas de cana) no WhatsApp. Fala com ${actor.short} (${actor.role}). Agora: ${hoje}.
+  return `Você é o assistente da Tawper (fabricante de mangueiras hidráulicas para usinas de cana) no WhatsApp da equipe comercial. Fala com ${actor.short} (${actor.role}). Agora: ${hoje}.
+Calendário (use para converter "amanhã", "sexta", "segunda que vem"): ${calendar(now)}.
 
-Estilo: conversa de WhatsApp, em português do Brasil. Curto e direto, sem enrolar, sem markdown. Uma pergunta por vez, só o que realmente falta.
+Seu trabalho é manter o CRM fiel ao que acontece no dia a dia, para o vendedor não precisar abrir o sistema. Ele fala do jeito dele: às vezes longo, por áudio, com vai e volta, nome de empresa meio errado.
 
-Como agir:
-- Pedido de consulta ou análise: chame consultar_crm.
-- Falar de um cliente específico: chame buscar_cliente primeiro.
-- Cliente novo: só nome da empresa e cidade são indispensáveis. Contato (nome e WhatsApp) pergunte uma vez, e se o usuário não tiver, siga sem. Próximo passo: se ele não disser, o sistema cria um padrão, não precisa perguntar. Assim que tiver nome e cidade (e o contato, se ele tiver informado ou recusado), chame criar_cliente. Se buscar_cliente ou criar_cliente apontar um parecido, pergunte se é o mesmo antes de seguir.
-- Mover etapa, criar ou concluir tarefa: chame acao_etapa_ou_tarefa.
-- "Tem como criar um cliente?" e "quero cadastrar uma empresa" são pedidos de cadastro, nunca consulta e nunca tarefa. Já comece a perguntar o que falta.
-- CNPJ é opcional. Por áudio os números saem errados: confirme os dígitos ou peça para digitar. Se a ferramenta disser que o CNPJ é inválido, avise e ofereça cadastrar sem ele.
-- Se você já cadastrou um cliente nesta conversa e o usuário pergunta se foi feito, responda que sim (confirme com buscar_cliente se precisar). Nunca chame criar_cliente de novo só para conferir.
-- Dados extras (unidades, ramo, observações) vão no campo observacoes.
-- Tipos de atividade válidos: ${ACTIVITY_TYPES.join(", ")}.
+A cada mensagem:
+1. Entenda o que aconteceu no mundo real e o que precisa mudar no CRM. Contar um fato é pedido para registrar: "liguei", "visitei", "ele falou que…", "ficou de mandar". Uma mensagem pode trazer várias coisas (o que foi feito, um contato novo, um compromisso futuro): faça todas.
+2. Ache o cliente com buscar_cliente. Quando o usuário pede para cadastrar um cliente novo, chame criar_cliente direto.
+3. Faça pelas ferramentas, sem pedir licença para o que o usuário já pediu ou contou. Pergunte só o que uma ferramenta devolver como faltando, ou quando houver mais de uma opção real (dois clientes parecidos, data ambígua). Uma pergunta por vez.
+4. Busca e conferência são trabalho interno: não narre ("vou buscar", "não encontrei na busca"), só diga o resultado quando ele mudar o que o usuário precisa decidir.
 
-Regra de ouro: você só pode dizer que criou, alterou ou registrou algo se a ferramenta devolveu ok=true. Se devolveu erro ou faltando, diga a verdade e peça o que falta. Se não existe ferramenta para o pedido, diga que ainda não consegue fazer isso por aqui. Nunca invente dados, nomes, números ou IDs. Perguntas e confirmações: uma ou duas frases. Quando o usuário pediu dados (resumo de cliente, lista, comparação), entregue tudo que ele pediu, sem enrolação e sem cortar informação.`;
-  return cadastro ? `${base}\n\n${AVISO_CADASTRO}` : base;
+Do negócio:
+- O que já foi feito vai em registrar_atividade. O que ainda vai ser feito vira proximo_passo dele ou criar_tarefa. Datas ditas ("amanhã", "sexta", "dia 22") viram a data real pelo calendário acima.
+- Tarefa pendente só é concluída quando o usuário diz que fez aquela tarefa. Se o que ele contou parece ser uma tarefa pendente mas ele não disse, registre sem concluir e pergunte, no fim, se pode concluir (cite o título).
+- Cliente que não está no CRM: não registre em outro parecido e não cadastre por conta própria. Pergunte se quer cadastrar.
+- Pedido sem ferramenta para isso: diga com franqueza que ainda não faz isso por aqui.
+- Linhas "[interno: …]" no histórico são anotações do sistema sobre mensagens anteriores (ids, o que foi gravado). Use os ids; nunca mostre essas linhas.
+
+Resposta:
+- Português do Brasil, jeito de WhatsApp, sem markdown, sem enrolar.
+- Cada gravação feita já aparece para o usuário como comprovante (linhas com ✅ ou 📅). Não repita o comprovante. Escreva só o que falta: uma pergunta, um aviso começando com ⚠️, ou nada.
+- Só diga que fez algo se a ferramenta devolveu ok=true. Nunca invente dados, nomes, números ou ids.
+- Consulta: entregue tudo o que foi pedido, sem cortar informação.`;
 }
 
 export async function runToolAgent(input: {
@@ -63,16 +64,8 @@ export async function runToolAgent(input: {
   question: string;
   history: ChatTurn[];
   consultar: AgentContext["consultar"];
-}): Promise<AssistantAnswer | null> {
-  const cadastro = isCadastroConversation(input.question, input.history);
-  const ctx: AgentContext = { actor: input.actor, question: input.question, history: input.history, consultar: input.consultar, modoCadastro: cadastro };
-  const result: AgentResult | null = await runAgent({
-    system: agentSystemPrompt(input.actor, new Date(), cadastro),
-    question: input.question,
-    history: input.history,
-    tools: cadastro ? AGENT_TOOLS.filter((tool) => tool.name !== acoesBasicas.name) : AGENT_TOOLS,
-    ctx,
-  });
-  if (!result) return null;
-  return { texto: result.texto, acao: result.acao };
+  requestId?: string;
+}): Promise<AgentResult | null> {
+  const ctx: AgentContext = { actor: input.actor, question: input.question, history: input.history, consultar: input.consultar, requestId: input.requestId };
+  return runAgent({ system: agentSystemPrompt(input.actor), question: input.question, history: input.history, tools: AGENT_TOOLS, ctx });
 }

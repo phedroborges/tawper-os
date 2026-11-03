@@ -5,7 +5,7 @@ import { loadScope, str } from "./shared";
 export const buscarCliente: AgentTool = {
   name: "buscar_cliente",
   description:
-    "Procura clientes (empresas) no CRM por nome aproximado, CNPJ, telefone ou nome de contato. Devolve id, cidade, responsável, contatos, negócio aberto e próximo passo. Use SEMPRE antes de falar de um cliente específico ou de criar um novo, para não duplicar.",
+    "Encontra um cliente que já existe no CRM, por nome aproximado (nomes ditos em áudio saem errados), CNPJ, telefone ou nome de contato. Devolve o id da empresa, contatos, negócio aberto e tarefas pendentes com id. Use antes de registrar, agendar ou alterar algo de um cliente. Não use antes de cadastrar cliente novo: criar_cliente já confere duplicidade.",
   writes: false,
   parameters: {
     type: "object",
@@ -18,17 +18,23 @@ export const buscarCliente: AgentTool = {
     if (!consulta) return { data: { ok: false, erro: "Informe o nome, CNPJ ou telefone para buscar." } };
     const { snapshot, visible, ownerName } = await loadScope(ctx.actor);
     const found = findCompanies(snapshot, consulta, 5, 0.5);
-    if (!found.length) return { data: { ok: true, encontrados: 0, aviso: "Nenhum cliente com esse nome/dado." } };
-    return {
-      data: {
-        ok: true,
-        encontrados: found.length,
-        clientes: found.map(({ company, motivos }) =>
-          visible.has(company.id)
-            ? { ...companyBrief(company, snapshot, ownerName), encontrado_por: motivos }
-            : { nome: company.nome, aviso: `Já existe, na carteira de ${ownerName(company.ownerId)}. Você não tem acesso aos detalhes.` },
-        ),
-      },
-    };
+    if (!found.length) return { data: { ok: true, encontrados: 0, aviso: "Nenhum cliente com esse nome ou dado no CRM." } };
+    const clientes = found.map(({ company, motivos }) =>
+      visible.has(company.id)
+        ? { ...companyBrief(company, snapshot, ownerName), encontrado_por: motivos }
+        : {
+            nome: company.nome,
+            bloqueado: `É da carteira de ${ownerName(company.ownerId)}. ${ctx.actor.short} não pode registrar nem agendar nada nesse cliente: diga isso ao usuário e sugira falar com ${ownerName(company.ownerId)} ou com um gestor.`,
+          },
+    );
+    const memo = clientes
+      .filter((item): item is ReturnType<typeof companyBrief> & { encontrado_por: string[] } => "id" in item)
+      .slice(0, 2)
+      .map((item) => {
+        const tarefas = item.tarefas_pendentes.slice(0, 3).map((task) => `tarefa_id=${task.id} "${task.titulo}" ${task.prazo}`).join("; ");
+        return `${item.nome} empresa_id=${item.id}${tarefas ? ` (pendentes: ${tarefas})` : ""}`;
+      })
+      .join(" | ");
+    return { data: { ok: true, encontrados: found.length, clientes }, memo: memo || undefined };
   },
 };

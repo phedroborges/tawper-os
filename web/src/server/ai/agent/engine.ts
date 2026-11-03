@@ -11,14 +11,7 @@ type Message =
   | { role: "system" | "user"; content: string }
   | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
-
-/** O texto diz que alterou algo no CRM? Usado para barrar "feito!" sem ferramenta de escrita bem-sucedida. */
-const CLAIMS_DONE = /\b(criei|cadastrei|registrei|alterei|atualizei|movi|conclu[ií]|agendei|salvei|gravei|adicionei|j[aá] est[aá] (criad|cadastrad|registrad|atualizad|salv))/i;
-
-export function guardClaim(texto: string, gravou: string[]) {
-  if (gravou.length || !CLAIMS_DONE.test(texto)) return texto;
-  return `${texto}\n\n⚠️ Atenção: nenhuma alteração foi gravada no sistema nesta conversa. Se você precisa disso, peça de novo.`;
-}
+type ModelReply = { message: { content?: string | null; tool_calls?: ToolCall[] }; model: string; entrada: number; saida: number };
 
 function parseArgs(raw: string): Record<string, unknown> | null {
   try {
@@ -29,7 +22,7 @@ function parseArgs(raw: string): Record<string, unknown> | null {
   }
 }
 
-async function callModel(messages: Message[], tools: AgentTool[], deadline: number) {
+async function callModel(messages: Message[], tools: AgentTool[], deadline: number): Promise<ModelReply | null> {
   const routes = candidates("assistant");
   if (routes.length === 1) routes.push(routes[0]);
   for (const route of routes) {
@@ -45,7 +38,7 @@ async function callModel(messages: Message[], tools: AgentTool[], deadline: numb
           messages,
           tools: tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters } })),
           tool_choice: "auto",
-          ...(reasoning ? { max_completion_tokens: 2000 } : { max_tokens: 1200, temperature: 0.2 }),
+          ...(reasoning ? { max_completion_tokens: 4000 } : { max_tokens: 1200, temperature: 0.2 }),
         }),
         signal: AbortSignal.timeout(remaining),
         cache: "no-store",
@@ -54,14 +47,38 @@ async function callModel(messages: Message[], tools: AgentTool[], deadline: numb
         console.warn("[agente] modelo falhou", { model: route.model, status: response.status });
         continue;
       }
-      const body = (await response.json()) as { choices?: { message?: { content?: string | null; tool_calls?: ToolCall[] } }[] };
+      const body = (await response.json()) as {
+        choices?: { message?: ModelReply["message"] }[];
+        usage?: { prompt_tokens?: number; completion_tokens?: number };
+      };
       const message = body.choices?.[0]?.message;
-      if (message) return message;
+      if (message) return { message, model: route.model, entrada: body.usage?.prompt_tokens ?? 0, saida: body.usage?.completion_tokens ?? 0 };
     } catch {
       console.warn("[agente] modelo sem resposta", { model: route.model });
     }
   }
   return null;
+}
+
+const FILLER = /mais alguma coisa|precisar de (mais )?(algo|alguma)|(é|e) só (avisar|chamar|falar|mandar)|estou à disposição/i;
+
+/**
+ * Comprovantes primeiro (o que o banco confirmou), depois o que o modelo tem a acrescentar.
+ * Depois de gravar, só sobra do texto do modelo o que é pergunta ou aviso (⚠️): o resto repetiria o comprovante.
+ */
+export function composeReply(texto: string, recibos: string[]) {
+  if (!recibos.length) return texto.trim();
+  const extra = texto
+    .split(/\n\s*\n/)
+    .map((part) => part.trim())
+    .filter((part) => (part.includes("?") || part.startsWith("⚠️")) && !FILLER.test(part))
+    .join("\n\n");
+  return [recibos.join("\n"), extra].filter(Boolean).join("\n\n");
+}
+
+function short(value: unknown, max = 4000) {
+  const text = JSON.stringify(value ?? null);
+  return text.length > max ? `${text.slice(0, max)}…` : JSON.parse(text);
 }
 
 export async function runAgent(input: {
@@ -78,57 +95,85 @@ export async function runAgent(input: {
     { role: "user", content: input.question },
   ];
   const byName = new Map(input.tools.map((tool) => [tool.name, tool]));
-  const gravou: string[] = [];
   const done = new Map<string, ToolOutput>();
+  const result: AgentResult = { texto: "", gravou: [], passos: [], contexto: [], marcas: [], tokens: { entrada: 0, saida: 0 } };
+  const recibos: string[] = [];
+  const finish = (texto: string): AgentResult => ({ ...result, acao: input.ctx.acao, texto: composeReply(texto, recibos) });
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
-    const message = await callModel(messages, input.tools, deadline);
-    if (!message) {
+    const started = Date.now();
+    const reply = await callModel(messages, input.tools, deadline);
+    if (!reply) {
       if (step === 0) return null;
-      const texto = gravou.length
-        ? "A alteração foi gravada, mas não consegui montar a resposta final. Confira no sistema."
-        : "Não consegui concluir agora. Tente de novo em instantes.";
-      return { texto, acao: input.ctx.acao, gravou };
+      result.marcas.push("modelo_caiu");
+      return finish(result.gravou.length ? "Não consegui terminar a resposta. Confira no sistema o que ficou gravado acima." : "Não consegui concluir agora. Tente de novo em instantes.");
     }
+    const { message } = reply;
+    result.modelo = reply.model;
+    result.tokens.entrada += reply.entrada;
+    result.tokens.saida += reply.saida;
     const calls = message.tool_calls ?? [];
+    result.passos.push({
+      kind: "model",
+      ok: true,
+      request: { passo: step + 1 },
+      response: { texto: message.content ?? null, ferramentas: calls.map((call) => call.function.name) },
+      ms: Date.now() - started,
+    });
     if (!calls.length) {
-      const texto = (message.content ?? "").trim() || "Não entendi o pedido. Pode repetir?";
-      return { texto: guardClaim(texto, gravou), acao: input.ctx.acao, gravou };
+      const texto = (message.content ?? "").trim();
+      return finish(texto || (recibos.length ? "" : "Não entendi o pedido. Pode repetir?"));
     }
 
     messages.push({ role: "assistant", content: message.content ?? null, tool_calls: calls });
     let direct: string | undefined;
     for (const call of calls) {
       const tool = byName.get(call.function.name);
-      let output: ToolOutput;
       const args = parseArgs(call.function.arguments);
-      if (!tool) output = { data: { erro: `Ferramenta desconhecida: ${call.function.name}.` } };
-      else if (!args) output = { data: { erro: "Argumentos inválidos. Chame de novo com um JSON válido." } };
+      const toolStarted = Date.now();
+      let output: ToolOutput;
+      let failed = false;
+      if (!tool) output = { data: { ok: false, erro: `Ferramenta desconhecida: ${call.function.name}.` } };
+      else if (!args) output = { data: { ok: false, erro: "Argumentos inválidos. Chame de novo com um JSON válido." } };
       else {
         // Mesma ferramenta de escrita com os mesmos argumentos na mesma rodada: devolve o resultado anterior, não grava duas vezes.
         const key = tool.writes ? `${tool.name}:${call.function.arguments}` : "";
         const previous = key ? done.get(key) : undefined;
-        if (previous) output = previous;
-        else {
+        if (previous) {
+          output = { data: previous.data };
+          result.marcas.push("escrita_repetida");
+        } else {
           try {
             output = await tool.run(args, input.ctx);
             console.info("[agente] ferramenta", { nome: tool.name, ok: (output.data as { ok?: unknown } | null)?.ok ?? null });
           } catch (error) {
+            failed = true;
             console.warn("[agente] ferramenta falhou", { nome: tool.name, erro: error instanceof Error ? error.message : String(error) });
             output = { data: { ok: false, erro: error instanceof Error ? error.message : "Falha ao executar a ferramenta." } };
           }
           if (key) done.set(key, output);
-          if (tool.writes && output.wrote) gravou.push(tool.name);
+          if (tool.writes && output.wrote) {
+            result.gravou.push(tool.name);
+            if (output.recibo) recibos.push(output.recibo);
+          }
+          if (output.memo) result.contexto.push(output.memo);
+          if (output.empresaId && (!result.empresaId || output.wrote)) result.empresaId = output.empresaId;
         }
         if (output.reply && calls.length === 1) direct = output.reply;
       }
-      messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(output.data).slice(0, 12_000) });
+      const data = output.data as { ok?: unknown; erro?: unknown } | null;
+      const ok = !failed && data?.ok !== false;
+      if (failed) result.marcas.push(`excecao:${call.function.name}`);
+      else if (!ok && data?.erro) result.marcas.push(`recusou:${call.function.name}`);
+      result.passos.push({ kind: "tool", tool: call.function.name, ok, request: args ?? call.function.arguments, response: short(output.data), ms: Date.now() - toolStarted });
+      // A instrução vai junto do resultado, que é onde o modelo decide o que escrever: sem ela, ele reescreve o comprovante.
+      const forModel = ok && output.wrote && output.recibo
+        ? { ...(output.data as object), comprovante_ja_enviado_ao_usuario: output.recibo, instrucao: "O usuário já recebe esse comprovante. Não repita nada dele, nem com outras palavras. Na resposta final, escreva só o que falta: uma pergunta, ou um aviso começando com ⚠️. Se não falta nada, deixe vazia." }
+        : output.data;
+      messages.push({ role: "tool", tool_call_id: call.id, content: JSON.stringify(forModel).slice(0, 12_000) });
     }
-    if (direct) return { texto: direct, acao: input.ctx.acao, gravou };
+    if (direct) return finish(direct);
   }
-  return {
-    texto: gravou.length ? "Executei parte do pedido, mas ele ficou grande demais. Confira no sistema e me diga o que falta." : "O pedido ficou complexo demais. Pode dividir em partes menores?",
-    acao: input.ctx.acao,
-    gravou,
-  };
+  result.marcas.push("limite_passos");
+  return finish(result.gravou.length ? "Fiz parte do pedido (acima), mas ele ficou grande demais. Me diga o que falta." : "O pedido ficou complexo demais. Pode dividir em partes menores?");
 }

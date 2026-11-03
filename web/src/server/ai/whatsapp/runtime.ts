@@ -8,7 +8,7 @@ import { invalidateCrmReadCache, loadCrmSnapshot } from "@/server/crm";
 import { ensureOperators } from "@/server/persist";
 import { aiAssistant } from "../actions";
 import { executeAssistantAction } from "../action-engine";
-import { agentToolsEnabled, runToolAgent } from "../agent";
+import { AGENT_VERSION, agentToolsEnabled, runToolAgent } from "../agent";
 import { resolveWhatsAppAgentUser } from "./access";
 import { AUDIO_FAILED, AUDIO_PREFIX } from "./audio";
 import { findWhatsAppAgentIdentity } from "./config";
@@ -21,8 +21,10 @@ import {
   findWhatsAppAgentReply,
   finishWhatsAppAgentJob,
   finishPendingWhatsAppAction,
+  flagLastWhatsAppAgentRun,
   loadWhatsAppAgentHistory,
   recordWhatsAppAgentReply,
+  recordWhatsAppAgentRun,
   type WhatsAppAgentJob,
 } from "./store";
 
@@ -35,6 +37,7 @@ function payloadString(job: WhatsAppAgentJob, key: keyof WhatsAppAgentJob["paylo
 }
 
 async function answerJob(job: WhatsAppAgentJob) {
+  const started = new Date();
   const sessionId = payloadString(job, "session_id") || job.aggregate_id;
   const sender = canonicalWhatsApp(payloadString(job, "sender"));
   const received = payloadString(job, "question").slice(0, 4000);
@@ -96,12 +99,22 @@ async function answerJob(job: WhatsAppAgentJob) {
       await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
       return;
     }
+  } else if (/^(errou|errado|ta errado|esta errado)$/.test(normalizedQuestion)) {
+    // Marcação manual para a revisão: o atendimento anterior entra na lista de falhas.
+    const flagged = await flagLastWhatsAppAgentRun(sessionId, "usuario_marcou_erro").catch(() => false);
+    const text = flagged
+      ? "Anotado como erro, vai para a revisão. O que era para eu ter feito? Pode mandar do seu jeito que eu tento de novo."
+      : "Não achei a resposta anterior para marcar. Me conta o que era para eu ter feito?";
+    const sent = await sendWhatsAppAgentText(sender, text);
+    await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
+    return;
   }
   const data: Data = { ...snapshot, suggestions: [], conversations: [] };
   const allowedCompanies = visibleCompanies(data, resolved.user);
   const allowedCompanyIds = allowedCompanies.map((company) => company.id);
   const allowed = new Set(allowedCompanyIds);
-  const history = await loadWhatsAppAgentHistory(sessionId, externalMessageId);
+  const turns = await loadWhatsAppAgentHistory(sessionId, externalMessageId);
+  const history = turns.map(({ role, content }) => ({ role, content }));
   const fallback = assistantAnswer(data, resolved.user, question);
   const escopo = {
     gestor: resolved.user.role === "admin" || resolved.user.role === "gestor",
@@ -119,12 +132,35 @@ async function answerJob(job: WhatsAppAgentJob) {
       skipActions,
     });
   const toolsOn = agentToolsEnabled();
-  const viaFerramentas = toolsOn ? await runToolAgent({ actor: resolved.user, question, history, consultar: (pergunta) => ask(pergunta, true) }) : null;
+  // O agente com ferramentas vê também as anotações internas das respostas anteriores (ids), para continuar de onde parou.
+  const withNotes = turns.map(({ role, content, contexto }) => ({ role, content: contexto ? `${content}\n[interno: ${contexto}]` : content }));
+  const viaFerramentas = toolsOn
+    ? await runToolAgent({ actor: resolved.user, question, history: withNotes, consultar: (pergunta) => ask(pergunta, true), requestId: job.id })
+    : null;
   console.info("[agente] caminho da resposta", toolsOn ? (viaFerramentas ? "ferramentas" : "fluxo antigo (o modelo não respondeu com ferramentas)") : "fluxo antigo (TAWPER_AGENT_TOOLS_ENABLED ou TAWPER_AGENT_WRITES_ENABLED desligada)");
-  const answer = viaFerramentas ?? (await ask(question, false));
+  const answer = viaFerramentas ? { texto: viaFerramentas.texto, acao: viaFerramentas.acao } : await ask(question, false);
   const text = renderWhatsAppAnswer(answer);
   const sent = await sendWhatsAppAgentText(sender, text);
-  await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId, action: answer.acao });
+  const contexto = viaFerramentas?.contexto.join(" | ");
+  await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId, action: answer.acao, contexto });
+  await recordWhatsAppAgentRun({
+    sessionId,
+    correlationId: job.id,
+    profileId: resolved.user.id,
+    companyId: viaFerramentas?.empresaId,
+    question,
+    audio: received.startsWith(AUDIO_PREFIX),
+    caminho: viaFerramentas ? "ferramentas" : "fluxo_antigo",
+    versao: AGENT_VERSION,
+    modelo: viaFerramentas?.modelo,
+    resposta: text,
+    gravou: viaFerramentas?.gravou ?? [],
+    marcas: [...(viaFerramentas?.marcas ?? []), ...(toolsOn && !viaFerramentas ? ["caiu_no_fluxo_antigo"] : [])],
+    passos: viaFerramentas?.passos ?? [],
+    tokens: viaFerramentas?.tokens,
+    inicio: started,
+    fim: new Date(),
+  });
 }
 
 export async function processWhatsAppAgentQueue(limit = 3) {
