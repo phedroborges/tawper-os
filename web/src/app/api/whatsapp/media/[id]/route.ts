@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonAuthError, withSession } from "@/server/auth/http";
 import { proofEnabled } from "@/server/integrations/stevo-proof/config";
 import { loadLiveMediaFile } from "@/server/integrations/stevo-proof/live-store";
 
@@ -6,9 +7,10 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
-  if (!proofEnabled()) return NextResponse.json({ error: "WhatsApp desligado." }, { status: 404 });
-  const { id } = await params;
   try {
+    withSession(request);
+    if (!proofEnabled()) return NextResponse.json({ error: "WhatsApp desligado." }, { status: 404 });
+    const { id } = await params;
     const file = await loadLiveMediaFile(id);
     if (!file) return NextResponse.json({ error: "Mídia indisponível." }, { status: 404 });
     const total = file.bytes.length;
@@ -30,6 +32,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
     }
     return new NextResponse(new Uint8Array(file.bytes), { headers: { ...headers, "Content-Length": String(total) } });
   } catch (cause) {
-    return NextResponse.json({ error: cause instanceof Error ? cause.message : "Falha ao abrir a mídia." }, { status: 500 });
+    return jsonAuthError(cause) ?? NextResponse.json({ error: cause instanceof Error ? cause.message : "Falha ao abrir a mídia." }, { status: 500 });
   }
 }

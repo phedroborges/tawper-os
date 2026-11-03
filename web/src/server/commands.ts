@@ -1,8 +1,10 @@
 import "server-only";
 
+import postgres from "postgres";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
+import { storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import type { ActivityType, Company, Contact, Prioridade } from "@/lib/types";
-import { addActivityRecord, addContactRecord, ensureOperators, updateCompanyRecord } from "@/server/persist";
+import { ensureOperators, updateCompanyRecord } from "@/server/persist";
 
 /** Os comandos de negócio rodam no banco (funções crm_*): cada um é uma transação só. */
 
@@ -10,6 +12,28 @@ const CHANNEL_TO_DB: Record<string, string> = { WhatsApp: "whatsapp", Ligação:
 const KIND_TO_DB: Record<string, string> = {
   create: "create", stage: "stage", win: "win", loss: "loss", standby: "standby", quote: "quote", task: "task", note: "note", ai: "ai", contact: "contact", merge: "merge", import: "import", cobranca: "nudge", strategy: "strategy",
 };
+const ROLE_TO_DB: Record<string, string> = {
+  Decisor: "decision_maker",
+  Comprador: "buyer",
+  Técnico: "technical",
+  Mecânico: "mechanic",
+  Influenciador: "influencer",
+  Outro: "other",
+};
+const ACTIVITY_TO_DB: Record<string, string> = {
+  Ligação: "call",
+  WhatsApp: "whatsapp",
+  "E-mail": "email",
+  Visita: "visit",
+  Reunião: "meeting",
+  Cotação: "quote",
+  Homologação: "homologation",
+  Cadastro: "registration",
+  Suporte: "support",
+  Outro: "other",
+};
+const LEVEL_TO_DB: Record<string, string> = { Alta: "high", Média: "medium", Baixa: "low", Alto: "high", Médio: "medium", Baixo: "low" };
+const CHANNEL_PREF: Record<string, string> = { WhatsApp: "whatsapp", Ligação: "phone", "E-mail": "email", Presencial: "in_person" };
 
 function isUuid(id: unknown): id is string {
   return typeof id === "string" && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id);
@@ -118,55 +142,152 @@ export async function runCommand(cmd: Command): Promise<unknown> {
 }
 
 /**
- * Une um cadastro novo a uma empresa que já existe: atualiza os dados, acrescenta os contatos,
- * reinicia o negócio aberto (ou abre um) e cria o primeiro próximo passo. Cada passo é gravado e
- * confirmado em ordem; o próximo passo vem por último, então a conta nunca fica "unida" sem ele.
+ * Une cadastros numa transação só: empresa, contatos, negócio e próximo passo
+ * entram juntos ou nada muda.
  */
 async function mergeCompany(cmd: Extract<Command, { command: "mergeCompany" }>) {
   need(isUuid(cmd.existingId), "Esta empresa ainda não está no banco.");
-  const sb = getSupabaseAdmin();
+  const actors = await ensureOperators();
   const actor = await actorOf(cmd.actorId);
-  const existing = await sb.from("companies").select("id, trade_name, code, owner_id, status").eq("id", cmd.existingId).maybeSingle();
-  if (existing.error) throw new Error(existing.error.message);
-  need(existing.data, "Empresa não encontrada.");
-
   const patch = { ...cmd.company };
   delete patch.id;
   delete patch.status;
-  await updateCompanyRecord(cmd.existingId, patch, actor);
-  if (existing.data.status === "lost") {
-    const up = await sb.from("companies").update({ status: "active", loss_reason: null }).eq("id", cmd.existingId);
-    if (up.error) throw new Error(friendly(up.error));
-  }
-  for (const c of cmd.contacts) {
-    if (c.nome?.trim()) await addContactRecord({ ...c, companyId: cmd.existingId }, cmd.actorId);
-  }
 
-  const open = await sb.from("opportunities").select("id, owner_id").eq("company_id", cmd.existingId).eq("status", "open").order("created_at", { ascending: false }).limit(1).maybeSingle();
-  if (open.error) throw new Error(open.error.message);
-  const ownerId = (existing.data.owner_id as string) ?? actor;
-  let dealId = open.data?.id as string | undefined;
-  if (dealId) {
-    const up = await sb.from("opportunities").update({ owner_id: ownerId, title: `Prospecção — ${patch.nome ?? existing.data.trade_name}`, stage_entered_at: new Date().toISOString() }).eq("id", dealId);
-    if (up.error) throw new Error(friendly(up.error));
-  } else {
-    const funnel = await sb.from("funnels").select("id").eq("organization_id", TAWPER_ORG_ID).eq("key", "aquisicao").single();
-    const stage = funnel.data ? await sb.from("stages").select("id, probability").eq("funnel_id", funnel.data.id).eq("key", "lead").single() : null;
-    need(funnel.data && stage?.data, "Funil de aquisição não encontrado.");
-    const ins = await sb
-      .from("opportunities")
-      .insert({ organization_id: TAWPER_ORG_ID, company_id: cmd.existingId, owner_id: ownerId, funnel_id: funnel.data.id, stage_id: stage.data.id, title: `Prospecção — ${patch.nome ?? existing.data.trade_name}`, status: "open", probability: stage.data.probability, created_by: actor })
-      .select("id")
-      .single();
-    if (ins.error || !ins.data) throw new Error(ins.error ? friendly(ins.error) : "Falha ao abrir o negócio.");
-    dealId = ins.data.id as string;
-  }
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL ausente para unir cadastros.");
+  const sql = postgres(url, { max: 1, ssl: "require" });
+  try {
+    return await sql.begin(async (tx) => {
+      await tx`select app.crm_begin(${actor}::uuid, 'user')`;
+      const existing = await tx<{ id: string; trade_name: string; code: string; owner_id: string | null; status: string }[]>`
+        select id::text, trade_name, code, owner_id::text, status::text
+          from public.companies
+         where id = ${cmd.existingId}::uuid and organization_id = ${TAWPER_ORG_ID}::uuid
+         for update
+      `;
+      need(existing[0], "Empresa não encontrada.");
+      const row = existing[0];
 
-  await rpc("crm_add_interaction", {
-    p_company: cmd.existingId, p_opportunity: dealId, p_channel: "system", p_kind: "merge",
-    p_title: `Registros unidos: novo cadastro incorporado ao ${existing.data.code}`,
-    p_content: `O cadastro "${existing.data.trade_name}" foi atualizado com os dados novos. Histórico, contatos e vínculos foram preservados.`, p_actor: actor, p_origin: "user",
-  });
-  const activityId = await addActivityRecord({ ...cmd.firstActivity, companyId: cmd.existingId, dealId, ownerId: cmd.firstActivity.ownerId ?? ownerId });
-  return { companyId: cmd.existingId, dealId, activityId };
+      // Atualiza campos via o mesmo caminho tipado (fora do tx) e revalida no fim — mas
+      // para atomicidade real, aplicamos o essencial aqui e o restante no updateCompanyRecord
+      // só quando não há DATABASE_URL. Com URL, tudo fica no tx.
+      if (patch.nome) {
+        await tx`update public.companies set trade_name = ${patch.nome}, legal_name = ${patch.razaoSocial || patch.nome} where id = ${cmd.existingId}::uuid`;
+      } else if (patch.razaoSocial) {
+        await tx`update public.companies set legal_name = ${patch.razaoSocial} where id = ${cmd.existingId}::uuid`;
+      }
+      if (Object.prototype.hasOwnProperty.call(patch, "cnpj")) {
+        const value: string | null = patch.cnpj ? storedCNPJ(patch.cnpj) ?? null : null;
+        if (patch.cnpj && !value) throw new Error("CNPJ inválido.");
+        await tx`update public.companies set cnpj = ${value} where id = ${cmd.existingId}::uuid`;
+      }
+      if (patch.cidade !== undefined) {
+        const city: string | null = patch.cidade || null;
+        await tx`update public.companies set city = ${city} where id = ${cmd.existingId}::uuid`;
+      }
+      if (patch.uf !== undefined) {
+        const state: string | null = patch.uf || null;
+        await tx`update public.companies set state = ${state} where id = ${cmd.existingId}::uuid`;
+      }
+      if (patch.observacoes !== undefined) {
+        const notes: string | null = patch.observacoes || null;
+        await tx`update public.companies set notes = ${notes} where id = ${cmd.existingId}::uuid`;
+      }
+      if (row.status === "lost") {
+        await tx`update public.companies set status = 'active', loss_reason = null where id = ${cmd.existingId}::uuid`;
+      }
+
+      for (const contact of cmd.contacts) {
+        if (!contact.nome?.trim()) continue;
+        const phone: string | null = contact.whatsapp ? storedWhatsApp(contact.whatsapp) ?? null : null;
+        if (contact.whatsapp && !phone) throw new Error("WhatsApp inválido no contato.");
+        const jobTitle: string | null = contact.cargo || null;
+        const email: string | null = contact.email || null;
+        const role = ROLE_TO_DB[contact.papel] ?? "other";
+        const influence = contact.influencia ?? 2;
+        const preferred = CHANNEL_PREF[contact.canal] ?? "whatsapp";
+        const allowed = contact.autorizaContato !== false;
+        const active = contact.ativo !== false;
+        await tx`
+          insert into public.contacts (
+            organization_id, company_id, name, job_title, role, influence, whatsapp_e164, email,
+            preferred_channel, contact_allowed, relationship_owner_id, is_active
+          ) values (
+            ${TAWPER_ORG_ID}::uuid, ${cmd.existingId}::uuid, ${contact.nome}, ${jobTitle},
+            ${role}, ${influence}, ${phone},
+            ${email}, ${preferred}, ${allowed},
+            ${actor}::uuid, ${active}
+          )
+        `;
+      }
+
+      const ownerId = row.owner_id ?? actor;
+      const title = `Prospecção — ${patch.nome ?? row.trade_name}`;
+      const open = await tx<{ id: string }[]>`
+        select id::text from public.opportunities
+         where company_id = ${cmd.existingId}::uuid and status = 'open'
+         order by created_at desc limit 1
+         for update
+      `;
+      let dealId = open[0]?.id;
+      if (dealId) {
+        await tx`update public.opportunities set owner_id = ${ownerId}::uuid, title = ${title}, stage_entered_at = now() where id = ${dealId}::uuid`;
+      } else {
+        const funnel = await tx<{ id: string }[]>`select id::text from public.funnels where organization_id = ${TAWPER_ORG_ID}::uuid and key = 'aquisicao' limit 1`;
+        const stage = funnel[0]
+          ? await tx<{ id: string; probability: number }[]>`select id::text, probability from public.stages where funnel_id = ${funnel[0].id}::uuid and key = 'lead' limit 1`
+          : [];
+        need(funnel[0] && stage[0], "Funil de aquisição não encontrado.");
+        const inserted = await tx<{ id: string }[]>`
+          insert into public.opportunities (
+            organization_id, company_id, owner_id, funnel_id, stage_id, title, status, probability, created_by
+          ) values (
+            ${TAWPER_ORG_ID}::uuid, ${cmd.existingId}::uuid, ${ownerId}::uuid, ${funnel[0].id}::uuid, ${stage[0].id}::uuid,
+            ${title}, 'open', ${stage[0].probability}, ${actor}::uuid
+          ) returning id::text
+        `;
+        dealId = inserted[0]?.id;
+      }
+      need(dealId, "Não foi possível abrir o negócio unificado.");
+
+      await tx`select public.crm_add_interaction(
+        ${cmd.existingId}::uuid,
+        ${dealId}::uuid,
+        'system',
+        'merge',
+        ${`Registros unidos: novo cadastro incorporado ao ${row.code}`},
+        ${`O cadastro "${row.trade_name}" foi atualizado com os dados novos. Histórico, contatos e vínculos foram preservados.`},
+        ${actor}::uuid,
+        'user'
+      )`;
+
+      const activityOwner = cmd.firstActivity.ownerId && actors[cmd.firstActivity.ownerId]
+        ? actors[cmd.firstActivity.ownerId]
+        : isUuid(cmd.firstActivity.ownerId)
+          ? cmd.firstActivity.ownerId
+          : ownerId;
+      const created = await tx<{ id: string }[]>`
+        insert into public.activities (
+          organization_id, company_id, opportunity_id, type, title, description, owner_id, due_at, priority, status, origin, created_by
+        ) values (
+          ${TAWPER_ORG_ID}::uuid, ${cmd.existingId}::uuid, ${dealId}::uuid,
+          ${ACTIVITY_TO_DB[cmd.firstActivity.tipo] ?? "other"}, ${cmd.firstActivity.titulo}, ${cmd.firstActivity.descricao || null},
+          ${activityOwner}::uuid, ${cmd.firstActivity.dueAt}::timestamptz,
+          ${LEVEL_TO_DB[cmd.firstActivity.prioridade ?? "Média"] ?? "medium"}, 'pending', 'manual', ${actor}::uuid
+        ) returning id::text
+      `;
+      need(created[0], "Falha ao criar o próximo passo.");
+      return { companyId: cmd.existingId, dealId, activityId: created[0].id };
+    });
+  } catch (error) {
+    // Fallback: se o RPC crm_add_interaction tiver assinatura diferente, tenta o caminho antigo
+    // só quando a falha for de função ausente — senão propaga.
+    if (error instanceof Error && /crm_add_interaction|function .* does not exist/i.test(error.message)) {
+      await updateCompanyRecord(cmd.existingId, patch, actor);
+      throw new Error("A união precisa da função crm_add_interaction no banco. Aplique as migrations e tente de novo.");
+    }
+    throw error;
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
 }

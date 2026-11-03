@@ -1,5 +1,7 @@
 "use server";
 
+import { USERS } from "@/lib/constants";
+import { requireSessionCookies, type Session } from "@/server/auth/session";
 import {
   getStevoQr,
   getStevoStatus,
@@ -30,6 +32,12 @@ import {
   setLiveOwner,
   type LiveConversation,
 } from "./live-store";
+
+function agentFromSession(session: Session): Agent {
+  const user = USERS.find((item) => item.id === session.userId);
+  if (!user) throw new Error("Perfil da sessão inválido.");
+  return { id: user.id, name: user.name, role: user.role };
+}
 
 export type ProofSnapshot = {
   enabled: boolean;
@@ -68,6 +76,7 @@ function peerOf(raw: string) {
 }
 
 export async function loadProofSnapshot(): Promise<ProofSnapshot> {
+  await requireSessionCookies();
   const enabled = proofEnabled();
   const configured = stevoConfigured();
   if (!enabled || !configured) {
@@ -114,6 +123,7 @@ export type CompanyChatSnapshot = {
 
 /** Conversas do WhatsApp real dos contatos de uma empresa, casadas pelo número (com e sem o 9º dígito). */
 export async function loadCompanyChat(phones: string[]): Promise<CompanyChatSnapshot> {
+  await requireSessionCookies();
   if (!proofEnabled() || !stevoConfigured()) {
     return { live: false, status: await getStevoStatus(), events: [], conversations: [] };
   }
@@ -130,24 +140,23 @@ export async function loadCompanyChat(phones: string[]): Promise<CompanyChatSnap
 }
 
 export async function refreshProofQr() {
+  await requireSessionCookies();
   assertProofEnabled();
   return refreshStevoQr();
 }
 
 export async function pairProofPhone(phone: string) {
+  await requireSessionCookies();
   assertProofEnabled();
   return requestStevoPairing(phone);
 }
 
-export async function sendProofText(to: string, text: string, agent?: Agent) {
+export async function sendProofText(to: string, text: string, _agent?: Agent) {
+  const session = await requireSessionCookies();
   assertProofEnabled();
+  const agent = agentFromSession(session);
   const body = text.trim();
   if (!body) throw new Error("Mensagem vazia.");
-  if (!agent) {
-    const sent = await sendStevoText(to, body);
-    await recordSent(sent.number, body, undefined, sent.messageId);
-    return sent;
-  }
   checkAgent(agent);
   const peer = peerOf(to);
   // Banco fora do ar não pode impedir o atendente de responder.
@@ -162,8 +171,10 @@ export async function sendProofText(to: string, text: string, agent?: Agent) {
 }
 
 /** Assumir (target = o próprio agente), transferir (target = outro) ou liberar para a fila (target = null). */
-export async function assignProofConversation(peerRaw: string, target: { id: string; name: string } | null, agent: Agent) {
+export async function assignProofConversation(peerRaw: string, target: { id: string; name: string } | null, _agent?: Agent) {
+  const session = await requireSessionCookies();
   assertProofEnabled();
+  const agent = agentFromSession(session);
   checkAgent(agent);
   const peer = peerOf(peerRaw);
   const conversation = await getLiveConversation(peer);
@@ -178,8 +189,10 @@ export async function assignProofConversation(peerRaw: string, target: { id: str
   return { peer, owner: target };
 }
 
-export async function markProofRead(peerRaw: string, agent: Agent) {
+export async function markProofRead(peerRaw: string, _agent?: Agent) {
+  const session = await requireSessionCookies();
   assertProofEnabled();
+  const agent = agentFromSession(session);
   checkAgent(agent);
   const peer = peerOf(peerRaw);
   const conversation = await getLiveConversation(peer).catch(() => null);
@@ -198,8 +211,10 @@ async function checkCanEdit(peer: string, agent: Agent) {
  * "me": some do Tawper (o celular continua com a mensagem, a Stevo não tem essa rota).
  * "everyone": apaga no WhatsApp do cliente; só mensagens enviadas pelo número.
  */
-export async function deleteProofMessage(id: string, scope: "me" | "everyone", agent: Agent) {
+export async function deleteProofMessage(id: string, scope: "me" | "everyone", _agent?: Agent) {
+  const session = await requireSessionCookies();
   assertProofEnabled();
+  const agent = agentFromSession(session);
   checkAgent(agent);
   const message = await getLiveMessage(id);
   if (!message) throw new Error("Mensagem não encontrada.");
@@ -216,14 +231,17 @@ export async function deleteProofMessage(id: string, scope: "me" | "everyone", a
 }
 
 /** Apaga a conversa no Tawper. No celular ela continua: a Stevo não expõe apagar conversa. */
-export async function deleteProofConversation(peerRaw: string, agent: Agent) {
+export async function deleteProofConversation(peerRaw: string, _agent?: Agent) {
+  const session = await requireSessionCookies();
   assertProofEnabled();
+  const agent = agentFromSession(session);
   const peer = peerOf(peerRaw);
   await checkCanEdit(peer, agent);
   await deleteLiveConversation(peer);
 }
 
 export async function registerProofWebhook() {
+  await requireSessionCookies();
   assertProofEnabled();
   return registerStevoWebhook();
 }

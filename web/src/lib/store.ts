@@ -234,27 +234,24 @@ async function sendCommand<T = unknown>(body: Record<string, unknown>): Promise<
 }
 
 /**
- * Gravações simples (empresa, contato, atividade): a tela mostra na hora, mas se o banco recusar
- * o usuário é avisado e a tela volta ao que está gravado.
+ * Gravações simples: espera o banco antes de liberar a tela (evita sumiço em refresh no meio).
+ * A UI otimista continua; se o banco recusar, volta ao que está gravado.
  */
-function pushMutation(body: unknown) {
+async function pushMutation(body: unknown) {
   if (!USE_SUPABASE || typeof window === "undefined") return;
-  void (async () => {
-    inflight += 1;
-    let failed: unknown = null;
-    try {
-      const res = await fetch("/api/crm/mutate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
-      const data = (await res.json().catch(() => ({}))) as { error?: string };
-      if (!res.ok) throw new Error(data.error || "O banco recusou a gravação.");
-    } catch (e) {
-      failed = e ?? new Error("Falha de rede ao salvar.");
-    } finally {
-      inflight -= 1;
-    }
-    if (failed) reportError(failed, "Não foi possível salvar");
-    // com sucesso, confirma o que ficou gravado; com erro, a tela volta ao que está no banco
-    await refreshCrm().catch(() => undefined);
-  })();
+  inflight += 1;
+  let failed: unknown = null;
+  try {
+    const res = await fetch("/api/crm/mutate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+    const data = (await res.json().catch(() => ({}))) as { error?: string };
+    if (!res.ok) throw new Error(data.error || "O banco recusou a gravação.");
+  } catch (e) {
+    failed = e ?? new Error("Falha de rede ao salvar.");
+  } finally {
+    inflight -= 1;
+  }
+  if (failed) reportError(failed, "Não foi possível salvar");
+  await refreshCrm().catch(() => undefined);
 }
 
 function emptyCrm(): DemoData & Session {

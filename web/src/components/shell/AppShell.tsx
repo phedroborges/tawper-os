@@ -232,10 +232,22 @@ function UserSwitcher() {
               key={u.id}
               type="button"
               onClick={() => {
-                login(u.id);
-                close();
-                toast(`Visualizando como ${u.short}`, { tone: "info", sub: ROLE_LABEL[u.role] });
-                if (!isManager(u) && ["/gestao", "/dashboard", "/auditoria"].some((p) => window.location.pathname.startsWith(p))) router.push("/meu-dia");
+                void (async () => {
+                  const res = await fetch("/api/auth/switch", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({ userId: u.id }),
+                  });
+                  if (!res.ok) {
+                    const body = (await res.json().catch(() => ({}))) as { error?: string };
+                    toast(body.error || "Não foi possível trocar o perfil.", { tone: "warn" });
+                    return;
+                  }
+                  login(u.id);
+                  close();
+                  toast(`Visualizando como ${u.short}`, { tone: "info", sub: ROLE_LABEL[u.role] });
+                  if (!isManager(u) && ["/gestao", "/dashboard", "/auditoria"].some((p) => window.location.pathname.startsWith(p))) router.push("/meu-dia");
+                })();
               }}
               className={cn("flex w-full items-center gap-2.5 px-3 py-2 text-left hover:bg-soft", u.id === user.id && "bg-soft")}
             >
@@ -246,6 +258,22 @@ function UserSwitcher() {
               </span>
             </button>
           ))}
+          <div className="mt-1 border-t border-line px-3 py-2">
+            <button
+              type="button"
+              className="text-[12.5px] text-muted hover:text-ink"
+              onClick={() => {
+                void (async () => {
+                  await fetch("/api/auth/logout", { method: "POST" });
+                  close();
+                  router.push("/entrar");
+                  router.refresh();
+                })();
+              }}
+            >
+              Sair
+            </button>
+          </div>
         </div>
       )}
     </Popover>

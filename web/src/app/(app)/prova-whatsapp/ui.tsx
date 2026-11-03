@@ -147,7 +147,7 @@ export function ProvaWhatsAppClient({ initial }: { initial: Snapshot }) {
         busy = false;
       });
     };
-    const timer = setInterval(tick, 1000);
+    const timer = setInterval(tick, 3000);
     tick();
     return () => clearInterval(timer);
   }, []);

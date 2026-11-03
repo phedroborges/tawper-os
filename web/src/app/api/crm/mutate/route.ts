@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonAuthError, withSession } from "@/server/auth/http";
 import { invalidateCrmReadCache } from "@/server/crm";
 import { addActivityRecord, addContactRecord, completeActivityRecord, deleteCompanyRecord, moveDealRecord, registerCompany, updateCompanyRecord } from "@/server/persist";
 
@@ -6,41 +7,42 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
+    const session = withSession(request);
     const body = await request.json();
     let response: NextResponse;
     switch (body.action) {
       case "createCompany": {
-        const saved = await registerCompany(body);
+        const saved = await registerCompany({ ...body, actorId: session.userId });
         response = NextResponse.json(saved);
         break;
       }
       case "updateCompany": {
-        await updateCompanyRecord(body.id, body.patch, body.actorId);
+        await updateCompanyRecord(body.id, body.patch, session.userId);
         response = NextResponse.json({ ok: true });
         break;
       }
       case "addContact": {
-        const id = await addContactRecord(body.contact, body.actorId);
+        const id = await addContactRecord(body.contact, session.userId);
         response = NextResponse.json({ id });
         break;
       }
       case "addActivity": {
-        const id = await addActivityRecord(body.activity);
+        const id = await addActivityRecord(body.activity, { actorId: session.userId, actorType: "user" });
         response = NextResponse.json({ id });
         break;
       }
       case "completeActivity": {
-        const nextId = await completeActivityRecord(body.id, body.resultado, body.next);
+        const nextId = await completeActivityRecord(body.id, body.resultado, body.next, { actorId: session.userId, actorType: "user" });
         response = NextResponse.json({ nextId });
         break;
       }
       case "deleteCompany": {
-        await deleteCompanyRecord(body.id, body.actorId, body.reason);
+        await deleteCompanyRecord(body.id, session.userId, body.reason);
         response = NextResponse.json({ ok: true });
         break;
       }
       case "moveDeal": {
-        await moveDealRecord(body);
+        await moveDealRecord({ ...body, actorId: session.userId });
         response = NextResponse.json({ ok: true });
         break;
       }
@@ -50,7 +52,6 @@ export async function POST(request: Request) {
     invalidateCrmReadCache();
     return response;
   } catch (e) {
-    const message = e instanceof Error ? e.message : "Falha ao gravar no banco.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return jsonAuthError(e) ?? NextResponse.json({ error: e instanceof Error ? e.message : "Falha ao gravar no banco." }, { status: 400 });
   }
 }

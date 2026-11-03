@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { jsonAuthError, withSession } from "@/server/auth/http";
 import { buildQuotePdf, loadQuotePdfContext } from "@/server/quote-pdf";
 import { getQuote } from "@/server/quotes";
 
@@ -7,6 +8,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
+    withSession(request);
     const { id } = await params;
     const url = new URL(request.url);
     const quote = await getQuote(id);
@@ -20,6 +22,6 @@ export async function GET(request: Request, { params }: { params: Promise<{ id: 
       },
     });
   } catch (e) {
-    return NextResponse.json({ error: e instanceof Error ? e.message : "Não foi possível gerar o PDF." }, { status: 400 });
+    return jsonAuthError(e) ?? NextResponse.json({ error: e instanceof Error ? e.message : "Não foi possível gerar o PDF." }, { status: 400 });
   }
 }

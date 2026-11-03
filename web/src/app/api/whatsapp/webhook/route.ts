@@ -1,3 +1,4 @@
+import { timingSafeEqual } from "node:crypto";
 import { after, NextResponse } from "next/server";
 import { ingestWhatsAppAgentPayload } from "@/server/ai/whatsapp/ingest";
 import { processWhatsAppAgentQueue } from "@/server/ai/whatsapp/runtime";
@@ -23,11 +24,22 @@ function compact(payload: unknown) {
   ) as unknown;
 }
 
+function secureEqual(left: string, right: string) {
+  const a = Buffer.from(left);
+  const b = Buffer.from(right);
+  return a.length === b.length && timingSafeEqual(a, b);
+}
+
+/** Preferir header; query só por compatibilidade com registros antigos da Stevo. */
 function tokenFrom(request: Request) {
-  const url = new URL(request.url);
-  const query = url.searchParams.get("token") ?? "";
   const header = request.headers.get("x-webhook-token") ?? "";
-  return query || header;
+  if (header) return header;
+  return new URL(request.url).searchParams.get("token") ?? "";
+}
+
+function authorized(request: Request, expected: string) {
+  const provided = tokenFrom(request);
+  return Boolean(expected) && secureEqual(provided, expected);
 }
 
 export async function POST(request: Request) {
@@ -35,7 +47,7 @@ export async function POST(request: Request) {
   if (!expected) {
     return NextResponse.json({ error: "STEVO_WEBHOOK_TOKEN não configurado." }, { status: 503 });
   }
-  if (tokenFrom(request) !== expected) {
+  if (!authorized(request, expected)) {
     recordInbound({ event: "token" }, false);
     return NextResponse.json({ error: "Token de webhook inválido." }, { status: 401 });
   }
@@ -63,9 +75,12 @@ export async function POST(request: Request) {
 
 export async function GET(request: Request) {
   const expected = webhookToken();
-  if (!expected || tokenFrom(request) !== expected) {
+  if (!expected || !authorized(request, expected)) {
     return NextResponse.json({ error: "Token de webhook inválido." }, { status: 401 });
   }
-  if (new URL(request.url).searchParams.has("debug")) return NextResponse.json({ ok: true, recent: seen });
+  // Dump de payloads só em desenvolvimento explícito — nunca em produção.
+  if (process.env.NODE_ENV !== "production" && process.env.STEVO_WEBHOOK_DEBUG === "true" && new URL(request.url).searchParams.has("debug")) {
+    return NextResponse.json({ ok: true, recent: seen });
+  }
   return NextResponse.json({ ok: true, service: "tawper-stevo-proof" });
 }

@@ -163,7 +163,7 @@ export type LiveChat = ReturnType<typeof useLiveChat>;
  * @param enabled  liga a carga e a atualização (as janelas desligam quando tudo está fechado).
  * @param intervalMs intervalo de atualização enquanto ligado.
  */
-export function useLiveChat({ initial, enabled = true, intervalMs = 1000 }: { initial?: Snapshot | null; enabled?: boolean; intervalMs?: number } = {}) {
+export function useLiveChat({ initial, enabled = true, intervalMs = 3000 }: { initial?: Snapshot | null; enabled?: boolean; intervalMs?: number } = {}) {
   const user = useCurrentUser();
   const manager = isManager(user);
   const agent: Agent = useMemo(() => ({ id: user?.id ?? "", name: user?.short || user?.name || "", role: user?.role ?? "vendedor" }), [user]);

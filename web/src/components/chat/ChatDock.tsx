@@ -366,7 +366,7 @@ export function ChatDock() {
   const onConversas = pathname.startsWith("/conversas");
   const visible = !onConversas && (dock.list !== "closed" || dock.chats.length > 0);
   const expanded = dock.list === "open" || dock.chats.some((c) => !c.min);
-  const chat = useLiveChat({ enabled: visible, intervalMs: expanded ? 1500 : 6000 });
+  const chat = useLiveChat({ enabled: visible, intervalMs: expanded ? 3000 : 8000 });
 
   if (!visible) return null;
   // A conversa mais recente fica colada na lista (à direita), como no Messenger.

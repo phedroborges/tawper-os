@@ -64,8 +64,8 @@ async function answerJob(job: WhatsAppAgentJob) {
       console.warn("[agente] não foi possível criar os perfis da equipe", error instanceof Error ? error.message : error);
     }
   }
-  if (identity.role === "vendedor" && !resolved.linked) {
-    const text = `Olá, ${resolved.user.short}. Seu número está autorizado, mas seu perfil de vendedor ainda não está vinculado à carteira no Tawper. Peça a um gestor para concluir esse vínculo.`;
+  if (!resolved.linked) {
+    const text = `Olá, ${resolved.user.short}. Seu número está autorizado, mas ainda não está vinculado a um perfil do Tawper. Peça a um gestor para concluir esse vínculo (profileId na allowlist).`;
     const sent = await sendWhatsAppAgentText(sender, text);
     await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
     return;

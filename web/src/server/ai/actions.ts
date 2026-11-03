@@ -236,7 +236,13 @@ JSON: { "texto": string, "blocos": [
 }
 
 export async function confirmAssistantAction(input: { actorId: string; action: AssistantActionProposal }): Promise<AssistantActionExecution> {
-  return executePlannedAction(input);
+  const { requireSessionCookies } = await import("@/server/auth/session");
+  const { ensureOperators } = await import("@/server/persist");
+  const session = await requireSessionCookies();
+  const actors = await ensureOperators().catch(() => ({} as Record<string, string>));
+  const actorId = actors[session.userId] ?? session.userId;
+  const proposalActor = input.action.actorId === session.userId ? actorId : input.action.actorId;
+  return executePlannedAction({ actorId, action: { ...input.action, actorId: proposalActor } });
 }
 
 export async function aiCopilot(input: { context: unknown; fallback: CopilotResult }): Promise<CopilotResult> {

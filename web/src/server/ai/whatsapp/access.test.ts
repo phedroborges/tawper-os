@@ -15,25 +15,24 @@ const users: User[] = [{
 }];
 
 describe("vínculo do WhatsApp com o perfil comercial", () => {
-  it("vincula vendedor por nome e mantém o papel da lista autorizada", () => {
-    const result = resolveWhatsAppAgentUser({ phone: "5517981640028", name: "Douglas", role: "vendedor" }, users);
+  it("vincula vendedor por nome e usa o papel do CRM", () => {
+    const result = resolveWhatsAppAgentUser({ phone: "5517981640028", name: "Douglas", role: "gestor" }, users);
     expect(result.linked).toBe(true);
     expect(result.user.id).toBe(users[0].id);
     expect(result.user.role).toBe("vendedor");
   });
 
-  it("permite gestor sintético sem fingir vínculo de perfil", () => {
+  it("sem vínculo não promove papel da allowlist como se fosse CRM", () => {
     const result = resolveWhatsAppAgentUser({ phone: "5511999990001", name: "Pessoa Admin", role: "admin" }, users);
     expect(result.linked).toBe(false);
-    expect(result.user.role).toBe("admin");
     expect(result.user.id).toContain("whatsapp-");
   });
 
-  it("vincula pelo profileId mesmo que nome e telefone não batam", () => {
+  it("vincula pelo profileId e ignora role da allowlist", () => {
     const result = resolveWhatsAppAgentUser({ phone: "5564999430898", name: "Phedro", role: "admin", profileId: users[0].id }, users);
     expect(result.linked).toBe(true);
     expect(result.user.id).toBe(users[0].id);
-    expect(result.user.role).toBe("admin");
+    expect(result.user.role).toBe("vendedor");
   });
 
   it("profileId que não está na equipe ativa não vira vínculo", () => {

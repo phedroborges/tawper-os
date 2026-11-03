@@ -1,5 +1,6 @@
 import "server-only";
 
+import { randomBytes, randomUUID } from "node:crypto";
 import postgres from "postgres";
 import { USERS } from "@/lib/constants";
 import { stageKeyToDb } from "@/lib/crm-map";
@@ -67,9 +68,11 @@ async function loadOperators(): Promise<Record<string, string>> {
       let id = byEmail.get(email);
 
       if (!id) {
+        // Senha aleatória descartável: o app usa cookie de sessão + TAWPER_APP_PASSWORD, não este login.
+        const password = `Tw.${randomUUID()}.${randomBytes(12).toString("base64url")}`;
         const created = await sb.auth.admin.createUser({
           email,
-          password: `Tawper#2026.${user.short}`,
+          password,
           email_confirm: true,
           user_metadata: { full_name: user.name, short_name: user.short },
         });
