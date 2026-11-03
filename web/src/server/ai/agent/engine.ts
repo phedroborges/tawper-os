@@ -61,17 +61,20 @@ async function callModel(messages: Message[], tools: AgentTool[], deadline: numb
 }
 
 const FILLER = /mais alguma coisa|precisar de (mais )?(algo|alguma)|(é|e) só (avisar|chamar|falar|mandar)|estou à disposição/i;
+/** "⚠️ A cidade foi atualizada…", "⚠️ Lembre-se de ligar amanhã": aviso que só repete o comprovante. */
+const RESTATE =
+  /\b(registrei|agendei|cadastrei|criei|reagendei|anotei|atualizei|adicionei|exclu[ií]|removi|conclu[ií]|marquei|cancelei|tirei)\b|\b(foi|foram|est[aá]|est[aã]o|fica|ficou|ficam)\s+(\S+\s+)?(registrad|agendad|cadastrad|reagendad|criad|atualizad|adicionad|exclu[ií]d|removid|conclu[ií]d|marcad|cancelad)[oa]s?\b|\b(alterad|atualizad|registrad|adicionad|cancelad|agendad|reagendad|conclu[ií]d|exclu[ií]d|removid|feit)[oa]s?\b|^⚠️\s*(lembre|n[aã]o esque)/i;
 
 /**
  * Comprovantes primeiro (o que o banco confirmou), depois o que o modelo tem a acrescentar.
- * Depois de gravar, só sobra do texto do modelo o que é pergunta ou aviso (⚠️): o resto repetiria o comprovante.
+ * Depois de gravar, só sobra do texto do modelo o que é pergunta ou aviso novo (⚠️): o resto repetiria o comprovante.
  */
 export function composeReply(texto: string, recibos: string[]) {
   if (!recibos.length) return texto.trim();
   const extra = texto
     .split(/\n\s*\n/)
     .map((part) => part.trim())
-    .filter((part) => (part.includes("?") || part.startsWith("⚠️")) && !FILLER.test(part))
+    .filter((part) => (part.includes("?") || (part.startsWith("⚠️") && !RESTATE.test(part))) && !FILLER.test(part))
     .join("\n\n");
   return [recibos.join("\n"), extra].filter(Boolean).join("\n\n");
 }
@@ -96,7 +99,7 @@ export async function runAgent(input: {
   ];
   const byName = new Map(input.tools.map((tool) => [tool.name, tool]));
   const done = new Map<string, ToolOutput>();
-  const result: AgentResult = { texto: "", gravou: [], passos: [], contexto: [], marcas: [], tokens: { entrada: 0, saida: 0 } };
+  const result: AgentResult = { texto: "", gravou: [], passos: [], contexto: [], desfazer: [], marcas: [], tokens: { entrada: 0, saida: 0 } };
   const recibos: string[] = [];
   const finish = (texto: string): AgentResult => ({ ...result, acao: input.ctx.acao, texto: composeReply(texto, recibos) });
 
@@ -155,6 +158,7 @@ export async function runAgent(input: {
           if (tool.writes && output.wrote) {
             result.gravou.push(tool.name);
             if (output.recibo) recibos.push(output.recibo);
+            if (output.desfazer?.ops.length) result.desfazer.push(output.desfazer);
           }
           if (output.memo) result.contexto.push(output.memo);
           if (output.empresaId && (!result.empresaId || output.wrote)) result.empresaId = output.empresaId;

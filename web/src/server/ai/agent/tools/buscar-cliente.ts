@@ -32,7 +32,8 @@ export const buscarCliente: AgentTool = {
       .slice(0, 2)
       .map((item) => {
         const tarefas = item.tarefas_pendentes.slice(0, 3).map((task) => `tarefa_id=${task.id} "${task.titulo}" ${task.prazo}`).join("; ");
-        return `${item.nome} empresa_id=${item.id}${tarefas ? ` (pendentes: ${tarefas})` : ""}`;
+        const contatos = item.contatos.slice(0, 3).map((contact) => `${contact.nome} contato_id=${contact.id}`).join("; ");
+        return `${item.nome} empresa_id=${item.id}${tarefas ? ` (pendentes: ${tarefas})` : ""}${contatos ? ` (contatos: ${contatos})` : ""}`;
       })
       .join(" | ");
     return { data: { ok: true, encontrados: found.length, clientes }, memo: memo || undefined };

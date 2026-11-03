@@ -23,6 +23,7 @@ vi.mock("@/server/persist", async () => {
     addActivityRecord: recorder("addActivityRecord", () => "e0000000-0000-4000-8000-0000000000aa"),
     addContactRecord: recorder("addContactRecord", () => "f0000000-0000-4000-8000-0000000000aa"),
     completeActivityRecord: recorder("completeActivityRecord", () => "e0000000-0000-4000-8000-0000000000bb"),
+    updateCompanyRecord: recorder("updateCompanyRecord", () => undefined),
     registerCompany: recorder("registerCompany", (input) => {
       const { company, contacts, firstActivity } = input as { company: { nome: string; cidade: string }; contacts: { nome: string }[]; firstActivity: { titulo: string; dueAt: string; tipo: string } };
       return {
@@ -37,6 +38,17 @@ vi.mock("@/server/persist", async () => {
 vi.mock("@/server/commands", async () => {
   const { recorder } = await import("./recorder");
   return { runCommand: recorder("runCommand", () => null) };
+});
+vi.mock("../undo", async () => {
+  const { recorder } = await import("./recorder");
+  // Leituras para montar o desfazer não contam como gravação.
+  return {
+    companyRow: async () => ({}),
+    lastInteractionId: async () => null,
+    updateContactRow: recorder("updateContactRow", () => ({})),
+    deleteContactRow: recorder("deleteContactRow", () => ({})),
+    cancelActivityRow: recorder("cancelActivityRow", () => undefined),
+  };
 });
 vi.mock("../../action-engine", async () => {
   const { recorder } = await import("./recorder");
@@ -88,7 +100,7 @@ type Caso = { nome: string; turnos: string[]; checar: (r: Rodada) => unknown[] }
 
 /** Vale para todo caso: o texto do modelo não repete o comprovante, não vaza anotação interna, não narra a busca. */
 function geral(r: Rodada): unknown[] {
-  const comRecibo = r.respostas.filter((texto) => /^[✅📅]/u.test(texto));
+  const comRecibo = r.respostas.filter((texto) => /^(✅|📅|✏️|🗑️)/u.test(texto));
   const extras = comRecibo.map((texto) => texto.split("\n\n").slice(1).join("\n\n"));
   const repete = /[✅📅]|\b(registrei|agendei|cadastrei|criei|reagendei|anotei)\b|\b(registrad|agendad|cadastrad|reagendad|criad)[oa]s?\b/i;
   return [
@@ -215,6 +227,54 @@ const CASOS: Caso[] = [
     nome: "Cliente de outra carteira",
     turnos: ["Liguei pro comprador da Usina Colorado, ele pediu uma visita semana que vem"],
     checar: (r) => [escritas(r) > 0 && "gravou na carteira de outro vendedor", !/paulo|carteira|acesso/i.test(ultima(r)) && "não explicou que é de outra carteira"],
+  },
+  {
+    nome: "Corrigir cadastro e acrescentar contato",
+    turnos: ["Na Ativos, corrige aí: eles ficam em Jataí, não em Mineiros. E tem 12 colhedoras. Ah, e o mecânico de lá é o Tiago, o zap dele é 64 98111-2233."],
+    checar: (r) => {
+      const upd = named(r, "updateCompanyRecord").map((call) => ({ id: arg<string>(call), patch: arg<{ cidade?: string; colhedoras?: number }>(call, 1) }));
+      const patch = Object.assign({}, ...upd.filter((item) => item.id === IDS.ativos).map((item) => item.patch)) as { cidade?: string; colhedoras?: number };
+      const tiago = named(r, "addContactRecord").map((call) => arg<{ nome: string; whatsapp?: string; papel: string; companyId: string }>(call)).find((c) => /tiago/i.test(c.nome));
+      return [
+        !/jata/i.test(patch.cidade ?? "") && "não corrigiu a cidade",
+        patch.colhedoras !== 12 && "não gravou as 12 colhedoras",
+        !tiago && "não cadastrou o Tiago",
+        tiago && tiago.companyId !== IDS.ativos && "Tiago no cliente errado",
+        tiago && !tiago.whatsapp && "Tiago sem WhatsApp",
+        registros(r, IDS.ativos) > 0 && "registrou atividade sem ninguém ter feito nada",
+      ];
+    },
+  },
+  {
+    nome: "Contato saiu da empresa",
+    turnos: ["O João da Santa Helena saiu da usina, pode tirar ele dos contatos."],
+    checar: (r) => {
+      const del = named(r, "deleteContactRow").map((call) => arg<string>(call, 1));
+      return [
+        del.length !== 1 && `excluiu ${del.length} contato(s)`,
+        del[0] && del[0] !== "f0000000-0000-4000-8000-000000000003" && "excluiu o contato errado",
+      ];
+    },
+  },
+  {
+    nome: "Tirar tarefa da agenda",
+    turnos: ["Cancela aquela visita técnica da Santa Helena, o cliente desmarcou e não vai ter mais."],
+    checar: (r) => {
+      const cancel = named(r, "cancelActivityRow").map((call) => arg<string>(call, 1));
+      return [
+        cancel.length !== 1 && `cancelou ${cancel.length} tarefa(s)`,
+        cancel[0] && cancel[0] !== IDS.visitaSantaHelena && "cancelou a tarefa errada",
+        named(r, "completeActivityRecord").length > 0 && "concluiu em vez de cancelar",
+      ];
+    },
+  },
+  {
+    nome: "Concluir tarefa direto",
+    turnos: ["Pode dar baixa na ligação da Joana de hoje, já falei com ela, tá tudo certo."],
+    checar: (r) => [
+      !named(r, "completeActivityRecord").some((call) => arg(call) === IDS.tarefaJoana) && "não concluiu a tarefa da Joana",
+      named(r, "cancelActivityRow").length > 0 && "cancelou em vez de concluir",
+    ],
   },
   {
     nome: "Avançar etapa",

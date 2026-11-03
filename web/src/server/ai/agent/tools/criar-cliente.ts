@@ -7,7 +7,9 @@ import { registerCompany } from "@/server/persist";
 import { fmtWhen } from "../dates";
 import { findCompanies } from "../search";
 import type { AgentTool } from "../types";
-import { isUuid, loadScope, str } from "./shared";
+import { isUuid, loadScope, str, userAsked } from "./shared";
+
+export const PEDIU_CADASTRO = /cadastr|cliente novo|novo cliente|lead novo|novo lead|\b(cria|criar|crie|adiciona|adicionar|registra|registrar|inclui|incluir)\b.{0,30}\b(cliente|empresa|usina|lead)\b/;
 
 type Base = { companies: Company[]; contacts: Contact[]; users: User[] };
 type NewClient = Parameters<typeof registerCompany>[0];
@@ -150,6 +152,9 @@ export const criarCliente: AgentTool = {
     additionalProperties: false,
   },
   async run(args, ctx) {
+    if (!userAsked(ctx, PEDIU_CADASTRO)) {
+      return { data: { ok: false, erro: "O usuário não pediu para cadastrar. Não cadastre: diga que esse cliente não está no CRM e pergunte se ele quer cadastrar." } };
+    }
     const { snapshot, ownerName } = await loadScope(ctx.actor);
     const plan = planNewClient(args, snapshot, ctx.actor);
     if (!plan.ok) return { data: plan };
@@ -166,6 +171,7 @@ export const criarCliente: AgentTool = {
         `📅 Próximo passo: ${saved.activity.titulo}, ${when}.`,
       ].filter(Boolean).join("\n"),
       memo: `${saved.company.nome} empresa_id=${saved.company.id}: cadastrada agora nesta conversa; próximo passo tarefa_id=${saved.activity.id} "${saved.activity.titulo}" ${when}`,
+      desfazer: { ops: [{ op: "apagar_empresa", id: saved.company.id }], resumo: `cadastro da ${saved.company.nome}` },
       data: {
         ok: true,
         empresa: { id: saved.company.id, codigo: saved.company.codigo, nome: saved.company.nome },

@@ -2,6 +2,7 @@ import type { AssistantAnswer } from "@/lib/ai";
 import type { AssistantActionProposal } from "@/lib/assistant-actions";
 import type { ChatTurn } from "../openai";
 import type { User } from "@/lib/types";
+import type { Undo } from "./undo";
 
 export type JsonSchema = Record<string, unknown>;
 
@@ -9,8 +10,9 @@ export type JsonSchema = Record<string, unknown>;
  * O que uma ferramenta devolve ao modelo. `reply` encerra a conversa com esse texto, sem nova rodada do modelo.
  * `recibo` é a linha que o usuário vê confirmando o que foi gravado: sai do resultado real, nunca do modelo.
  * `memo` é uma anotação interna (ids, nomes) que volta ao modelo nas próximas mensagens da conversa.
+ * `desfazer` é o contrário do que foi gravado: o usuário aplica respondendo DESFAZER.
  */
-export type ToolOutput = { data: unknown; reply?: string; wrote?: boolean; recibo?: string; memo?: string; empresaId?: string };
+export type ToolOutput = { data: unknown; reply?: string; wrote?: boolean; recibo?: string; memo?: string; empresaId?: string; desfazer?: Undo };
 
 export interface AgentContext {
   actor: User;
@@ -52,6 +54,8 @@ export interface AgentResult {
   passos: AgentStep[];
   /** Anotações internas para as próximas mensagens (ids e nomes do que foi lido ou gravado). */
   contexto: string[];
+  /** Como desfazer o que foi gravado nesta rodada, na ordem em que foi gravado. */
+  desfazer: Undo[];
   /** Sinais para a revisão: ferramenta recusou, exceção, limite de passos, modelo caiu no meio. */
   marcas: string[];
   empresaId?: string;

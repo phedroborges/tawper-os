@@ -43,6 +43,17 @@ describe("runAgent", () => {
     const texto = "Registrei a ligação com o Pedro e agendei a visita.\n\n⚠️ O Pedro não tem WhatsApp cadastrado.\n\nConcluo a tarefa do Marcelo também?\n\nSe precisar de mais alguma coisa, é só avisar!";
     expect(composeReply(texto, ["✅ Registrado."])).toBe("✅ Registrado.\n\n⚠️ O Pedro não tem WhatsApp cadastrado.\n\nConcluo a tarefa do Marcelo também?");
     expect(composeReply("A Colorado é do Paulo.", [])).toBe("A Colorado é do Paulo.");
+    expect(composeReply("⚠️ A cidade foi atualizada para Jataí.\n\n⚠️ Lembre-se de ligar amanhã.\n\n⚠️ Fica agendada a visita.", ["✏️ Atualizado."])).toBe("✏️ Atualizado.");
+  });
+
+  it("junta o desfazer só do que foi gravado de fato", async () => {
+    const ok = writer(async () => ({ wrote: true, recibo: "✅ A.", data: { ok: true }, desfazer: { ops: [{ op: "cancelar_tarefa", id: "t1" }], resumo: "A" } }));
+    const recusou = { ...writer(async () => ({ data: { ok: false, erro: "x" }, desfazer: { ops: [{ op: "cancelar_tarefa", id: "t2" }], resumo: "B" } })), name: "outra" } as AgentTool;
+    fetchMock
+      .mockResolvedValueOnce(model({ content: null, tool_calls: [{ id: "a", function: { name: "gravar", arguments: "{}" } }, { id: "b", function: { name: "outra", arguments: "{}" } }] }))
+      .mockResolvedValueOnce(model({ content: "" }));
+    const result = await run([ok, recusou]);
+    expect(result?.desfazer).toEqual([{ ops: [{ op: "cancelar_tarefa", id: "t1" }], resumo: "A" }]);
   });
 
   it("sem nada a acrescentar, responde só com o comprovante", async () => {

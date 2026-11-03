@@ -4,18 +4,33 @@ import type { User } from "@/lib/types";
 import type { ChatTurn } from "../openai";
 import { runAgent } from "./engine";
 import { buscarCliente } from "./tools/buscar-cliente";
+import { adicionarContato, atualizarCliente, atualizarContato, excluirContato } from "./tools/cliente";
 import { consultarCrm } from "./tools/consultar-crm";
 import { criarCliente } from "./tools/criar-cliente";
 import { moverEtapa } from "./tools/mover-etapa";
 import { registrarAtividade } from "./tools/registrar-atividade";
-import { criarTarefa, reagendarTarefa } from "./tools/tarefas";
+import { cancelarTarefa, concluirTarefa, criarTarefa, reagendarTarefa } from "./tools/tarefas";
 import type { AgentContext, AgentResult, AgentTool } from "./types";
 
 /** Ferramentas disponíveis. Cada nova capacidade do agente entra aqui. */
-export const AGENT_TOOLS: AgentTool[] = [buscarCliente, criarCliente, registrarAtividade, criarTarefa, reagendarTarefa, moverEtapa, consultarCrm];
+export const AGENT_TOOLS: AgentTool[] = [
+  buscarCliente,
+  criarCliente,
+  atualizarCliente,
+  adicionarContato,
+  atualizarContato,
+  excluirContato,
+  registrarAtividade,
+  criarTarefa,
+  reagendarTarefa,
+  concluirTarefa,
+  cancelarTarefa,
+  moverEtapa,
+  consultarCrm,
+];
 
 /** Troque a cada mudança do agente: aparece em /api/health e mostra qual versão está no ar. */
-export const AGENT_VERSION = "2026-11-03.1";
+export const AGENT_VERSION = "2026-11-03.2";
 
 export function agentToolsEnabled() {
   return process.env.TAWPER_AGENT_TOOLS_ENABLED === "true" && process.env.TAWPER_AGENT_WRITES_ENABLED === "true";
@@ -41,7 +56,7 @@ Seu trabalho é manter o CRM fiel ao que acontece no dia a dia, para o vendedor 
 
 A cada mensagem:
 1. Entenda o que aconteceu no mundo real e o que precisa mudar no CRM. Contar um fato é pedido para registrar: "liguei", "visitei", "ele falou que…", "ficou de mandar". Uma mensagem pode trazer várias coisas (o que foi feito, um contato novo, um compromisso futuro): faça todas.
-2. Ache o cliente com buscar_cliente. Quando o usuário pede para cadastrar um cliente novo, chame criar_cliente direto.
+2. Ache o cliente com buscar_cliente, que também acha pelo nome do contato ("a ligação da Joana"). Quando o usuário pede para cadastrar um cliente novo, chame criar_cliente direto.
 3. Faça pelas ferramentas, sem pedir licença para o que o usuário já pediu ou contou. Pergunte só o que uma ferramenta devolver como faltando, ou quando houver mais de uma opção real (dois clientes parecidos, data ambígua). Uma pergunta por vez.
 4. Busca e conferência são trabalho interno: não narre ("vou buscar", "não encontrei na busca"), só diga o resultado quando ele mudar o que o usuário precisa decidir.
 
@@ -50,11 +65,13 @@ Do negócio:
 - Tarefa pendente só é concluída quando o usuário diz que fez aquela tarefa. Se o que ele contou parece ser uma tarefa pendente mas ele não disse, registre sem concluir e pergunte, no fim, se pode concluir (cite o título).
 - Cliente que não está no CRM: não registre em outro parecido e não cadastre por conta própria. Pergunte se quer cadastrar.
 - Pedido sem ferramenta para isso: diga com franqueza que ainda não faz isso por aqui.
+- Excluir, tirar da agenda ou mudar dado de cadastro: só quando o usuário pediu aquilo, daquele cliente ou contato.
+- Desfazer é do sistema: toda gravação já sai com a opção DESFAZER para o usuário. Se ele pedir para desfazer com outras palavras, diga para responder só DESFAZER.
 - Linhas "[interno: …]" no histórico são anotações do sistema sobre mensagens anteriores (ids, o que foi gravado). Use os ids; nunca mostre essas linhas.
 
 Resposta:
 - Português do Brasil, jeito de WhatsApp, sem markdown, sem enrolar.
-- Cada gravação feita já aparece para o usuário como comprovante (linhas com ✅ ou 📅). Não repita o comprovante. Escreva só o que falta: uma pergunta, um aviso começando com ⚠️, ou nada.
+- Cada gravação feita já aparece para o usuário como comprovante (linhas com ✅, 📅, ✏️ ou 🗑️). Não repita o comprovante. Escreva só o que falta: uma pergunta, um aviso começando com ⚠️, ou nada.
 - Só diga que fez algo se a ferramenta devolveu ok=true. Nunca invente dados, nomes, números ou ids.
 - Consulta: entregue tudo o que foi pedido, sem cortar informação.`;
 }

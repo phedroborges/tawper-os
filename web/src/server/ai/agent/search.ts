@@ -74,8 +74,8 @@ export function companyBrief(
     responsavel: ownerName(company.ownerId),
     contatos: base.contacts
       .filter((contact) => contact.companyId === company.id && contact.ativo)
-      .slice(0, 4)
-      .map((contact) => ({ nome: contact.nome, cargo: contact.cargo, papel: contact.papel, whatsapp: contact.whatsapp })),
+      .slice(0, 8)
+      .map((contact) => ({ id: contact.id, nome: contact.nome, cargo: contact.cargo, papel: contact.papel, whatsapp: contact.whatsapp, email: contact.email })),
     negocio_aberto: deal ? { id: deal.id, funil: FUNNELS[deal.funnel]?.nome ?? deal.funnel, etapa: stageName(deal) } : null,
     tarefas_pendentes: pending.slice(0, 6).map((task) => ({ id: task.id, tipo: task.tipo, titulo: task.titulo, prazo: fmtWhen(task.dueAt) })),
   };

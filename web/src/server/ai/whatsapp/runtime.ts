@@ -9,6 +9,7 @@ import { ensureOperators } from "@/server/persist";
 import { aiAssistant } from "../actions";
 import { executeAssistantAction } from "../action-engine";
 import { AGENT_VERSION, agentToolsEnabled, runToolAgent } from "../agent";
+import { runUndo } from "../agent/undo";
 import { resolveWhatsAppAgentUser } from "./access";
 import { AUDIO_FAILED, AUDIO_PREFIX } from "./audio";
 import { findWhatsAppAgentIdentity } from "./config";
@@ -18,9 +19,11 @@ import {
   bindWhatsAppAgentSessionProfile,
   claimPendingWhatsAppAction,
   claimWhatsAppAgentJob,
+  claimWhatsAppUndo,
   findWhatsAppAgentReply,
   finishWhatsAppAgentJob,
   finishPendingWhatsAppAction,
+  finishWhatsAppUndo,
   flagLastWhatsAppAgentRun,
   loadWhatsAppAgentHistory,
   recordWhatsAppAgentReply,
@@ -99,6 +102,22 @@ async function answerJob(job: WhatsAppAgentJob) {
       await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
       return;
     }
+  } else if (/^(desfazer|desfaz|desfaca|desfaz isso|pode desfazer|desfazer isso)$/.test(normalizedQuestion)) {
+    const undo = await claimWhatsAppUndo(sessionId);
+    let text = "Não tem nada recente para desfazer por aqui. Se algo ficou errado, me diga o que corrigir.";
+    if (undo) {
+      try {
+        await runUndo(resolved.user.id, undo.desfazer);
+        await finishWhatsAppUndo(undo.id, "done");
+        text = `↩️ Desfeito: ${undo.desfazer.map((item) => item.resumo).join("; ")}.`;
+      } catch (error) {
+        await finishWhatsAppUndo(undo.id, "failed");
+        text = `⚠️ Não consegui desfazer: ${error instanceof Error ? error.message : "erro no banco"}. Nada foi alterado; confira no sistema.`;
+      }
+    }
+    const sent = await sendWhatsAppAgentText(sender, text);
+    await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
+    return;
   } else if (/^(errou|errado|ta errado|esta errado)$/.test(normalizedQuestion)) {
     // Marcação manual para a revisão: o atendimento anterior entra na lista de falhas.
     const flagged = await flagLastWhatsAppAgentRun(sessionId, "usuario_marcou_erro").catch(() => false);
@@ -139,10 +158,11 @@ async function answerJob(job: WhatsAppAgentJob) {
     : null;
   console.info("[agente] caminho da resposta", toolsOn ? (viaFerramentas ? "ferramentas" : "fluxo antigo (o modelo não respondeu com ferramentas)") : "fluxo antigo (TAWPER_AGENT_TOOLS_ENABLED ou TAWPER_AGENT_WRITES_ENABLED desligada)");
   const answer = viaFerramentas ? { texto: viaFerramentas.texto, acao: viaFerramentas.acao } : await ask(question, false);
-  const text = renderWhatsAppAnswer(answer);
+  const desfazer = viaFerramentas?.desfazer ?? [];
+  const text = `${renderWhatsAppAnswer(answer)}${desfazer.length ? "\n\n↩️ Errei? Responda DESFAZER." : ""}`;
   const sent = await sendWhatsAppAgentText(sender, text);
   const contexto = viaFerramentas?.contexto.join(" | ");
-  await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId, action: answer.acao, contexto });
+  await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId, action: answer.acao, contexto, desfazer });
   await recordWhatsAppAgentRun({
     sessionId,
     correlationId: job.id,

@@ -19,6 +19,9 @@ const mocks = vi.hoisted(() => ({
   flagRun: vi.fn(),
   toolsOn: vi.fn(() => false),
   runTool: vi.fn(),
+  claimUndo: vi.fn(),
+  finishUndo: vi.fn(),
+  runUndo: vi.fn(),
 }));
 
 vi.mock("@/lib/ai", () => ({ assistantAnswer: vi.fn(() => ({ texto: "fallback" })) }));
@@ -28,6 +31,7 @@ vi.mock("@/server/persist", () => ({ ensureOperators: mocks.ensureOperators }));
 vi.mock("../actions", () => ({ aiAssistant: mocks.aiAssistant }));
 vi.mock("../action-engine", () => ({ executeAssistantAction: mocks.executeAction }));
 vi.mock("../agent", () => ({ AGENT_VERSION: "teste", agentToolsEnabled: mocks.toolsOn, runToolAgent: mocks.runTool }));
+vi.mock("../agent/undo", () => ({ runUndo: mocks.runUndo }));
 vi.mock("./access", () => ({ resolveWhatsAppAgentUser: mocks.resolveUser }));
 vi.mock("./config", () => ({ findWhatsAppAgentIdentity: vi.fn(() => ({ phone: "5517999999999", name: "Murilo", role: "gestor" })) }));
 vi.mock("./render", () => ({ renderWhatsAppAnswer: vi.fn((answer) => answer.texto) }));
@@ -43,6 +47,8 @@ vi.mock("./store", () => ({
   recordWhatsAppAgentReply: mocks.recordReply,
   recordWhatsAppAgentRun: mocks.recordRun,
   flagLastWhatsAppAgentRun: mocks.flagRun,
+  claimWhatsAppUndo: mocks.claimUndo,
+  finishWhatsAppUndo: mocks.finishUndo,
 }));
 
 import { processWhatsAppAgentQueue } from "./runtime";
@@ -176,6 +182,49 @@ describe("execução de ações pelo WhatsApp", () => {
     expect(mocks.flagRun).toHaveBeenCalledWith("00000000-0000-4000-8000-000000000090", "usuario_marcou_erro");
     expect(mocks.send).toHaveBeenCalledWith("5517999999999", expect.stringContaining("revisão"));
     expect(mocks.aiAssistant).not.toHaveBeenCalled();
+  });
+
+  it("gravação sai com a opção DESFAZER, guardada junto da resposta", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("cadastra a Pitangueiras em Pitangueiras")).mockResolvedValue(null);
+    mocks.toolsOn.mockReturnValue(true);
+    const desfazer = [{ ops: [{ op: "apagar_empresa", id: "c9" }], resumo: "cadastro da Pitangueiras" }];
+    mocks.runTool.mockResolvedValue({ texto: "✅ Cliente cadastrado.", gravou: ["criar_cliente"], passos: [], contexto: [], desfazer, marcas: [], tokens: { entrada: 1, saida: 1 } });
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.send).toHaveBeenCalledWith("5517999999999", "✅ Cliente cadastrado.\n\n↩️ Errei? Responda DESFAZER.");
+    expect(mocks.recordReply).toHaveBeenCalledWith(expect.objectContaining({ desfazer }));
+    mocks.toolsOn.mockReturnValue(false);
+  });
+
+  it("DESFAZER aplica o contrário da última gravação, sem chamar a IA", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("Desfazer.")).mockResolvedValue(null);
+    const desfazer = [{ ops: [{ op: "apagar_empresa", id: "c9" }], resumo: "cadastro da Pitangueiras" }];
+    mocks.claimUndo.mockResolvedValue({ id: "m1", desfazer });
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.runUndo).toHaveBeenCalledWith(actor.id, desfazer);
+    expect(mocks.finishUndo).toHaveBeenCalledWith("m1", "done");
+    expect(mocks.send).toHaveBeenCalledWith("5517999999999", "↩️ Desfeito: cadastro da Pitangueiras.");
+    expect(mocks.aiAssistant).not.toHaveBeenCalled();
+  });
+
+  it("DESFAZER que falha no banco avisa e deixa para tentar de novo", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("desfaz")).mockResolvedValue(null);
+    mocks.claimUndo.mockResolvedValue({ id: "m1", desfazer: [{ ops: [], resumo: "x" }] });
+    mocks.runUndo.mockRejectedValueOnce(new Error("banco fora"));
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.finishUndo).toHaveBeenCalledWith("m1", "failed");
+    expect(mocks.send).toHaveBeenCalledWith("5517999999999", expect.stringContaining("Não consegui desfazer: banco fora"));
+  });
+
+  it("DESFAZER sem nada recente responde sem mexer no banco", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("desfazer")).mockResolvedValue(null);
+    mocks.claimUndo.mockResolvedValue(null);
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.runUndo).not.toHaveBeenCalled();
+    expect(mocks.send).toHaveBeenCalledWith("5517999999999", expect.stringContaining("nada recente"));
   });
 
   it("não tenta criar perfis quando o número já está vinculado", async () => {

@@ -4,6 +4,7 @@ import postgres from "postgres";
 import { TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import type { AssistantActionProposal } from "@/lib/assistant-actions";
 import type { AgentStep } from "../agent/types";
+import type { Undo } from "../agent/undo";
 
 let sql: ReturnType<typeof postgres> | null = null;
 
@@ -208,9 +209,12 @@ export async function recordWhatsAppAgentReply(input: {
   action?: AssistantActionProposal;
   /** Anotação interna (ids do que foi lido ou gravado) que volta ao modelo nas próximas mensagens. */
   contexto?: string;
+  /** Como desfazer o que esta resposta gravou; vale enquanto o usuário não responder DESFAZER. */
+  desfazer?: Undo[];
 }) {
   const action = input.action?.status === "awaiting_confirmation" ? JSON.stringify(input.action) : null;
   const contexto = input.contexto?.slice(0, 1500) || null;
+  const desfazer = input.desfazer?.length ? JSON.stringify(input.desfazer) : null;
   await db()`
     insert into public.ai_channel_messages (
       organization_id, session_id, channel, direction, external_message_id, body, metadata
@@ -222,8 +226,44 @@ export async function recordWhatsAppAgentReply(input: {
       case when ${action}::text is null then '{}'::jsonb
            else jsonb_build_object('action', ${action}::jsonb, 'action_status', 'pending') end ||
       case when ${contexto}::text is null then '{}'::jsonb
-           else jsonb_build_object('contexto', ${contexto}::text) end
+           else jsonb_build_object('contexto', ${contexto}::text) end ||
+      case when ${desfazer}::text is null then '{}'::jsonb
+           else jsonb_build_object('desfazer', ${desfazer}::jsonb, 'desfazer_status', 'pending') end
     )
+  `;
+}
+
+/**
+ * Pega a última resposta com gravação ainda desfazível (até 2 horas). Responder DESFAZER de novo
+ * pega a anterior: desfaz de trás para frente, uma resposta por vez.
+ */
+export async function claimWhatsAppUndo(sessionId: string) {
+  const rows = await db()<{ id: string; desfazer: Undo[] }[]>`
+    with candidate as (
+      select id
+        from public.ai_channel_messages
+       where session_id = ${sessionId}::uuid
+         and direction = 'out'
+         and metadata ->> 'desfazer_status' = 'pending'
+         and created_at > now() - interval '2 hours'
+       order by created_at desc
+       limit 1
+       for update skip locked
+    )
+    update public.ai_channel_messages message
+       set metadata = jsonb_set(message.metadata, '{desfazer_status}', to_jsonb('executing'::text), true)
+      from candidate
+     where message.id = candidate.id
+    returning message.id::text, message.metadata -> 'desfazer' as desfazer
+  `;
+  return rows[0] ?? null;
+}
+
+export async function finishWhatsAppUndo(messageId: string, status: "done" | "failed") {
+  await db()`
+    update public.ai_channel_messages
+       set metadata = jsonb_set(metadata, '{desfazer_status}', to_jsonb(${status === "done" ? "done" : "pending"}::text), true)
+     where id = ${messageId}::uuid
   `;
 }
 

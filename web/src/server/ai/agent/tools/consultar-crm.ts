@@ -5,7 +5,7 @@ import { str } from "./shared";
 export const consultarCrm: AgentTool = {
   name: "consultar_crm",
   description:
-    "Responde perguntas de leitura sobre o CRM: agenda e tarefas do dia, números, listas, negócios, histórico, orçamentos, conversas de WhatsApp, comparativos. Use só quando o pedido é apenas consulta ou análise, sem nada para gravar. A resposta já vem pronta para o usuário e encerra a conversa.",
+    "Responde perguntas de leitura sobre o CRM: agenda e tarefas do dia, números, listas, negócios, histórico, orçamentos, conversas de WhatsApp, comparativos. Use só quando o pedido é apenas consulta ou análise, sem nada para gravar. Nunca use para achar cliente, contato ou tarefa antes de gravar algo (para isso é buscar_cliente, que acha também pelo nome do contato). A resposta já vem pronta para o usuário e encerra a conversa.",
   writes: false,
   parameters: {
     type: "object",

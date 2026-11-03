@@ -8,8 +8,27 @@ const mocks = vi.hoisted(() => ({
   completeActivityRecord: vi.fn(async () => "e0000000-0000-4000-8000-0000000000bb"),
   runCommand: vi.fn(async () => null),
   loadCrmSnapshot: vi.fn(),
+  updateCompanyRecord: vi.fn(async () => undefined),
+  companyRow: vi.fn(async () => ({ city: "Mineiros", cnpj: null })),
+  lastInteractionId: vi.fn(async () => "b0000000-0000-4000-8000-0000000000aa"),
+  updateContactRow: vi.fn(async () => ({ whatsapp_e164: "5564999990000", job_title: "Comprador" })),
+  deleteContactRow: vi.fn(async () => ({ id: "f0000000-0000-4000-8000-000000000001", name: "Marcelo Souza" })),
+  cancelActivityRow: vi.fn(async () => undefined),
 }));
-vi.mock("@/server/persist", () => ({ addActivityRecord: mocks.addActivityRecord, addContactRecord: mocks.addContactRecord, completeActivityRecord: mocks.completeActivityRecord, registerCompany: vi.fn() }));
+vi.mock("@/server/persist", () => ({
+  addActivityRecord: mocks.addActivityRecord,
+  addContactRecord: mocks.addContactRecord,
+  completeActivityRecord: mocks.completeActivityRecord,
+  updateCompanyRecord: mocks.updateCompanyRecord,
+  registerCompany: vi.fn(),
+}));
+vi.mock("./undo", () => ({
+  companyRow: mocks.companyRow,
+  lastInteractionId: mocks.lastInteractionId,
+  updateContactRow: mocks.updateContactRow,
+  deleteContactRow: mocks.deleteContactRow,
+  cancelActivityRow: mocks.cancelActivityRow,
+}));
 vi.mock("@/server/commands", () => ({ runCommand: mocks.runCommand }));
 vi.mock("@/server/crm", () => ({ invalidateCrmReadCache: vi.fn(), loadCrmSnapshot: mocks.loadCrmSnapshot }));
 vi.mock("../action-engine", () => ({ planAssistantAction: vi.fn() }));
@@ -18,7 +37,13 @@ import { dueFrom } from "./dates";
 import { agentSystemPrompt } from "./index";
 import { consultarCrm } from "./tools/consultar-crm";
 import { planRegistro, registrarAtividade } from "./tools/registrar-atividade";
-import { planReagendar, planTarefa } from "./tools/tarefas";
+import { planReagendar, planTarefa, planFechar, concluirTarefa, cancelarTarefa, reagendarTarefa } from "./tools/tarefas";
+import { adicionarContato, atualizarCliente, atualizarContato, excluirContato, planAdicionarContato, planAtualizarCliente } from "./tools/cliente";
+
+import { PEDIU_CADASTRO } from "./tools/criar-cliente";
+import { userAsked } from "./tools/shared";
+
+const MARCELO = "f0000000-0000-4000-8000-000000000001";
 
 const base = batteryBase();
 const minhaCarteira = new Set([IDS.ativos, IDS.santaHelena]);
@@ -91,12 +116,18 @@ describe("registrar atividade", () => {
     expect(output.recibo).toContain("Ativos de Mineiros");
     expect(output.recibo).toContain("Visitar o Pedro");
     expect(output.memo).toContain(IDS.ativos);
+    // Desfazer apaga o contato, o registro e o próximo passo que esta chamada criou.
+    expect(output.desfazer?.ops).toEqual([
+      { op: "apagar_contato", id: "f0000000-0000-4000-8000-0000000000aa" },
+      { op: "apagar_registro", id: "b0000000-0000-4000-8000-0000000000aa" },
+      { op: "cancelar_tarefa", id: "e0000000-0000-4000-8000-0000000000aa" },
+    ]);
   });
 
   it("concluindo tarefa: fecha a tarefa com o resultado e cria o próximo passo na mesma chamada", async () => {
     await registrarAtividade.run(
       { empresa_id: IDS.santaHelena, tipo: "Ligação", resumo: "Joana recebeu o orçamento.", concluir_tarefa_id: IDS.tarefaJoana, proximo_passo: { tipo: "Cotação", titulo: "Mandar cotação revisada", data: future(7) } },
-      ctx,
+      { ...ctx, question: "liguei pra Joana, ela recebeu o orçamento" },
     );
     expect(mocks.completeActivityRecord).toHaveBeenCalledWith(IDS.tarefaJoana, expect.stringContaining("Joana recebeu"), expect.objectContaining({ tipo: "Cotação" }), expect.objectContaining({ actorType: "ai", requestId: `job-1:concluir:${IDS.tarefaJoana}` }));
     expect(mocks.runCommand).not.toHaveBeenCalled();
@@ -122,6 +153,79 @@ describe("tarefas", () => {
     expect(planReagendar({ tarefa_id: IDS.tarefaColorado, data: future(9) }, base, minhaCarteira)).toMatchObject({ ok: false });
     expect(planReagendar({ tarefa_id: "Visita técnica", data: future(9) }, base, minhaCarteira)).toMatchObject({ ok: false });
   });
+
+  it("desfazer do reagendamento volta a data anterior", async () => {
+    const output = await reagendarTarefa.run({ tarefa_id: IDS.visitaSantaHelena, data: future(9) }, ctx);
+    const original = base.activities.find((task) => task.id === IDS.visitaSantaHelena)!.dueAt;
+    expect(output.desfazer?.ops).toEqual([{ op: "prazo_tarefa", id: IDS.visitaSantaHelena, dueAt: original }]);
+  });
+
+  it("concluir ou tirar a última tarefa pendente pede o próximo passo antes de gravar", () => {
+    expect(planFechar({ tarefa_id: IDS.tarefaMarcelo }, base, minhaCarteira)).toMatchObject({ ok: false, faltando: ["proximo_passo"] });
+    // A Santa Helena tem outras pendentes: pode fechar uma sem pedir.
+    expect(planFechar({ tarefa_id: IDS.tarefaJoana }, base, minhaCarteira)).toMatchObject({ ok: true });
+    expect(planFechar({ tarefa_id: IDS.tarefaColorado }, base, minhaCarteira)).toMatchObject({ ok: false, erro: expect.stringContaining("carteira") });
+  });
+
+  it("não conclui tarefa de um contato que o usuário nem citou", () => {
+    expect(planFechar({ tarefa_id: IDS.tarefaJoana }, base, minhaCarteira, { question: "falei com o Pedro", history: [] })).toMatchObject({ ok: false, erro: expect.stringContaining("Joana") });
+    expect(planRegistro({ empresa_id: IDS.ativos, tipo: "Ligação", resumo: "x", concluir_tarefa_id: IDS.tarefaMarcelo }, base, minhaCarteira, new Date(), { question: "liguei pro Pedro da Ativos", history: [] })).toMatchObject({ ok: false, erro: expect.stringContaining("Marcelo") });
+  });
+
+  it("concluir tarefa grava o resultado e o desfazer reabre", async () => {
+    const output = await concluirTarefa.run({ tarefa_id: IDS.tarefaJoana, resultado: "Joana confirmou" }, { ...ctx, question: "dá baixa na ligação da Joana" });
+    expect(mocks.completeActivityRecord).toHaveBeenCalledWith(IDS.tarefaJoana, "Joana confirmou", undefined, expect.objectContaining({ actorType: "ai" }));
+    expect(output.recibo).toContain("Tarefa concluída");
+    expect(output.desfazer?.ops).toEqual([{ op: "reabrir_tarefa", id: IDS.tarefaJoana }]);
+  });
+
+  it("tirar tarefa cancela com o motivo e cria o substituto quando era a última", async () => {
+    const output = await cancelarTarefa.run({ tarefa_id: IDS.tarefaMarcelo, motivo: "Marcelo saiu da empresa", proximo_passo: { tipo: "Ligação", titulo: "Achar o novo comprador", data: future(2) } }, { ...ctx, question: "tira a ligação do Marcelo" });
+    expect(mocks.cancelActivityRow).toHaveBeenCalledWith(IDS.douglas, IDS.tarefaMarcelo, "Removida: Marcelo saiu da empresa");
+    expect(mocks.addActivityRecord).toHaveBeenCalledWith(expect.objectContaining({ titulo: "Achar o novo comprador", companyId: IDS.ativos }), expect.objectContaining({ actorType: "ai" }));
+    expect(output.desfazer?.ops).toEqual([{ op: "reabrir_tarefa", id: IDS.tarefaMarcelo }, { op: "cancelar_tarefa", id: "e0000000-0000-4000-8000-0000000000aa" }]);
+  });
+});
+
+describe("cadastro do cliente e contatos", () => {
+  it("atualiza só o que foi dito, valida CNPJ e acrescenta observação sem apagar a anterior", () => {
+    expect(planAtualizarCliente({ empresa_id: IDS.ativos, cidade: "Jataí", colhedoras: 12 }, base, minhaCarteira)).toMatchObject({ ok: true, patch: { cidade: "Jataí", colhedoras: 12 } });
+    expect(planAtualizarCliente({ empresa_id: IDS.ativos, cnpj: "11.111.111/1111-11" }, base, minhaCarteira)).toMatchObject({ ok: false, erro: expect.stringContaining("CNPJ") });
+    expect(planAtualizarCliente({ empresa_id: IDS.ativos }, base, minhaCarteira)).toMatchObject({ ok: false, faltando: expect.any(Array) });
+    expect(planAtualizarCliente({ empresa_id: IDS.colorado, cidade: "x" }, base, minhaCarteira)).toMatchObject({ ok: false });
+    const nota = planAtualizarCliente({ empresa_id: IDS.ativos, observacao: "Troca a cada 3 dias" }, { ...base, companies: base.companies.map((c) => (c.id === IDS.ativos ? { ...c, observacoes: "Antiga" } : c)) }, minhaCarteira);
+    expect(nota.ok && nota.patch.observacoes).toMatch(/^Antiga\n.*Troca a cada 3 dias$/);
+  });
+
+  it("atualizar cliente guarda os valores antigos para o desfazer", async () => {
+    const output = await atualizarCliente.run({ empresa_id: IDS.ativos, cidade: "Jataí" }, ctx);
+    expect(mocks.updateCompanyRecord).toHaveBeenCalledWith(IDS.ativos, { cidade: "Jataí" }, IDS.douglas);
+    expect(output.recibo).toContain("cidade: Jataí");
+    expect(output.desfazer?.ops).toEqual([{ op: "restaurar_empresa", id: IDS.ativos, row: { city: "Mineiros", cnpj: null } }]);
+  });
+
+  it("não duplica contato que já existe", () => {
+    expect(planAdicionarContato({ empresa_id: IDS.ativos, nome: "Marcelo" }, base, minhaCarteira)).toMatchObject({ ok: false, erro: expect.stringContaining("atualizar_contato") });
+    expect(planAdicionarContato({ empresa_id: IDS.ativos, nome: "Pedro", whatsapp: "123" }, base, minhaCarteira)).toMatchObject({ ok: false, erro: expect.stringContaining("WhatsApp") });
+    expect(planAdicionarContato({ empresa_id: IDS.ativos, nome: "Pedro", papel: "Mecânico" }, base, minhaCarteira)).toMatchObject({ ok: true, contato: { nome: "Pedro", papel: "Mecânico" } });
+  });
+
+  it("adicionar, atualizar e excluir contato saem com o desfazer certo", async () => {
+    const add = await adicionarContato.run({ empresa_id: IDS.ativos, nome: "Pedro" }, ctx);
+    expect(add.desfazer?.ops).toEqual([{ op: "apagar_contato", id: "f0000000-0000-4000-8000-0000000000aa" }]);
+    const upd = await atualizarContato.run({ contato_id: MARCELO, whatsapp: "64 99876-5432" }, ctx);
+    expect(mocks.updateContactRow).toHaveBeenCalledWith(IDS.douglas, MARCELO, { whatsapp_e164: "5564998765432" });
+    expect(upd.desfazer?.ops).toEqual([{ op: "restaurar_contato", id: MARCELO, row: { whatsapp_e164: "5564999990000" } }]);
+    const del = await excluirContato.run({ contato_id: MARCELO }, { ...ctx, question: "exclui o Marcelo, ele saiu" });
+    expect(del.recibo).toContain("Marcelo Souza");
+    expect(del.desfazer?.ops).toEqual([{ op: "recriar_contato", row: { id: MARCELO, name: "Marcelo Souza" } }]);
+  });
+
+  it("contato de outra carteira não se mexe", async () => {
+    const output = await excluirContato.run({ contato_id: "f0000000-0000-4000-8000-000000000099" }, { ...ctx, question: "exclui esse contato" });
+    expect(output.wrote).toBeUndefined();
+    expect(mocks.deleteContactRow).not.toHaveBeenCalled();
+  });
 });
 
 describe("prompt e consulta", () => {
@@ -134,5 +238,23 @@ describe("prompt e consulta", () => {
   it("a consulta responde direto ao usuário", async () => {
     const consultar = vi.fn(async () => ({ texto: "Hoje você tem 2 tarefas." }));
     expect((await consultarCrm.run({ pergunta: "o que tenho hoje?" }, { ...ctx, consultar })).reply).toBe("Hoje você tem 2 tarefas.");
+  });
+});
+
+describe("travas: cadastrar, tirar da agenda e excluir só a pedido", () => {
+  const turn = (role: "user" | "assistant", content: string) => ({ role, content });
+  it("vale o pedido agora, nas últimas mensagens, ou o sim a uma pergunta sobre isso", () => {
+    expect(userAsked({ question: "Cadastra ela pra mim", history: [] }, PEDIU_CADASTRO)).toBe(true);
+    expect(userAsked({ question: "Contato eu não tenho", history: [turn("user", "Quero cadastrar um cliente novo")] }, PEDIU_CADASTRO)).toBe(true);
+    expect(userAsked({ question: "Pode sim", history: [turn("assistant", "A Pitangueiras não está no CRM. Quer que eu cadastre?")] }, PEDIU_CADASTRO)).toBe(true);
+    expect(userAsked({ question: "Passei hoje na Usina Pitangueiras, conversei com o encarregado", history: [] }, PEDIU_CADASTRO)).toBe(false);
+  });
+
+  it("recusa cancelar tarefa e excluir contato quando o usuário só contou um fato", async () => {
+    const fato = { ...ctx, question: "Falei com o Pedro, ele liberou a visita" };
+    expect((await cancelarTarefa.run({ tarefa_id: IDS.tarefaMarcelo, motivo: "x" }, fato)).wrote).toBeUndefined();
+    expect((await excluirContato.run({ contato_id: MARCELO }, fato)).wrote).toBeUndefined();
+    expect(mocks.cancelActivityRow).not.toHaveBeenCalled();
+    expect(mocks.deleteContactRow).not.toHaveBeenCalled();
   });
 });
