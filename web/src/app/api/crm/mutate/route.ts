@@ -7,7 +7,7 @@ export const dynamic = "force-dynamic";
 
 export async function POST(request: Request) {
   try {
-    const session = withSession(request);
+    const session = await withSession(request);
     const body = await request.json();
     let response: NextResponse;
     switch (body.action) {

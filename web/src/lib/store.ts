@@ -206,10 +206,20 @@ let refreshSeq = 0;
 let inflight = 0;
 
 /** Relê o banco e troca os dados da tela pelo que está gravado. */
+/** Sessão vencida, antiga ou acesso desativado no painel Equipe: volta para a tela de login. */
+export function goToLogin() {
+  if (typeof window === "undefined" || window.location.pathname === "/entrar") return;
+  window.location.assign(`/entrar?next=${encodeURIComponent(window.location.pathname)}`);
+}
+
 export async function refreshCrm(): Promise<boolean> {
   if (!USE_SUPABASE || typeof window === "undefined" || inflight > 0) return false;
   const mine = ++refreshSeq;
   const res = await fetch("/api/crm/snapshot", { cache: "no-store" });
+  if (res.status === 401) {
+    goToLogin();
+    return false;
+  }
   const body = (await res.json()) as { health?: { ok: boolean; detail?: string; reason?: string }; snapshot?: Partial<DemoData> | null; actorMap?: Record<string, string> | null };
   if (!body.health?.ok || !body.snapshot) throw new Error(body.health?.detail || "O banco não respondeu.");
   if (body.actorMap) setActorAliases(body.actorMap);

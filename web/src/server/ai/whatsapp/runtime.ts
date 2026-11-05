@@ -53,7 +53,7 @@ async function answerJob(job: WhatsAppAgentJob) {
   const existing = await findWhatsAppAgentReply(job.id);
   if (existing) return;
 
-  const identity = findWhatsAppAgentIdentity(sender);
+  const identity = await findWhatsAppAgentIdentity(sender);
   if (!identity) throw new Error("Remetente não está mais autorizado.");
 
   let snapshot = await loadCrmSnapshot();

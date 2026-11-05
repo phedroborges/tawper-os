@@ -22,7 +22,7 @@ export async function ingestWhatsAppAgentPayload(payload: unknown): Promise<What
   const message = parseWhatsAppAgentInbound(payload);
   if (!message) return { ignored: "unsupported_event" };
 
-  const identity = findWhatsAppAgentIdentity(message.sender);
+  const identity = await findWhatsAppAgentIdentity(message.sender);
   if (!identity) return { ignored: "unauthorized_sender" };
 
   // Só transcreve depois de confirmar que o remetente é autorizado: áudio de estranho não gasta IA.

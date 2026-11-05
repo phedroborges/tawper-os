@@ -9,7 +9,7 @@ const GONE =
 /** Leitura legada: lista vazia para não quebrar telas antigas de orçamento. */
 export async function GET(request: Request) {
   try {
-    withSession(request);
+    await withSession(request);
     return NextResponse.json({ products: [], retired: true, message: GONE });
   } catch (e) {
     return jsonAuthError(e) ?? NextResponse.json({ error: e instanceof Error ? e.message : "Falha ao ler o catálogo." }, { status: 500 });
@@ -19,7 +19,7 @@ export async function GET(request: Request) {
 /** Escrita do catálogo retirada do produto. */
 export async function POST(request: Request) {
   try {
-    withSession(request);
+    await withSession(request);
     return NextResponse.json({ error: GONE }, { status: 410 });
   } catch (e) {
     return jsonAuthError(e) ?? NextResponse.json({ error: GONE }, { status: 410 });

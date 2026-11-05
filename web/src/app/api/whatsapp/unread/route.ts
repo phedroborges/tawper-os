@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 /** Leitura leve para o contador do botão do WhatsApp: só as conversas com mensagem não lida. */
 export async function GET(request: Request) {
   try {
-    withSession(request);
+    await withSession(request);
     if (!proofEnabled() || !stevoConfigured()) return NextResponse.json({ live: false, conversations: [] });
     const conversations = await listLiveConversations().catch(() => null);
     return NextResponse.json({

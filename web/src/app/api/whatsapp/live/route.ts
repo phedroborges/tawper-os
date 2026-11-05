@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 /** Leitura leve do chat: só banco, sem status da Stevo. A tela polla isto ~3s. */
 export async function GET(request: Request) {
   try {
-    withSession(request);
+    await withSession(request);
     syncForwardedFlagsFromDebug().catch(() => undefined);
     const peers = [
       ...new Set(

@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    withSession(request);
+    await withSession(request);
     const { id } = await params;
     const url = new URL(request.url);
     const quote = await getQuote(id);

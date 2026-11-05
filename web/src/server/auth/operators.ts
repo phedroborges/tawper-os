@@ -3,9 +3,6 @@ import "server-only";
 import { USERS } from "@/lib/constants";
 import type { User } from "@/lib/types";
 
-/** Senha inicial dos operadores (pode sobrescrever com TAWPER_OPERATOR_PASSWORD). */
-export const OPERATOR_PASSWORD = process.env.TAWPER_OPERATOR_PASSWORD || "@Tawper132#";
-
 export type OperatorAccount = {
   user: User;
   email: string;

@@ -20,22 +20,22 @@ describe("configuração do agente interno no WhatsApp", () => {
     ]);
   });
 
-  it("nunca autoriza o próprio número do bot", () => {
+  it("nunca autoriza o próprio número do bot", async () => {
     process.env.TAWPER_WHATSAPP_AGENT_BOT_NUMBER = "17 98164-0081";
     process.env.TAWPER_WHATSAPP_AGENT_USERS_JSON = JSON.stringify([
       { phone: "17 98164-0081", name: "Assistente IA", role: "gestor" },
       { phone: "17 98164-0028", name: "Douglas", role: "vendedor" },
     ]);
-    expect(findWhatsAppAgentIdentity("5517981640081")).toBeNull();
-    expect(findWhatsAppAgentIdentity("5517981640028")?.name).toBe("Douglas");
+    expect(await findWhatsAppAgentIdentity("5517981640081")).toBeNull();
+    expect((await findWhatsAppAgentIdentity("5517981640028"))?.name).toBe("Douglas");
   });
 
-  it("reconhece o JID brasileiro antigo sem o nono dígito", () => {
+  it("reconhece o JID brasileiro antigo sem o nono dígito", async () => {
     process.env.TAWPER_WHATSAPP_AGENT_BOT_NUMBER = "17 98164-0081";
     process.env.TAWPER_WHATSAPP_AGENT_USERS_JSON = JSON.stringify([
       { phone: "64 99943-0898", name: "Phedro Borges", role: "admin" },
     ]);
-    expect(findWhatsAppAgentIdentity("556499430898@s.whatsapp.net")?.name).toBe("Phedro Borges");
+    expect((await findWhatsAppAgentIdentity("556499430898@s.whatsapp.net"))?.name).toBe("Phedro Borges");
   });
 
   it("recusa lista malformada", () => {

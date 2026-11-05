@@ -4,7 +4,7 @@ import postgres from "postgres";
 import { stageKeyToDb } from "@/lib/crm-map";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import { storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
-import { OPERATOR_PASSWORD, operatorAccounts } from "@/server/auth/operators";
+import { operatorAccounts } from "@/server/auth/operators";
 import type { Activity, ActivityType, Company, Contact, Deal, Papel, Prensa, Prioridade, Urgencia } from "@/lib/types";
 
 const PRESS_TO_DB: Record<string, string> = {
@@ -48,86 +48,28 @@ const CHANNEL_TO_DB: Record<string, string> = {
 let operatorCache: Record<string, string> | null = null;
 let operatorInflight: Promise<Record<string, string>> | null = null;
 
-async function findAuthUserIdByEmails(emails: string[]): Promise<string | undefined> {
-  const sb = getSupabaseAdmin();
-  const wanted = new Set(emails.map((e) => e.toLowerCase()));
-  let page = 1;
-  for (;;) {
-    const listed = await sb.auth.admin.listUsers({ page, perPage: 200 });
-    if (listed.error) throw new Error(listed.error.message);
-    const users = listed.data.users ?? [];
-    const hit = users.find((u) => u.email && wanted.has(u.email.toLowerCase()));
-    if (hit) return hit.id;
-    if (users.length < 200) return undefined;
-    page += 1;
-  }
-}
-
+/**
+ * Traduz os ids da demo (u-murilo) para o id do perfil no banco, pelo e-mail, e mapeia cada perfil para ele mesmo.
+ * Só lê: quem existe, nome, papel e senha são do painel Equipe; nada aqui cria usuário ou reativa alguém.
+ */
 async function loadOperators(): Promise<Record<string, string>> {
   const sb = getSupabaseAdmin();
-  const people = operatorAccounts();
-  const emails = people.flatMap((p) => [p.email, p.legacyEmail]);
-  const existing = await sb.from("profiles").select("id, email").in("email", emails);
-  if (existing.error) throw new Error(existing.error.message);
-  const byEmail = new Map((existing.data ?? []).map((row) => [(row.email as string).toLowerCase(), row.id as string]));
+  const profiles = await sb.from("profiles").select("id, email");
+  if (profiles.error) throw new Error(profiles.error.message);
+  const byEmail = new Map((profiles.data ?? []).map((row) => [String(row.email ?? "").toLowerCase(), row.id as string]));
   const map: Record<string, string> = {};
-
-  await Promise.all(
-    people.map(async ({ user, email, legacyEmail }) => {
-      let id =
-        byEmail.get(email.toLowerCase()) ??
-        byEmail.get(legacyEmail.toLowerCase()) ??
-        (await findAuthUserIdByEmails([email, legacyEmail]));
-
-      if (!id) {
-        const created = await sb.auth.admin.createUser({
-          email,
-          password: OPERATOR_PASSWORD,
-          email_confirm: true,
-          user_metadata: { full_name: user.name, short_name: user.short, app_user_id: user.id },
-        });
-        if (created.error || !created.data.user) {
-          const again = await sb.from("profiles").select("id").eq("email", email).maybeSingle();
-          id = again.data?.id as string | undefined;
-          if (!id) throw new Error(created.error?.message ?? `Não foi possível criar ${email}.`);
-        } else {
-          id = created.data.user.id;
-        }
-      } else {
-        const updated = await sb.auth.admin.updateUserById(id, {
-          email,
-          password: OPERATOR_PASSWORD,
-          email_confirm: true,
-          user_metadata: { full_name: user.name, short_name: user.short, app_user_id: user.id },
-        });
-        if (updated.error) throw new Error(updated.error.message);
-      }
-
-      await Promise.all([
-        sb.from("profiles").upsert(
-          {
-            id,
-            email,
-            full_name: user.name,
-            short_name: user.short,
-            title: user.title,
-            avatar_color: user.color,
-          },
-          { onConflict: "id" },
-        ),
-        sb.from("memberships").upsert(
-          { organization_id: TAWPER_ORG_ID, profile_id: id, role: user.role, is_active: true },
-          { onConflict: "organization_id,profile_id" },
-        ),
-      ]);
-
-      map[user.id] = id;
-      map[id] = id;
-    }),
-  );
-
+  for (const row of profiles.data ?? []) map[row.id as string] = row.id as string;
+  for (const { user, email, legacyEmail } of operatorAccounts()) {
+    const id = byEmail.get(email) ?? byEmail.get(legacyEmail);
+    if (id) map[user.id] = id;
+  }
   operatorCache = map;
   return map;
+}
+
+/** Depois de criar alguém no painel Equipe, para o próximo ensureOperators ler de novo. */
+export function invalidateOperators() {
+  operatorCache = null;
 }
 
 export async function ensureOperators(): Promise<Record<string, string>> {

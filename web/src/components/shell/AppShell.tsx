@@ -23,6 +23,7 @@ import {
   Sparkles,
   Sun,
   Tv,
+  Users,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -94,6 +95,7 @@ function useNav(): NavItem[] {
     { href: "/gestao", label: "Gestão", icon: <ShieldCheck size={18} />, badge: exceptions, manager: true },
     { href: "/dashboard", label: "Painel", icon: <LayoutDashboard size={18} />, manager: true },
     { href: "/auditoria", label: "Auditoria", icon: <History size={18} />, manager: true },
+    ...(user.role === "admin" ? [{ href: "/equipe", label: "Equipe", icon: <Users size={18} />, manager: true }] : []),
   ];
 }
 
@@ -226,7 +228,6 @@ function UserSwitcher() {
           <div className="px-3 pt-2 pb-1">
             <div className="text-[13px] font-medium text-ink">{user.name}</div>
             <div className="text-[11.5px] text-muted">{ROLE_LABEL[user.role]}</div>
-            <div className="mt-0.5 text-[11px] text-muted">{`${user.id.replace(/^u-/, "")}@tawper.com.br`}</div>
           </div>
           <div className="mt-1 border-t border-line px-3 py-2">
             <button

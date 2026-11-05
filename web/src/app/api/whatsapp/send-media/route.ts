@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { USERS } from "@/lib/constants";
 import { jsonAuthError, withSession } from "@/server/auth/http";
+import { activeMember } from "@/server/auth/team";
 import { MAX_MEDIA_BYTES, sendProofMedia } from "@/server/integrations/stevo-proof/outbound";
 
 export const dynamic = "force-dynamic";
@@ -13,8 +13,8 @@ function field(form: FormData, key: string) {
 
 export async function POST(request: Request) {
   try {
-    const session = withSession(request);
-    const actor = USERS.find((user) => user.id === session.userId);
+    const session = await withSession(request);
+    const actor = await activeMember(session.userId);
     if (!actor) throw new Error("Perfil da sessão inválido.");
     let form: FormData;
     try {

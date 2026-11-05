@@ -57,7 +57,7 @@ export async function GET(request: Request) {
       ok: true,
       enabled: whatsappAgentEnabled(),
       botNumberConfigured: Boolean(whatsappAgentBotNumber()),
-      authorizedUsers: whatsappAgentUsers().length,
+      authorizedUsers: (await whatsappAgentUsers()).length,
       // Conferência rápida das chaves que decidem se o agente usa ferramentas (nenhum segredo aparece aqui).
       agente: {
         ferramentasLigadas: agentToolsEnabled(),

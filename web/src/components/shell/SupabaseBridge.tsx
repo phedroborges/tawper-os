@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect } from "react";
-import { refreshCrm, setActorAliases, useStore } from "@/lib/store";
+import { goToLogin, refreshCrm, setActorAliases, useStore } from "@/lib/store";
 import type { DemoData } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 
@@ -16,7 +16,10 @@ let snapshotRequest: Promise<SnapshotBody> | null = null;
 function loadSnapshot(): Promise<SnapshotBody> {
   if (!snapshotRequest) {
     snapshotRequest = fetch("/api/crm/snapshot")
-      .then((r) => r.json() as Promise<SnapshotBody>)
+      .then((r) => {
+        if (r.status === 401) goToLogin();
+        return r.json() as Promise<SnapshotBody>;
+      })
       .catch((e: unknown) => {
         snapshotRequest = null;
         throw e;

@@ -1,4 +1,5 @@
 import { canonicalWhatsApp, storedWhatsApp } from "@/lib/br-ids";
+import { loadTeam, supabaseOn } from "@/server/auth/team";
 
 export type WhatsAppAgentRole = "admin" | "gestor" | "vendedor";
 
@@ -47,7 +48,15 @@ export function whatsappAgentEnabled() {
   return process.env.TAWPER_WHATSAPP_AGENT_ENABLED === "true";
 }
 
-export function whatsappAgentUsers() {
+/**
+ * Quem pode falar com o agente: quem está ativo no painel Equipe e tem WhatsApp cadastrado.
+ * A lista TAWPER_WHATSAPP_AGENT_USERS_JSON só vale enquanto ninguém da equipe tem WhatsApp no banco (ou na demo).
+ */
+export async function whatsappAgentUsers(): Promise<WhatsAppAgentIdentity[]> {
+  if (supabaseOn()) {
+    const team = (await loadTeam()).filter((member) => member.ativo && canonicalWhatsApp(member.phone));
+    if (team.length) return team.map((member) => ({ phone: canonicalWhatsApp(member.phone), name: member.name, role: roleOf(member.role) ?? "vendedor", profileId: member.id }));
+  }
   return parseWhatsAppAgentUsers(process.env.TAWPER_WHATSAPP_AGENT_USERS_JSON);
 }
 
@@ -56,10 +65,10 @@ export function whatsappAgentBotNumber() {
   return phone ? canonicalWhatsApp(phone) : "";
 }
 
-export function findWhatsAppAgentIdentity(sender: string) {
+export async function findWhatsAppAgentIdentity(sender: string) {
   const phone = canonicalWhatsApp(sender);
   if (!phone || phone === whatsappAgentBotNumber()) return null;
-  return whatsappAgentUsers().find((identity) => identity.phone === phone) ?? null;
+  return (await whatsappAgentUsers()).find((identity) => identity.phone === phone) ?? null;
 }
 
 export function whatsappAgentWebhookToken() {

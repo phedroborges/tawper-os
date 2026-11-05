@@ -7,6 +7,7 @@ import type { User } from "@/lib/types";
 
 export const SESSION_COOKIE = "tawper_session";
 const MAX_AGE_SEC = 60 * 60 * 12;
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export type Session = { userId: string; role: User["role"]; exp: number };
 
@@ -54,6 +55,8 @@ export function decodeSession(token: string | undefined | null): Session | null 
   try {
     const parsed = JSON.parse(Buffer.from(body, "base64url").toString("utf8")) as Session;
     if (!parsed?.userId || !parsed.role || typeof parsed.exp !== "number" || parsed.exp < Date.now()) return null;
+    // Com Supabase o id é o do perfil no banco; cookie antigo com id da demo (u-murilo) pede login de novo.
+    if (process.env.NEXT_PUBLIC_TAWPER_USE_SUPABASE === "true") return UUID.test(parsed.userId) ? { userId: parsed.userId, role: parsed.role, exp: parsed.exp } : null;
     const user = USERS.find((item) => item.id === parsed.userId);
     if (!user) return null;
     return { userId: user.id, role: user.role, exp: parsed.exp };
@@ -102,10 +105,11 @@ export function verifyAppPassword(password: string) {
   return left.length === right.length && timingSafeEqual(left, right);
 }
 
-export function createSessionForUser(userId: string): Session {
-  const user = USERS.find((item) => item.id === userId);
-  if (!user) throw new AuthError("Perfil inválido.");
-  return { userId: user.id, role: user.role, exp: Date.now() + MAX_AGE_SEC * 1000 };
+/** Sem `user`, procura na lista da demo (USERS); com Supabase o login passa a pessoa vinda do banco. */
+export function createSessionForUser(userId: string, user?: Pick<User, "id" | "role">): Session {
+  const found = user ?? USERS.find((item) => item.id === userId);
+  if (!found) throw new AuthError("Perfil inválido.");
+  return { userId: found.id, role: found.role, exp: Date.now() + MAX_AGE_SEC * 1000 };
 }
 
 export function sessionCookie(token: string) {

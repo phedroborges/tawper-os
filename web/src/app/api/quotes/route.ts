@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { USERS } from "@/lib/constants";
 import { jsonAuthError, withSession } from "@/server/auth/http";
+import { activeMember } from "@/server/auth/team";
 import { invalidateCrmReadCache } from "@/server/crm";
 import { duplicateQuoteRecord, listQuotes, saveQuoteRecord, setQuoteStatusRecord } from "@/server/quotes";
 import { sendQuote } from "@/server/quote-send";
@@ -10,7 +10,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request) {
   try {
-    withSession(request);
+    await withSession(request);
     return NextResponse.json({ quotes: await listQuotes() });
   } catch (e) {
     return jsonAuthError(e) ?? NextResponse.json({ error: e instanceof Error ? e.message : "Falha ao ler os orçamentos." }, { status: 500 });
@@ -19,9 +19,9 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
-    const session = withSession(request);
+    const session = await withSession(request);
     const body = await request.json();
-    const actor = USERS.find((user) => user.id === session.userId);
+    const actor = await activeMember(session.userId);
     switch (body.action) {
       case "save": {
         const quote = await saveQuoteRecord(body.quote, session.userId);

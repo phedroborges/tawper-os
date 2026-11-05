@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 /** Comandos de negócio (mudar etapa, ganho, perda, espera…): executados no banco, com erro claro para a tela. */
 export async function POST(request: Request) {
   try {
-    const session = withSession(request);
+    const session = await withSession(request);
     const body = (await request.json()) as Command;
     const withActor = (
       body.command === "addInteraction"

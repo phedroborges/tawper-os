@@ -8,7 +8,7 @@ export const dynamic = "force-dynamic";
 
 export async function GET(request: Request) {
   try {
-    withSession(request);
+    await withSession(request);
     const body = await readCrmBootstrap();
     if (proofEnabled() && stevoConfigured()) {
       void getStevoStatusCached()

@@ -1,7 +1,7 @@
 "use server";
 
-import { USERS } from "@/lib/constants";
 import { requireSessionCookies, type Session } from "@/server/auth/session";
+import { activeMember } from "@/server/auth/team";
 import {
   getStevoQr,
   getStevoStatus,
@@ -33,8 +33,8 @@ import {
   type LiveConversation,
 } from "./live-store";
 
-function agentFromSession(session: Session): Agent {
-  const user = USERS.find((item) => item.id === session.userId);
+async function agentFromSession(session: Session): Promise<Agent> {
+  const user = await activeMember(session.userId);
   if (!user) throw new Error("Perfil da sessão inválido.");
   return { id: user.id, name: user.name, role: user.role };
 }
@@ -154,7 +154,7 @@ export async function pairProofPhone(phone: string) {
 export async function sendProofText(to: string, text: string, _agent?: Agent) {
   const session = await requireSessionCookies();
   assertProofEnabled();
-  const agent = agentFromSession(session);
+  const agent = await agentFromSession(session);
   const body = text.trim();
   if (!body) throw new Error("Mensagem vazia.");
   checkAgent(agent);
@@ -174,7 +174,7 @@ export async function sendProofText(to: string, text: string, _agent?: Agent) {
 export async function assignProofConversation(peerRaw: string, target: { id: string; name: string } | null, _agent?: Agent) {
   const session = await requireSessionCookies();
   assertProofEnabled();
-  const agent = agentFromSession(session);
+  const agent = await agentFromSession(session);
   checkAgent(agent);
   const peer = peerOf(peerRaw);
   const conversation = await getLiveConversation(peer);
@@ -192,7 +192,7 @@ export async function assignProofConversation(peerRaw: string, target: { id: str
 export async function markProofRead(peerRaw: string, _agent?: Agent) {
   const session = await requireSessionCookies();
   assertProofEnabled();
-  const agent = agentFromSession(session);
+  const agent = await agentFromSession(session);
   checkAgent(agent);
   const peer = peerOf(peerRaw);
   const conversation = await getLiveConversation(peer).catch(() => null);
@@ -214,7 +214,7 @@ async function checkCanEdit(peer: string, agent: Agent) {
 export async function deleteProofMessage(id: string, scope: "me" | "everyone", _agent?: Agent) {
   const session = await requireSessionCookies();
   assertProofEnabled();
-  const agent = agentFromSession(session);
+  const agent = await agentFromSession(session);
   checkAgent(agent);
   const message = await getLiveMessage(id);
   if (!message) throw new Error("Mensagem não encontrada.");
@@ -234,7 +234,7 @@ export async function deleteProofMessage(id: string, scope: "me" | "everyone", _
 export async function deleteProofConversation(peerRaw: string, _agent?: Agent) {
   const session = await requireSessionCookies();
   assertProofEnabled();
-  const agent = agentFromSession(session);
+  const agent = await agentFromSession(session);
   const peer = peerOf(peerRaw);
   await checkCanEdit(peer, agent);
   await deleteLiveConversation(peer);

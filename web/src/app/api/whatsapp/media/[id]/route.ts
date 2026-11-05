@@ -8,7 +8,7 @@ export const runtime = "nodejs";
 
 export async function GET(request: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
-    withSession(request);
+    await withSession(request);
     if (!proofEnabled()) return NextResponse.json({ error: "WhatsApp desligado." }, { status: 404 });
     const { id } = await params;
     const file = await loadLiveMediaFile(id);
