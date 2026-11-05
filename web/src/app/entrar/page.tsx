@@ -3,17 +3,13 @@
 import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useMemo, useState } from "react";
-import { Avatar } from "@/components/ui/primitives";
-import { ROLE_LABEL } from "@/lib/constants";
-import { OPERATOR_LOGIN_HINTS } from "@/lib/operator-emails";
 import { useStore } from "@/lib/store";
-import { cn } from "@/lib/utils";
 
 function EnterForm() {
   const router = useRouter();
   const params = useSearchParams();
   const loginLocal = useStore((s) => s.login);
-  const [email, setEmail] = useState(OPERATOR_LOGIN_HINTS[0]?.email ?? "");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
@@ -53,7 +49,7 @@ function EnterForm() {
           <Image src="/brand/tawper-logo.png" alt="Tawper" width={112} height={32} className="h-8 w-auto" />
           <div>
             <h1 className="text-[18px] font-semibold text-ink">Entrar no Tawper OS</h1>
-            <p className="text-[12.5px] text-muted">Login com e-mail e senha (Supabase Auth).</p>
+            <p className="text-[12.5px] text-muted">Entre com seu e-mail e senha.</p>
           </div>
         </div>
 
@@ -81,30 +77,6 @@ function EnterForm() {
             required
           />
         </label>
-
-        <fieldset className="grid gap-2">
-          <legend className="mb-1 text-[12.5px] font-medium text-ink">Operadores</legend>
-          <p className="text-[11.5px] text-muted">Toque para preencher o e-mail. Cada um entra com a própria conta.</p>
-          {OPERATOR_LOGIN_HINTS.map((user) => (
-            <button
-              key={user.id}
-              type="button"
-              onClick={() => setEmail(user.email)}
-              className={cn(
-                "flex items-center gap-2.5 rounded-[6px] border px-3 py-2 text-left",
-                email.toLowerCase() === user.email ? "border-brand bg-brand-soft" : "border-line hover:bg-soft",
-              )}
-            >
-              <Avatar name={user.name} initials={user.initials} color={user.color} size={28} />
-              <span className="min-w-0 flex-1">
-                <span className="block text-[13px] font-medium text-ink">{user.name}</span>
-                <span className="block truncate text-[11.5px] text-muted">
-                  {user.email} · {ROLE_LABEL[user.role]}
-                </span>
-              </span>
-            </button>
-          ))}
-        </fieldset>
 
         {error && <p className="rounded-[6px] bg-brand-soft px-3 py-2 text-[12.5px] text-brand">{error}</p>}
 
