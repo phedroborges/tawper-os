@@ -1,6 +1,6 @@
 import "server-only";
 
-import { assistantAnswer } from "@/lib/ai";
+import { ASSISTANT_HELP, assistantAnswer } from "@/lib/ai";
 import { systemContext } from "@/lib/ai-context";
 import { canonicalWhatsApp } from "@/lib/br-ids";
 import { visibleCompanies, type Data } from "@/lib/selectors";
@@ -30,6 +30,8 @@ import {
   recordWhatsAppAgentRun,
   type WhatsAppAgentJob,
 } from "./store";
+
+const IA_FORA = "⚠️ Estou com um problema técnico agora e não consegui entender sua mensagem. Nada foi gravado. Tenta de novo daqui a pouco.";
 
 function uuid(value: string) {
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(value) ? value : null;
@@ -157,7 +159,9 @@ async function answerJob(job: WhatsAppAgentJob) {
     ? await runToolAgent({ actor: resolved.user, question, history: withNotes, consultar: (pergunta) => ask(pergunta, true), requestId: job.id })
     : null;
   console.info("[agente] caminho da resposta", toolsOn ? (viaFerramentas ? "ferramentas" : "fluxo antigo (o modelo não respondeu com ferramentas)") : "fluxo antigo (TAWPER_AGENT_TOOLS_ENABLED ou TAWPER_AGENT_WRITES_ENABLED desligada)");
-  const answer = viaFerramentas ? { texto: viaFerramentas.texto, acao: viaFerramentas.acao } : await ask(question, false);
+  let answer = viaFerramentas ? { texto: viaFerramentas.texto, acao: viaFerramentas.acao } : await ask(question, false);
+  // Sem a IA (crédito, limite ou queda da OpenAI) o fluxo antigo só entende palavra-chave: melhor avisar do que mandar o texto de ajuda.
+  if (toolsOn && !viaFerramentas && answer.texto === ASSISTANT_HELP) answer = { texto: IA_FORA };
   const desfazer = viaFerramentas?.desfazer ?? [];
   const text = `${renderWhatsAppAnswer(answer)}${desfazer.length ? "\n\n↩️ Errei? Responda DESFAZER." : ""}`;
   const sent = await sendWhatsAppAgentText(sender, text);

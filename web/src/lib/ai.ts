@@ -781,6 +781,10 @@ export const ASSISTANT_SUGGESTIONS = [
   "Me resume a Usina Alvorada",
 ];
 
+/** Resposta do fluxo sem IA quando nenhuma palavra-chave bate. */
+export const ASSISTANT_HELP =
+  "Posso responder com base nos dados registrados no Tawper OS. Experimente perguntar sobre clientes parados, sua agenda de hoje, orçamentos abertos, execução do time, recorrência ou pedir o resumo de uma conta.";
+
 export function assistantAnswer(d: Data, user: User, question: string, now = new Date()): AssistantAnswer {
   const q = normalize(question);
   const manager = user.role === "admin" || user.role === "gestor";
@@ -932,10 +936,7 @@ export function assistantAnswer(d: Data, user: User, question: string, now = new
     return { texto: `${list.length} atividades atrasadas.`, itens: list.map((a) => ({ label: cname(a.companyId), meta: `${a.titulo} · ${a.texto}`, href: `/empresas/${a.companyId}` })) };
   }
   if (company) return assistantAnswer(d, user, `resumo ${company.nome}`, now);
-  return {
-    texto:
-      "Posso responder com base nos dados registrados no Tawper OS. Experimente perguntar sobre clientes parados, sua agenda de hoje, orçamentos abertos, execução do time, recorrência ou pedir o resumo de uma conta.",
-  };
+  return { texto: ASSISTANT_HELP };
 }
 
 export type ExtractedLead = ReturnType<typeof extractLead>;

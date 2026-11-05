@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({
   runUndo: vi.fn(),
 }));
 
-vi.mock("@/lib/ai", () => ({ assistantAnswer: vi.fn(() => ({ texto: "fallback" })) }));
+vi.mock("@/lib/ai", () => ({ ASSISTANT_HELP: "ajuda", assistantAnswer: vi.fn(() => ({ texto: "fallback" })) }));
 vi.mock("@/lib/ai-context", () => ({ systemContext: vi.fn(() => ({})) }));
 vi.mock("@/server/crm", () => ({ loadCrmSnapshot: mocks.loadSnapshot, invalidateCrmReadCache: vi.fn() }));
 vi.mock("@/server/persist", () => ({ ensureOperators: mocks.ensureOperators }));
@@ -157,6 +157,18 @@ describe("execução de ações pelo WhatsApp", () => {
     expect(mocks.recordRun).toHaveBeenCalledWith(
       expect.objectContaining({ question: "Quais tarefas tenho hoje?", audio: true, caminho: "fluxo_antigo", resposta: "Você tem 3 tarefas.", marcas: ["caiu_no_fluxo_antigo"], versao: "teste" }),
     );
+    mocks.toolsOn.mockReturnValue(false);
+  });
+
+  it("sem a IA e sem palavra-chave: avisa do problema técnico em vez de mandar o texto de ajuda", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("Qual etapa ela está?")).mockResolvedValue(null);
+    mocks.toolsOn.mockReturnValue(true);
+    mocks.runTool.mockResolvedValue(null);
+    mocks.aiAssistant.mockResolvedValue({ texto: "ajuda" });
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.send).toHaveBeenLastCalledWith("5517999999999", expect.stringContaining("problema técnico"));
+    expect(mocks.recordRun).toHaveBeenLastCalledWith(expect.objectContaining({ marcas: ["caiu_no_fluxo_antigo"] }));
     mocks.toolsOn.mockReturnValue(false);
   });
 
