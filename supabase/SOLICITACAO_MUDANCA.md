@@ -32,3 +32,18 @@ Complemento 14/10/2026 (envio): o atendente envia documento, imagem, vídeo e á
 
 Complemento 15/10/2026 (exclusão): "apagar para todos" usa `POST /message/delete` da Stevo e só vale para mensagem enviada pelo número com código do WhatsApp; a mesma ação feita no celular ou pelo cliente chega no webhook como `protocolMessage` REVOKE e marca o balão como apagado no Tawper. A Stevo não expõe "apagar para mim" nem "apagar conversa": no Tawper essas ações valem só para o Tawper (todos os atendentes compartilham a conta) e o celular não muda. No sentido contrário, os eventos `DeleteForMe`, `DeleteChat` e `ClearChat` são aplicados se a Stevo os repassar; o esquema da API não confirma isso. Migration 0015 (`revoked_at`, `hidden_at`).
 ```
+
+```text
+ID: SM-2026-11-10-001
+Data: 10/11/2026
+Solicitante: Phedro Borges
+Problema observado: central de WhatsApp lenta, conversas fora do limite global de mensagens não aparecem e falhas podem apresentar demonstração.
+Decisão anterior afetada: PLANO_IMPLEMENTACAO.md, seção 23; manutenção antecipada da integração temporária da Fase 7, conforme ADR-003.
+Fases e dados afetados: F0 permanece ativa; leitura e apresentação da central temporária. Nenhuma mudança de schema nesta primeira etapa.
+Alternativas avaliadas: aguardar G6 ou corrigir a central existente antecipadamente.
+Opção escolhida: correções incrementais da central existente, conforme docs/plano-correcao-whatsapp-2026-11-10.md.
+Plano de migration/backfill: nenhum nesta etapa; eventuais mudanças futuras exigem plano próprio.
+Plano de teste: lint, typecheck, testes, build e homologação dos fluxos com dados representativos e Stevo.
+Plano de rollback: publicar a versão anterior; dados preservados.
+Aprovador: solicitação explícita de Phedro Borges nesta sessão.
+```

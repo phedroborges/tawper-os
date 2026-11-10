@@ -33,6 +33,7 @@ async function stevoFetch(path: string, init?: RequestInit): Promise<unknown> {
       ...init?.headers,
     },
     cache: "no-store",
+    signal: init?.signal ?? (path.startsWith("/instance/") ? AbortSignal.timeout(8000) : undefined),
   });
   const text = await res.text();
   let body: unknown = null;

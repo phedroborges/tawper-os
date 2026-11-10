@@ -52,9 +52,9 @@ export type InboxTab = "minhas" | "fila" | "todas";
 
 export const MAX_FILE_BYTES = 16 * 1024 * 1024;
 
-async function fetchLiveFeed(): Promise<LiveFeed | null> {
+async function fetchLiveFeed(selected = ""): Promise<LiveFeed | null> {
   try {
-    const res = await fetch("/api/whatsapp/live", { cache: "no-store" });
+    const res = await fetch(`/api/whatsapp/live${selected ? `?selected=${encodeURIComponent(selected)}` : ""}`, { cache: "no-store" });
     if (!res.ok) return null;
     return (await res.json()) as LiveFeed;
   } catch {
@@ -163,7 +163,7 @@ export type LiveChat = ReturnType<typeof useLiveChat>;
  * @param enabled  liga a carga e a atualização (as janelas desligam quando tudo está fechado).
  * @param intervalMs intervalo de atualização enquanto ligado.
  */
-export function useLiveChat({ initial, enabled = true, intervalMs = 3000 }: { initial?: Snapshot | null; enabled?: boolean; intervalMs?: number } = {}) {
+export function useLiveChat({ initial, enabled = true, intervalMs = 3000, selected = "" }: { initial?: Snapshot | null; enabled?: boolean; intervalMs?: number; selected?: string } = {}) {
   const user = useCurrentUser();
   const manager = isManager(user);
   const agent: Agent = useMemo(() => ({ id: user?.id ?? "", name: user?.short || user?.name || "", role: user?.role ?? "vendedor" }), [user]);
@@ -193,7 +193,7 @@ export function useLiveChat({ initial, enabled = true, intervalMs = 3000 }: { in
   }, [enabled, loaded]);
 
   const refresh = useCallback(async () => {
-    const live = await fetchLiveFeed();
+    const live = await fetchLiveFeed(selected);
     if (!live) return;
     setSnap((current) => {
       if (!current) return current;
@@ -201,7 +201,7 @@ export function useLiveChat({ initial, enabled = true, intervalMs = 3000 }: { in
       pendingOut.current = pendingOut.current.filter((item) => !alreadySaved(next.events, item));
       return withPending(next, pendingOut.current, author.current);
     });
-  }, []);
+  }, [selected]);
 
   useEffect(() => {
     if (!enabled || !ready) return;

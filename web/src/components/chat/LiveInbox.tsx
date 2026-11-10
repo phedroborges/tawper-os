@@ -26,7 +26,7 @@ export type { Snapshot } from "./live-engine";
 
 /** Tela Conversas: lista, conversa e ficha do cliente usando toda a largura da tela. */
 export function LiveInbox({ initial, selected: selectedPeer, onSelect }: { initial: Snapshot; selected: string; onSelect: (peer: string) => void }) {
-  const chat = useLiveChat({ initial });
+  const chat = useLiveChat({ initial, selected: selectedPeer });
   const { agent, manager } = chat;
   const users = useStore((s) => s.users);
   const snap = chat.snap ?? initial;

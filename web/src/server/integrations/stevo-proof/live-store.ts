@@ -453,6 +453,25 @@ export async function listLiveMessages(): Promise<ProofEventView[] | null> {
   return rows.map(toEventView);
 }
 
+/** Última mensagem visível de cada conversa, independentemente do volume das outras. */
+export async function listLivePreviews(): Promise<ProofEventView[] | null> {
+  const client = db();
+  if (!client) return null;
+  await ensure();
+  const rows = await client<LiveMessageRow[]>`
+    select m.id, m.peer, m.direction, m.body, m.contact_name, m.sent_at, m.author_id, m.author_name,
+      m.media_kind, m.revoked_at, m.external_id is not null as has_external, m.receipt, m.forwarded
+    from public.whatsapp_live_conversations c
+    join lateral (
+      select * from public.whatsapp_live_messages
+      where peer = c.peer and hidden_at is null
+      order by sent_at desc, id desc limit 1
+    ) m on true
+    order by m.sent_at desc, m.id desc
+  `;
+  return rows.map(toEventView);
+}
+
 /** Histórico completo dos números de uma empresa (sem o corte de 500 da central). */
 export async function listLiveMessagesFor(peers: string[]): Promise<ProofEventView[] | null> {
   const client = db();
@@ -611,7 +630,6 @@ export async function listLiveConversations(): Promise<LiveConversation[] | null
     select peer, owner_id, owner_name, unread, last_message_at
     from public.whatsapp_live_conversations
     order by last_message_at desc
-    limit 500
   `;
   return mergeConversations(rows);
 }

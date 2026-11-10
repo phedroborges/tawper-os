@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonAuthError, withSession } from "@/server/auth/http";
 import { listMessages, syncForwardedFlagsFromDebug } from "@/server/integrations/stevo-proof/events";
-import { listLiveConversations, listLiveConversationsFor, listLiveMessagesFor, peerVariants } from "@/server/integrations/stevo-proof/live-store";
+import { listLiveConversations, listLiveConversationsFor, listLiveMessagesFor, listLivePreviews, peerVariants } from "@/server/integrations/stevo-proof/live-store";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -26,7 +26,17 @@ export async function GET(request: Request) {
       ]);
       return NextResponse.json({ events: events ?? [], conversations: conversations ?? [] });
     }
-    const [events, conversations] = await Promise.all([listMessages(), listLiveConversations().catch(() => [])]);
+    // Lista: última mensagem de cada conversa + histórico completo só da conversa aberta (?selected=).
+    const selected = (new URL(request.url).searchParams.get("selected") ?? "").replace(/\D/g, "");
+    const [previews, history, conversations] = await Promise.all([
+      listLivePreviews().catch(() => null),
+      selected ? listLiveMessagesFor(peerVariants(selected)).catch(() => null) : Promise.resolve([]),
+      listLiveConversations().catch(() => []),
+    ]);
+    const recent = previews ?? (await listMessages());
+    const events = [...new Map([...recent, ...(history ?? [])].map((event) => [event.id, event])).values()].sort((a, b) =>
+      b.receivedAt.localeCompare(a.receivedAt),
+    );
     return NextResponse.json({ events, conversations: conversations ?? [] });
   } catch (e) {
     return jsonAuthError(e) ?? NextResponse.json({ error: e instanceof Error ? e.message : "Falha ao ler o chat." }, { status: 500 });

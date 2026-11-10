@@ -26,6 +26,7 @@ import {
   listLiveConversations,
   listLiveConversationsFor,
   listLiveMessagesFor,
+  listLivePreviews,
   markLiveRead,
   markLiveRevoked,
   peerVariants,
@@ -75,7 +76,7 @@ function peerOf(raw: string) {
   return peer;
 }
 
-export async function loadProofSnapshot(): Promise<ProofSnapshot> {
+export async function loadProofSnapshot(selectedPeer = ""): Promise<ProofSnapshot> {
   await requireSessionCookies();
   const enabled = proofEnabled();
   const configured = stevoConfigured();
@@ -94,11 +95,17 @@ export async function loadProofSnapshot(): Promise<ProofSnapshot> {
       conversations: [],
     };
   }
-  const status = await getStevoStatusCached();
+  const [status, previews, history, conversations] = await Promise.all([
+    getStevoStatusCached(), listLivePreviews().catch(() => null),
+    selectedPeer ? listLiveMessagesFor(peerVariants(selectedPeer)).catch(() => null) : Promise.resolve([]),
+    listLiveConversations().catch(() => null),
+  ]);
+  const recent = previews ?? await listMessages();
+  const events = [...new Map([...recent, ...(history ?? [])].map((event) => [event.id, event])).values()]
+    .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
   const qr = status.loggedIn ? emptyQr : await getStevoQr().catch(() => emptyQr);
   if (status.loggedIn) await ensureLiveWebhook().catch(() => false);
   syncForwardedFlagsFromDebug().catch(() => undefined);
-  const [events, conversations] = await Promise.all([listMessages(), listLiveConversations().catch(() => null)]);
   return {
     enabled,
     configured,
