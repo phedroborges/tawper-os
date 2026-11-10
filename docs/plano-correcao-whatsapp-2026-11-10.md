@@ -24,3 +24,14 @@ Rollback: publicar a versão anterior da aplicação. Não há alteração de sc
 - Pendente: paginação do histórico longo, consulta incremental e homologação com a Stevo real.
 - Validação local: 161 testes aprovados (o de integração com PostgreSQL fica ignorado sem banco local), build aprovado, lint sem erros.
 
+
+## Evidência de teste real — 10/11/2026 (local, Stevo simulada)
+
+Ambiente: PostgreSQL 17 em Docker (TLS, banco `tawper_test`), app em `next dev` com a rota e a tela reais, Stevo substituída por um servidor local que só responde status e perfil. **Stevo real e WhatsApp real não foram testados.**
+
+- Conversa de 3 dias atrás + conversa com 700 mensagens recentes: no critério antigo (500 mensagens mais recentes) a conversa antiga tinha 0 mensagens; no feed novo ela aparece com a prévia, e com `?selected=` traz o histórico inteiro (2 de 2). Feed com 3 conversas e 700 mensagens: cerca de 1 KB.
+- Tela `/conversas?c=...` no navegador: a conversa antiga abre com as duas mensagens.
+- Stevo travada (resposta em 20 s): a página responde em 8,2 s com a mensagem de erro explícita, sem cair na demonstração; o feed não depende da Stevo (0,02 s).
+- Banco fora do ar: o feed passou a responder 500 (antes devolvia listas vazias com 200); a tela mantém as conversas já carregadas e volta ao normal quando o banco retorna.
+- Suíte: 162 testes aprovados, inclusive o de integração com PostgreSQL; build aprovado.
+- Não coberto: múltiplos atendentes logados ao mesmo tempo, histórico acima de 2.000 mensagens, envio/recebimento reais.

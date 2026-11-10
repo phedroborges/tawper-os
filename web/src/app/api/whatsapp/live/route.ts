@@ -26,12 +26,13 @@ export async function GET(request: Request) {
       ]);
       return NextResponse.json({ events: events ?? [], conversations: conversations ?? [] });
     }
+    // Falha de banco vira erro (500): a tela mantém o que já mostra em vez de exibir lista vazia.
     // Lista: última mensagem de cada conversa + histórico completo só da conversa aberta (?selected=).
     const selected = (new URL(request.url).searchParams.get("selected") ?? "").replace(/\D/g, "");
     const [previews, history, conversations] = await Promise.all([
-      listLivePreviews().catch(() => null),
-      selected ? listLiveMessagesFor(peerVariants(selected)).catch(() => null) : Promise.resolve([]),
-      listLiveConversations().catch(() => []),
+      listLivePreviews(),
+      selected ? listLiveMessagesFor(peerVariants(selected)) : Promise.resolve([]),
+      listLiveConversations(),
     ]);
     const recent = previews ?? (await listMessages());
     const events = [...new Map([...recent, ...(history ?? [])].map((event) => [event.id, event])).values()].sort((a, b) =>
