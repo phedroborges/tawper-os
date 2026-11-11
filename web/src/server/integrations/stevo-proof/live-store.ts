@@ -459,14 +459,6 @@ export async function listLiveMessages(): Promise<ProofEventView[] | null> {
   return rows.map(toEventView);
 }
 
-/** Diagnóstico: uma consulta mínima (mede a ida e volta ao banco e se a conexão precisou reabrir). */
-export async function pingLiveDb() {
-  const client = db();
-  if (!client) return false;
-  await client`select 1`;
-  return true;
-}
-
 /** Última mensagem visível de cada conversa, independentemente do volume das outras. */
 export async function listLivePreviews(): Promise<ProofEventView[] | null> {
   const client = db();
