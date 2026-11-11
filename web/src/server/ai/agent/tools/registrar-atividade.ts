@@ -47,6 +47,18 @@ export type RegistroPlan =
       restantes: Activity[];
     };
 
+/** O usuário nomeou o tipo da tarefa ("dá baixa na ligação da Joana", "visitei"): aí a conclusão é pedido dele, não palpite. */
+const DITO: Record<string, RegExp> = {
+  "Ligação": /\b(liguei|telefonei|liga[cç][aã]o)\b/i,
+  Visita: /\b(visitei|visita|passei (la|lá|na|no))\b/i,
+  "Reunião": /\b(reuni[aã]o)\b/i,
+  WhatsApp: /\b(whats\w*|zap)\b/i,
+  "E-mail": /\be-?mail\b/i,
+};
+export function citouOTipo(tipo: string, question: string) {
+  return Boolean(DITO[tipo]?.test(question.normalize("NFC")));
+}
+
 /** Valida o registro e decide o que gravar. Não grava nada. */
 export function planRegistro(args: Record<string, unknown>, base: Base, visible: Set<string>, now = new Date(), said?: Pick<AgentContext, "question" | "history">): RegistroPlan {
   const found = companyInScope(args.empresa_id, base, visible);
@@ -63,7 +75,7 @@ export function planRegistro(args: Record<string, unknown>, base: Base, visible:
     if (!tarefa) return { ok: false, erro: "concluir_tarefa_id não é uma tarefa desta empresa. Use o id de tarefas_pendentes do buscar_cliente." };
     if (tarefa.status !== "pendente") return { ok: false, erro: `A tarefa "${tarefa.titulo}" já não está pendente.` };
     // Visita não faz uma ligação pendente, nem WhatsApp faz uma visita: só conclui a tarefa do mesmo tipo de contato (achado no teste real).
-    if (tipo && (FEITO as readonly string[]).includes(tarefa.tipo) && tarefa.tipo !== "Outro" && tarefa.tipo !== tipo) {
+    if (tipo && (FEITO as readonly string[]).includes(tarefa.tipo) && tarefa.tipo !== "Outro" && tarefa.tipo !== tipo && !(said && citouOTipo(tarefa.tipo, said.question))) {
       return { ok: false, erro: `A tarefa "${tarefa.titulo}" é uma ${tarefa.tipo.toLowerCase()} e o que o usuário fez foi ${tipo.toLowerCase()}: não é a mesma coisa. Registre sem concluir_tarefa_id e, no fim, pergunte se essa tarefa também foi feita (cite o título).` };
     }
     const outro = said ? otherContactInTask(tarefa, base.contacts, said) : undefined;

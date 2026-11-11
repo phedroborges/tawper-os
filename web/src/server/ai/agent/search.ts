@@ -11,6 +11,14 @@ function digits(value?: string | null) {
   return (value ?? "").replace(/\D/g, "");
 }
 
+/** Palavras que aparecem em quase todo nome de cliente: sozinhas não identificam ninguém. */
+const GENERICAS = new Set(["usina", "usinas", "agro", "agroindustrial", "agroindustria", "bioenergia", "acucar", "alcool", "grupo", "empresa", "cia", "ltda", "sa", "de", "da", "do", "dos", "das", "e", "fazenda", "sitio"]);
+
+/** O que sobra do nome sem as palavras genéricas. Vazio = o nome é só "Usina", "Agro"…: não serve para achar por inclusão. */
+function significativas(value: string) {
+  return normalize(value).split(/[^a-z0-9]+/).filter((word) => word.length > 1 && !GENERICAS.has(word));
+}
+
 /** Procura empresas por nome aproximado, CNPJ, telefone ou nome de contato. Mais forte primeiro. */
 export function findCompanies(base: Base, query: string, limit = 5, min = 0.6): CompanyMatch[] {
   const q = normalize(query).trim();
@@ -21,7 +29,9 @@ export function findCompanies(base: Base, query: string, limit = 5, min = 0.6): 
     let score = 0;
     const motivos: string[] = [];
     const name = normalize(company.nome);
-    if (q.length >= 3 && (name.includes(q) || q.includes(name))) {
+    // "Usina Zzyx Bela Vista" contém "usina", mas não é a empresa cadastrada só como "USINA": nome só de palavra genérica só casa se for igual.
+    const incluso = (q.length >= 3 && name.includes(q)) || (q.includes(name) && (name === q || significativas(company.nome).length > 0));
+    if (incluso) {
       score = 1.2;
       motivos.push("nome");
     } else {
