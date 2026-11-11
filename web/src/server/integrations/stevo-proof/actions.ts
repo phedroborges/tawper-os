@@ -104,7 +104,8 @@ export async function loadProofSnapshot(selectedPeer = ""): Promise<ProofSnapsho
   const events = [...new Map([...recent, ...(history ?? [])].map((event) => [event.id, event])).values()]
     .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
   const qr = status.loggedIn ? emptyQr : await getStevoQr().catch(() => emptyQr);
-  if (status.loggedIn) await ensureLiveWebhook().catch(() => false);
+  // Em segundo plano: conferir o webhook na Stevo não pode atrasar a abertura da tela.
+  if (status.loggedIn) ensureLiveWebhook().catch(() => false);
   syncForwardedFlagsFromDebug().catch(() => undefined);
   return {
     enabled,

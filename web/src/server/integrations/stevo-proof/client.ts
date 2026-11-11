@@ -85,25 +85,19 @@ export async function getStevoStatus(): Promise<StevoStatus> {
   const data = asRecord(body?.data) ?? body ?? {};
   let phone = "";
   let name = typeof data.Name === "string" ? data.Name : "";
-  let proxy = false;
-  try {
-    const info = asRecord(await stevoFetch("/instance/proxy-info"));
-    const pdata = asRecord(info?.data) ?? info ?? {};
-    proxy = pdata.enabled === true;
-  } catch {
-    proxy = false;
-  }
-  if (data.LoggedIn === true) {
-    try {
-      const profile = asRecord(await stevoFetch("/instance/profile"));
-      const pdata = asRecord(profile?.data) ?? profile ?? {};
-      const rawPhone = pdata.phone ?? pdata.Phone ?? pdata.number ?? pdata.Number ?? pdata.id;
-      if (typeof rawPhone === "string") phone = rawPhone;
-      const rawName = pdata.name ?? pdata.Name ?? pdata.pushName;
-      if (typeof rawName === "string" && rawName) name = rawName;
-    } catch {
-      // O status já basta para a tela da prova.
-    }
+  // proxy-info e profile não dependem um do outro: consultam juntos, não um depois do outro.
+  const [proxyInfo, profile] = await Promise.all([
+    stevoFetch("/instance/proxy-info").catch(() => null),
+    data.LoggedIn === true ? stevoFetch("/instance/profile").catch(() => null) : Promise.resolve(null),
+  ]);
+  const info = asRecord(proxyInfo);
+  const proxy = (asRecord(info?.data) ?? info ?? {}).enabled === true;
+  if (profile) {
+    const pdata = asRecord(asRecord(profile)?.data) ?? asRecord(profile) ?? {};
+    const rawPhone = pdata.phone ?? pdata.Phone ?? pdata.number ?? pdata.Number ?? pdata.id;
+    if (typeof rawPhone === "string") phone = rawPhone;
+    const rawName = pdata.name ?? pdata.Name ?? pdata.pushName;
+    if (typeof rawName === "string" && rawName) name = rawName;
   }
   return {
     configured: true,

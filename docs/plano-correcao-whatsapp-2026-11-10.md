@@ -35,3 +35,11 @@ Ambiente: PostgreSQL 17 em Docker (TLS, banco `tawper_test`), app em `next dev` 
 - Banco fora do ar: o feed passou a responder 500 (antes devolvia listas vazias com 200); a tela mantém as conversas já carregadas e volta ao normal quando o banco retorna.
 - Suíte: 162 testes aprovados, inclusive o de integração com PostgreSQL; build aprovado.
 - Não coberto: múltiplos atendentes logados ao mesmo tempo, histórico acima de 2.000 mensagens, envio/recebimento reais.
+
+## Atraso ao clicar numa conversa — causa e correção (10/11/2026)
+
+Causa: o clique chamava `router.replace("/conversas?c=…")`, o que refaz a página no servidor. Essa renderização espera `loadProofSnapshot` (status, proxy-info, perfil e webhook da Stevo, um depois do outro) antes de a conversa trocar na tela, embora as mensagens já estejam no banco e cheguem pelo feed em cerca de 20 ms. O cache de 10 s da Stevo fazia alguns cliques saírem rápidos e outros lentos.
+
+Correção: a troca de conversa só atualiza a URL no navegador (`history.replaceState`); `proxy-info` e `perfil` passam a ser consultados juntos; a conferência do webhook roda em segundo plano.
+
+Medição local (build de produção, PostgreSQL 17, Stevo simulada com 300 ms por chamada): clique até a mensagem aparecer, 1.409–1.462 ms antes e 23–72 ms depois, sem nenhuma requisição ao servidor. Abrir `/conversas` com o cache expirado: de cerca de 1,5 s para 0,65 s. Com a Stevo real a diferença deve ser proporcional à latência dela; não medido em homologação.
