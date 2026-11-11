@@ -12,7 +12,6 @@ import {
   loadProofSnapshot,
   markProofRead,
   refreshProofQr,
-  sendProofText,
   type Agent,
 } from "@/server/integrations/stevo-proof/actions";
 import type { MediaKind, MessageReceipt, ProofEventView } from "@/server/integrations/stevo-proof/events";
@@ -264,7 +263,13 @@ export function useLiveChat({ initial, enabled = true, intervalMs = 3000, select
     pendingOut.current = [item, ...pendingOut.current];
     setSnap((current) => (current ? withPending(current, pendingOut.current, author.current) : current));
     try {
-      const sent = await sendProofText(peer, text, agent);
+      const res = await fetch("/api/whatsapp/send-text", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: peer, text }),
+      });
+      const sent = (await res.json().catch(() => ({}))) as { error?: string; number?: string };
+      if (!res.ok || !sent.number) throw new Error(sent.error || "Não foi possível enviar.");
       await refresh();
       return canonicalWhatsApp(sent.number);
     } catch (cause) {
