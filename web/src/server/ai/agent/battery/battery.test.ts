@@ -497,6 +497,14 @@ const CASOS: Caso[] = [
     turnos: ["Reagenda a reunião de diretoria da Santa Helena pra sexta"],
     checar: (r) => [named(r, "runCommand").some((call) => arg<Cmd>(call).command === "reschedule") && "reagendou uma tarefa que o usuário não descreveu", !/\?|não (achei|encontrei|tem|há)/i.test(ultima(r)) && "não avisou que não achou"],
   },
+  {
+    nome: "Real: canal não dito não vira ligação nem e-mail",
+    turnos: ["Já mandei a proposta pra Santa Helena, a Joana recebeu e vai analisar. Retorno com ela dia 20."],
+    checar: (r) => {
+      const cmd = named(r, "runCommand").map((call) => arg<Cmd>(call)).filter((item) => item.command === "addInteraction" && item.companyId === IDS.santaHelena);
+      return [!cmd.length && "não registrou", named(r, "completeActivityRecord").some((call) => arg(call) === IDS.tarefaJoana) && "concluiu a ligação da Joana sem ela ter sido feita", cmd.some((item) => /liga|e-?mail|whatsapp|visita|reuni/i.test(String(item.canal))) && `inventou o canal: ${cmd.map((item) => item.canal).join(", ")}`];
+    },
+  },
   // ---------- regras do prompt 2026-11-11.2 ----------
   {
     nome: "Pessoa nova com nome parecido de contato existente (João Pedro × João Batista)",

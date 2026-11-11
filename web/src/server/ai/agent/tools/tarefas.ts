@@ -69,6 +69,14 @@ export const criarTarefa: AgentTool = {
   },
 };
 
+/** O verbo do próprio usuário manda mais que o campo que o modelo preencheu: "adia" nunca vai para antes, "antecipa" nunca vai para depois. */
+export function sentidoDito(question: string): "adiar" | "antecipar" | undefined {
+  const text = question.normalize("NFD").replace(/[̀-ͯ]/g, "").toLowerCase();
+  if (/\b(antecip\w*|adiant\w*|puxa\w*|traz\w*)/.test(text)) return "antecipar";
+  if (/\b(adi\w*|empurr\w*|posterg\w*|joga\w* pra depois)/.test(text)) return "adiar";
+  return undefined;
+}
+
 export function planReagendar(args: Record<string, unknown>, base: Base, visible: Set<string>, now = new Date()) {
   const task = isUuid(args.tarefa_id) ? base.activities.find((item) => item.id === args.tarefa_id) : undefined;
   if (!task) return { ok: false as const, erro: "tarefa_id inválido. Use o id de tarefas_pendentes do buscar_cliente." };
@@ -103,7 +111,7 @@ export const reagendarTarefa: AgentTool = {
   },
   async run(args, ctx) {
     const { snapshot, visible } = await loadScope(ctx.actor);
-    const plan = planReagendar(args, snapshot, visible);
+    const plan = planReagendar({ ...args, sentido: sentidoDito(ctx.question) ?? args.sentido }, snapshot, visible);
     if (!plan.ok) return { data: plan };
     await runCommand({ command: "reschedule", activityId: plan.task.id, dueAt: plan.dueAt, actorId: ctx.actor.id });
     invalidateCrmReadCache();

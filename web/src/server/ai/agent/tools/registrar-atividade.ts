@@ -63,7 +63,7 @@ export function planRegistro(args: Record<string, unknown>, base: Base, visible:
     if (!tarefa) return { ok: false, erro: "concluir_tarefa_id não é uma tarefa desta empresa. Use o id de tarefas_pendentes do buscar_cliente." };
     if (tarefa.status !== "pendente") return { ok: false, erro: `A tarefa "${tarefa.titulo}" já não está pendente.` };
     // Visita não faz uma ligação pendente, nem WhatsApp faz uma visita: só conclui a tarefa do mesmo tipo de contato (achado no teste real).
-    if (tipo && tipo !== "Outro" && (FEITO as readonly string[]).includes(tarefa.tipo) && tarefa.tipo !== "Outro" && tarefa.tipo !== tipo) {
+    if (tipo && (FEITO as readonly string[]).includes(tarefa.tipo) && tarefa.tipo !== "Outro" && tarefa.tipo !== tipo) {
       return { ok: false, erro: `A tarefa "${tarefa.titulo}" é uma ${tarefa.tipo.toLowerCase()} e o que o usuário fez foi ${tipo.toLowerCase()}: não é a mesma coisa. Registre sem concluir_tarefa_id e, no fim, pergunte se essa tarefa também foi feita (cite o título).` };
     }
     const outro = said ? otherContactInTask(tarefa, base.contacts, said) : undefined;
@@ -130,7 +130,7 @@ export const registrarAtividade: AgentTool = {
     type: "object",
     properties: {
       empresa_id: { type: "string", description: "id que veio de buscar_cliente." },
-      tipo: { type: "string", enum: [...FEITO], description: "O que foi feito." },
+      tipo: { type: "string", enum: [...FEITO], description: "O que foi feito. Só use ligação, visita, reunião, WhatsApp ou e-mail se o usuário disse; se ele só contou que falou, mandou ou combinou algo sem dizer como, use Outro." },
       resultado: { type: "string", description: "Título curto do que aconteceu. Ex.: Pedro liberou visita para 22/01." },
       resumo: { type: "string", description: "O que aconteceu, em 1 a 3 frases objetivas, só com o que o usuário contou." },
       contato_nome: { type: "string", description: "Com quem foi a conversa, se o usuário disse." },

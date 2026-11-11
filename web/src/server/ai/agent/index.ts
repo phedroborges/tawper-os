@@ -35,7 +35,7 @@ export const AGENT_TOOLS: AgentTool[] = [
 ];
 
 /** Troque a cada mudança do agente: aparece em /api/health e mostra qual versão está no ar. */
-export const AGENT_VERSION = "2026-11-11.6";
+export const AGENT_VERSION = "2026-11-11.8";
 
 export function agentToolsEnabled() {
   return process.env.TAWPER_AGENT_TOOLS_ENABLED === "true" && process.env.TAWPER_AGENT_WRITES_ENABLED === "true";
@@ -103,7 +103,7 @@ Busca e conferência são trabalho interno: não narre ("vou buscar", "não enco
 - "Adiar" é sempre para depois da data atual da tarefa e "antecipar" para antes; se a data dita vai para o lado contrário, pergunte em vez de mover.
 - Se uma ação precisa de um dado obrigatório que o usuário não deu (o valor da venda, a data de voltar a falar), pergunte antes e não grave nada pela metade sobre esse mesmo fato.
 - Deduza o óbvio em vez de perguntar: o estado pela cidade conhecida, a data pelo calendário, o cliente pelo contato. Se o usuário disser só o mês para voltar a falar com um cliente ("em março"), use o dia 1 desse mês (o sistema mostra a data e o usuário confirma); não pergunte o dia.
-- Só diga que fez algo se a ferramenta devolveu ok=true. Nunca invente nomes, números, datas ou ids.
+- Só diga que fez algo se a ferramenta devolveu ok=true. Nunca invente nomes, números, datas ou ids. Também não invente o canal do contato: se o usuário só disse que falou ou mandou algo sem dizer como, registre como Outro.
 - Pedido que nenhuma ferramenta faz: diga com franqueza que isso ainda não dá por aqui.
 
 ## Casos frequentes

@@ -40,7 +40,7 @@ import { dueFrom } from "./dates";
 import { AGENT_TOOLS, agentSystemPrompt } from "./index";
 import { consultarCrm } from "./tools/consultar-crm";
 import { planRegistro, registrarAtividade } from "./tools/registrar-atividade";
-import { planReagendar, planTarefa, planFechar, concluirTarefa, cancelarTarefa, reagendarTarefa } from "./tools/tarefas";
+import { planReagendar, sentidoDito, planTarefa, planFechar, concluirTarefa, cancelarTarefa, reagendarTarefa } from "./tools/tarefas";
 import { adicionarContato, atualizarCliente, atualizarContato, excluirContato, planAdicionarContato, planAtualizarCliente } from "./tools/cliente";
 
 import { PEDIU_CADASTRO } from "./tools/criar-cliente";
@@ -159,6 +159,11 @@ describe("tarefas", () => {
     expect(planReagendar({ tarefa_id: IDS.visitaSantaHelena, data: future(9) }, base, minhaCarteira)).toMatchObject({ ok: true, task: { id: IDS.visitaSantaHelena } });
     expect(planReagendar({ tarefa_id: IDS.tarefaColorado, data: future(9) }, base, minhaCarteira)).toMatchObject({ ok: false });
     expect(planReagendar({ tarefa_id: "Visita técnica", data: future(9) }, base, minhaCarteira)).toMatchObject({ ok: false });
+    // A visita está daqui a 2 dias: "adiar" para antes recusa, "antecipar" para antes passa.
+    expect(planReagendar({ tarefa_id: IDS.visitaSantaHelena, data: future(1), sentido: "adiar" }, base, minhaCarteira)).toMatchObject({ ok: false, erro: expect.stringContaining("adiar") });
+    expect(planReagendar({ tarefa_id: IDS.visitaSantaHelena, data: future(1), sentido: "antecipar" }, base, minhaCarteira)).toMatchObject({ ok: true });
+    expect(planReagendar({ tarefa_id: IDS.visitaSantaHelena, data: future(9), sentido: "antecipar" }, base, minhaCarteira)).toMatchObject({ ok: false });
+    expect([sentidoDito("Adia a visita pra amanhã"), sentidoDito("empurra a ligação pra sexta"), sentidoDito("Antecipa a visita"), sentidoDito("puxa pra terça"), sentidoDito("Passa a visita pra dia 3")]).toEqual(["adiar", "adiar", "antecipar", "antecipar", undefined]);
   });
 
   it("desfazer do reagendamento volta a data anterior", async () => {
