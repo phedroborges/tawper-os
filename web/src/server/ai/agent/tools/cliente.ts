@@ -1,5 +1,5 @@
 import { PAPEIS, PRENSAS, REGIOES } from "@/lib/constants";
-import { storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
+import { storedCNPJ, storedWhatsAppAssumindoNove } from "@/lib/br-ids";
 import type { Company, Contact, Papel } from "@/lib/types";
 import { normalize } from "@/lib/utils";
 import { invalidateCrmReadCache } from "@/server/crm";
@@ -143,8 +143,8 @@ export function planAdicionarContato(args: Record<string, unknown>, base: Base, 
   const existente = findContact(base.contacts, found.company.id, nome);
   if (existente) return { ok: false as const, erro: `${existente.nome} já é contato da ${found.company.nome} (contato_id=${existente.id}). Para mudar os dados dele, use atualizar_contato.` };
   const rawPhone = str(args.whatsapp, 30);
-  const phone = rawPhone ? storedWhatsApp(rawPhone) : undefined;
-  if (rawPhone && !phone) return { ok: false as const, erro: "WhatsApp inválido. Precisa de celular brasileiro com DDD." };
+  const phone = rawPhone ? storedWhatsAppAssumindoNove(rawPhone) : undefined;
+  if (rawPhone && !phone) return { ok: false as const, erro: `WhatsApp "${rawPhone}" inválido. Precisa de celular brasileiro com DDD (o 9 inicial eu completo se faltar).` };
   const contato: Omit<Contact, "id"> = {
     companyId: found.company.id,
     nome,
@@ -215,8 +215,8 @@ export function planAtualizarContato(args: Record<string, unknown>, base: Base, 
   if (papel) set("role", ROLE_TO_DB[papel], "papel", papel);
   const rawPhone = str(args.whatsapp, 30);
   if (rawPhone) {
-    const phone = storedWhatsApp(rawPhone);
-    if (!phone) return { ok: false as const, erro: "WhatsApp inválido. Precisa de celular brasileiro com DDD." };
+    const phone = storedWhatsAppAssumindoNove(rawPhone);
+    if (!phone) return { ok: false as const, erro: `WhatsApp "${rawPhone}" inválido. Precisa de celular brasileiro com DDD (o 9 inicial eu completo se faltar).` };
     set("whatsapp_e164", phone, "WhatsApp");
   }
   const email = str(args.email, 120);

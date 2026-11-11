@@ -109,6 +109,37 @@ describe("execução de ações pelo WhatsApp", () => {
     expect(mocks.recordReply).toHaveBeenCalledWith(expect.objectContaining({ action }));
   });
 
+  it("CONFIRMAR executa todas as ações do lote, na ordem, e responde com o resultado de cada uma", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("CONFIRMAR")).mockResolvedValue(null);
+    const segunda = { ...action, id: "a2", title: "Perda" };
+    mocks.claimAction.mockResolvedValue({ id: "message-2", action, actions: [action, segunda] });
+    mocks.executeAction.mockReset();
+    mocks.executeAction
+      .mockResolvedValueOnce({ ok: true, message: "Venda registrada.", action })
+      .mockResolvedValueOnce({ ok: true, message: "Perda registrada.", action: segunda });
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.executeAction).toHaveBeenCalledTimes(2);
+    expect(mocks.executeAction).toHaveBeenNthCalledWith(1, { actorId: actor.id, action });
+    expect(mocks.executeAction).toHaveBeenNthCalledWith(2, { actorId: actor.id, action: segunda });
+    expect(mocks.send).toHaveBeenCalledWith("5517999999999", "Venda registrada.\n\nPerda registrada.");
+    expect(mocks.finishAction).toHaveBeenCalledWith("message-2", "executed");
+  });
+
+  it("se uma ação do lote falha, o lote fica como falho e o vendedor vê as duas respostas", async () => {
+    mocks.claimJob.mockReset();
+    mocks.claimJob.mockResolvedValueOnce(job("CONFIRMAR")).mockResolvedValue(null);
+    const segunda = { ...action, id: "a2" };
+    mocks.claimAction.mockResolvedValue({ id: "message-3", action, actions: [action, segunda] });
+    mocks.executeAction.mockReset();
+    mocks.executeAction
+      .mockResolvedValueOnce({ ok: true, message: "Venda registrada.", action })
+      .mockResolvedValueOnce({ ok: false, message: "A perda não foi registrada: negócio já fechado.", action: segunda });
+    await processWhatsAppAgentQueue(2);
+    expect(mocks.finishAction).toHaveBeenCalledWith("message-3", "failed");
+    expect(mocks.send).toHaveBeenCalledWith("5517999999999", expect.stringContaining("A perda não foi registrada"));
+  });
+
   it("entende CONFIRMAR dito em áudio, com pontuação", async () => {
     mocks.claimJob.mockReset();
     mocks.claimJob.mockResolvedValueOnce(job("[áudio] Confirmar.")).mockResolvedValue(null);

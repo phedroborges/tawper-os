@@ -23,6 +23,8 @@ export interface AgentContext {
   consultar: (pergunta: string) => Promise<AssistantAnswer>;
   /** Ação que aguarda "confirmar" no WhatsApp; preenchida por ferramentas que propõem em vez de executar. */
   acao?: AssistantActionProposal;
+  /** Todas as ações que aguardam CONFIRMAR nesta rodada (acao é a primeira). */
+  acoes?: AssistantActionProposal[];
   /** Identifica a mensagem: a mesma gravação repetida (nova tentativa da fila) não duplica no banco. */
   requestId?: string;
 }
@@ -49,6 +51,7 @@ export type AgentStep = {
 export interface AgentResult {
   texto: string;
   acao?: AssistantActionProposal;
+  acoes?: AssistantActionProposal[];
   /** Nomes das ferramentas de escrita que terminaram com sucesso nesta rodada. */
   gravou: string[];
   passos: AgentStep[];

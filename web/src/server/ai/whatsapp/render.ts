@@ -49,7 +49,11 @@ export function renderWhatsAppAnswer(answer: AssistantAnswer, maxLength = 3900) 
   if (answer.itens?.length) {
     parts.push(["🏢 Contas relacionadas", ...answer.itens.map((item) => `• ${clean(item.label)}${item.meta ? ` — ${clean(item.meta)}` : ""}`)].join("\n"));
   }
-  if (answer.acao?.status === "awaiting_confirmation") {
+  const varias = (answer.acoes ?? []).filter((item) => item.status === "awaiting_confirmation");
+  if (varias.length > 1) {
+    const itens = varias.map((item, index) => `${index + 1}. ${clean(item.confirmationText ?? item.title)}`).join("\n");
+    parts.push(`⚠️ Confirmar ${varias.length} ações:\n${itens}\nResponda somente *CONFIRMAR* para executar todas ou *CANCELAR* para descartar todas. A confirmação expira em 15 minutos.`);
+  } else if (answer.acao?.status === "awaiting_confirmation") {
     parts.push(`⚠️ ${clean(answer.acao.confirmationText ?? "Confirmar ação")}\nResponda somente *CONFIRMAR* para executar ou *CANCELAR* para descartar. A confirmação expira em 15 minutos.`);
   }
   const text = parts.filter(Boolean).join("\n\n").replace(/\n{3,}/g, "\n\n").trim();

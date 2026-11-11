@@ -85,7 +85,7 @@ function weekdayNextWeek(weekday: number) {
 }
 
 // ---------- leitura das gravações simuladas ----------
-type Rodada = { calls: Call[]; respostas: string[]; ferramentas: string[][]; marcas: string[]; acoes: { kind: string; payload?: Record<string, unknown> }[] };
+type Rodada = { calls: Call[]; respostas: string[]; ferramentas: string[][]; marcas: string[]; acoes: { kind: string; payload?: Record<string, unknown> }[]; tokens: { entrada: number; saida: number }; ms: number };
 const named = (r: Rodada, name: string) => r.calls.filter((call) => call.name === name);
 const arg = <T>(call: Call, index = 0) => call.args[index] as T;
 type Act = { companyId: string; tipo: string; titulo: string; dueAt: string };
@@ -347,7 +347,7 @@ const CASOS: Caso[] = [
     turnos: ["Fechei com a Ativos! Mandaram o pedido de 48 mil e quinhentos reais, primeira compra deles."],
     checar: (r) => {
       const win = r.acoes.find((acao) => acao.kind === "win_deal");
-      return [!win && "não propôs a venda", win && win.payload?.valor !== 48500 && `valor errado: ${win.payload?.valor}`, escritas(r) > 0 && "gravou sem esperar o CONFIRMAR", !/CONFIRMAR|confirm/i.test(ultima(r)) && "não pediu confirmação"];
+      return [!win && "não propôs a venda", win && win.payload?.valor !== 48500 && `valor errado: ${win.payload?.valor}`, escritas(r) > 0 && "gravou sem esperar o CONFIRMAR"];
     },
   },
   {
@@ -377,6 +377,77 @@ const CASOS: Caso[] = [
     turnos: ["A Ativos já pode ir pra qualificação, o Marcelo confirmou que eles têm 12 colhedoras e prensa própria"],
     checar: (r) => [!named(r, "planAssistantAction").length && "não chamou mover_etapa"],
   },
+  // ---------- casos vindos das conversas reais de teste (Phedro 03/11, Douglas 05/11, Murilo 07/11) ----------
+  {
+    nome: "Real: vários clientes na mesma mensagem (registrar os dois)",
+    turnos: ["Hoje de manhã liguei pro Marcelo da Ativos e ele confirmou que a frota tem 12 colhedoras. À tarde falei com a Joana da Santa Helena, ela pediu orçamento de 20 mangueiras e vou mandar até sexta."],
+    checar: (r) => [
+      registros(r, IDS.ativos) < 1 && !/próximo passo|proximo passo|quando|qual.*passo|ligar|visita/i.test(ultima(r)) && "não registrou a Ativos nem perguntou o que falta",
+      registros(r, IDS.santaHelena) < 1 && "não registrou a conversa da Santa Helena",
+      !futuras(r).some((act) => act.companyId === IDS.santaHelena) && "sem o próximo passo do orçamento da Santa Helena",
+      registros(r, IDS.ativos) > 1 && "registrou a Ativos mais de uma vez",
+    ],
+  },
+  {
+    nome: "Real: dois clientes mudam de situação na mesma mensagem (venda e perda)",
+    turnos: ["Fechei a Ativos, pedido de 30 mil. E a Santa Helena eu perdi, foram pro concorrente por causa de prazo."],
+    checar: (r) => {
+      const propostas = r.ferramentas.flat().filter((nome) => /^(ganhar_negocio|perder_negocio|mover_etapa|colocar_em_espera)/.test(nome)).length;
+      return [
+        propostas < 2 && `só chamou ${propostas} ferramenta(s) de situação para dois clientes`,
+        // Hoje só uma proposta fica pendente por conversa: o resultado mostra se o CONFIRMAR cobre as duas.
+        propostas >= 2 && r.acoes.length < 2 && "propôs duas mudanças mas só uma fica para o CONFIRMAR",
+        escritas(r) > 0 && "gravou sem esperar o CONFIRMAR",
+      ];
+    },
+  },
+  {
+    nome: "Real: três clientes, um de outra carteira",
+    turnos: ["Falei hoje com o Marcelo da Ativos (12 colhedoras), com a Joana da Santa Helena (pediu desconto) e com o comprador da Colorado (quer visita na semana que vem)."],
+    checar: (r) => [
+      registros(r, IDS.ativos) < 1 && !/próximo passo|proximo passo|quando|qual.*passo|ligar|visita/i.test(ultima(r)) && "não registrou a Ativos nem perguntou o que falta",
+      registros(r, IDS.santaHelena) < 1 && "não registrou a Santa Helena",
+      registros(r, IDS.colorado) > 0 && "gravou na Colorado, que é de outra carteira",
+      !/colorado/i.test(ultima(r)) && "não avisou sobre a Colorado",
+    ],
+  },
+  {
+    nome: "Real: telefone ditado sem o 9",
+    turnos: ["Adiciona o contato Marco Beto na Ativos de Mineiros, supervisor geral, WhatsApp 82 9111-2222"],
+    checar: (r) => {
+      const c = named(r, "addContactRecord").map((call) => arg<{ nome: string; whatsapp?: string }>(call)).find((item) => /marco/i.test(item.nome));
+      return [!c && "não cadastrou o Marco Beto", c && c.whatsapp !== "5582991112222" && `WhatsApp errado: ${c.whatsapp}`, /formato|reenvi|manda.*novamente/i.test(ultima(r)) && "pediu para reformatar o número"];
+    },
+  },
+  {
+    nome: "Real: apagar contato não vira cadastro nem tarefa",
+    turnos: ["Exclui o contato Contato Certo e também o Phedro da Ativos de Mineiros. Estão errados."],
+    checar: (r) => [
+      !named(r, "deleteContactRow").some((call) => call.args.includes(IDS.contatoCerto)) && "não excluiu o Contato Certo",
+      !named(r, "deleteContactRow").some((call) => call.args.includes(IDS.contatoPhedro)) && "não excluiu o Phedro",
+      named(r, "addContactRecord").length > 0 && "cadastrou contato em vez de excluir",
+      named(r, "addActivityRecord").length > 0 && "criou tarefa em vez de excluir",
+      registros(r, IDS.ativos) > 0 && "registrou interação em vez de excluir",
+    ],
+  },
+  {
+    nome: "Real: confirmação curta depois do cadastro não vira pergunta repetida",
+    turnos: ["Quero adicionar a Tereza Cristina como contato na Ativos de Mineiros, supervisora, WhatsApp 65 99888-7777", "Sim"],
+    checar: (r) => [
+      named(r, "addContactRecord").filter((call) => /tereza/i.test(arg<{ nome: string }>(call).nome)).length !== 1 && "não cadastrou a Tereza exatamente uma vez",
+      /deseja|quer.*adicionar|confirma/i.test(ultima(r)) && !named(r, "addContactRecord").length && "repetiu a pergunta depois do Sim",
+    ],
+  },
+  {
+    nome: "Real: agradecimento e aceno não geram resposta de ajuda nem gravação",
+    turnos: ["Liguei pra Joana da Santa Helena, ela quer o orçamento até sexta.", "Perfeito, obrigado"],
+    checar: (r) => [/não entendi|posso responder com base|experimente perguntar/i.test(ultima(r)) && "respondeu 'não entendi' ou texto de ajuda a um aceno", escritas(r) > 2 && "gravou de novo no aceno"],
+  },
+  {
+    nome: "Real: pergunta de acompanhamento usa a consulta",
+    turnos: ["Quais são minhas tarefas hoje?", "E em que etapa a Santa Helena está?"],
+    checar: (r) => [!r.ferramentas.flat().includes("consultar_crm") && "não consultou o CRM", /não entendi|posso responder com base/i.test(ultima(r)) && "devolveu texto de ajuda"],
+  },
 ];
 
 async function rodar(caso: Caso): Promise<Rodada> {
@@ -387,6 +458,8 @@ async function rodar(caso: Caso): Promise<Rodada> {
   const marcas: string[] = [];
   const acoes: Rodada["acoes"] = [];
   const history: ChatTurn[] = [];
+  const tokens = { entrada: 0, saida: 0 };
+  const inicio = Date.now();
   await rodada.run(calls, async () => {
     for (const turno of caso.turnos) {
       const result = await runToolAgent({
@@ -402,11 +475,13 @@ async function rodar(caso: Caso): Promise<Rodada> {
       respostas.push(texto);
       ferramentas.push(result?.passos.filter((step) => step.kind === "tool").map((step) => `${step.tool}${step.ok ? "" : "✗"}`) ?? []);
       marcas.push(...(result?.marcas ?? []));
-      if (result?.acao) acoes.push({ kind: result.acao.kind, payload: result.acao.payload as Record<string, unknown> | undefined });
+      tokens.entrada += result?.tokens.entrada ?? 0;
+      tokens.saida += result?.tokens.saida ?? 0;
+      for (const item of result?.acoes?.length ? result.acoes : result?.acao ? [result.acao] : []) acoes.push({ kind: item.kind, payload: item.payload as Record<string, unknown> | undefined });
       history.push({ role: "user", content: turno }, { role: "assistant", content: result?.contexto.length ? `${texto}\n[interno: ${result.contexto.join(" | ")}]` : texto });
     }
   });
-  return { calls, respostas, ferramentas, marcas, acoes };
+  return { calls, respostas, ferramentas, marcas, acoes, tokens, ms: Date.now() - inicio };
 }
 
 describe.skipIf(!ON)("bateria do cotidiano (modelo real)", () => {
@@ -417,8 +492,13 @@ describe.skipIf(!ON)("bateria do cotidiano (modelo real)", () => {
     const casos = only ? CASOS.filter((caso) => caso.nome.toLowerCase().includes(only)) : CASOS;
     process.env.AI_GATEWAY_API_KEY = "";
     const report: { modelo: string; caso: string; ok: boolean; falhas: string[]; respostas: string[]; ferramentas: string[][]; gravacoes: string[] }[] = [];
-    for (const modelo of models) {
+    const extra: Record<string, { entrada: number; saida: number; ms: number; runs: number }> = {};
+    for (const alvo of models) {
+      // "gpt-5.4@low" = modelo gpt-5.4 com esforço de raciocínio low.
+      const [modelo, esforco] = alvo.split("@");
       process.env.OPENAI_MODEL = modelo;
+      if (esforco) process.env.AGENT_REASONING_EFFORT = esforco;
+      else delete process.env.AGENT_REASONING_EFFORT;
       const jobs = casos.flatMap((caso) => Array.from({ length: reps }, () => caso));
       // Poucas rodadas ao mesmo tempo, para não estourar o limite da OpenAI.
       const par = Math.max(1, Number(process.env.BATTERY_PARALLEL || 6));
@@ -427,14 +507,18 @@ describe.skipIf(!ON)("bateria do cotidiano (modelo real)", () => {
         const results = await Promise.all(batch.map(async (caso) => ({ caso, r: await rodar(caso) })));
         for (const { caso, r } of results) {
           const falhas = [...caso.checar(r), ...geral(r)].filter((item): item is string => typeof item === "string");
-          report.push({ modelo, caso: caso.nome, ok: !falhas.length, falhas, respostas: r.respostas, ferramentas: r.ferramentas, gravacoes: r.calls.map((call) => `${call.name} ${JSON.stringify(call.args).slice(0, 300)}`) });
+          (extra[alvo] ??= { entrada: 0, saida: 0, ms: 0, runs: 0 }, extra[alvo].entrada += r.tokens.entrada, extra[alvo].saida += r.tokens.saida, extra[alvo].ms += r.ms, extra[alvo].runs += 1);
+          report.push({ modelo: alvo, caso: caso.nome, ok: !falhas.length, falhas, respostas: r.respostas, ferramentas: r.ferramentas, gravacoes: r.calls.map((call) => `${call.name} ${JSON.stringify(call.args).slice(0, 300)}`) });
         }
       }
     }
     const lines: string[] = [];
     for (const modelo of models) {
       const rows = report.filter((item) => item.modelo === modelo);
-      lines.push(`\n=== ${modelo}: ${rows.filter((item) => item.ok).length}/${rows.length}`);
+      const e = extra[modelo];
+      const custo = e ? `  | por conversa: ${Math.round(e.entrada / e.runs)} tokens de entrada, ${Math.round(e.saida / e.runs)} de saída, ${(e.ms / e.runs / 1000).toFixed(1)} s` : "";
+      lines.push(`
+=== ${modelo}: ${rows.filter((item) => item.ok).length}/${rows.length}${custo}`);
       for (const caso of casos) {
         const mine = rows.filter((item) => item.caso === caso.nome);
         const falhas = [...new Set(mine.flatMap((item) => item.falhas))];

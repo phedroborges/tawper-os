@@ -1,5 +1,5 @@
 import { ACTIVITY_TYPES } from "@/lib/constants";
-import { storedWhatsApp } from "@/lib/br-ids";
+import { storedWhatsAppAssumindoNove } from "@/lib/br-ids";
 import type { Activity, ActivityType, Canal, Company, Contact, Deal, User } from "@/lib/types";
 import { normalize } from "@/lib/utils";
 import { runCommand } from "@/server/commands";
@@ -93,7 +93,7 @@ export function planRegistro(args: Record<string, unknown>, base: Base, visible:
   if (contatoNome) {
     const existente = findContact(base.contacts, company.id, contatoNome);
     const rawPhone = str(args.contato_whatsapp, 30);
-    const phone = rawPhone ? storedWhatsApp(rawPhone) : undefined;
+    const phone = rawPhone ? storedWhatsAppAssumindoNove(rawPhone) : undefined;
     if (rawPhone && !phone && !existente) return { ok: false, erro: "WhatsApp do contato inválido. Precisa de celular brasileiro com DDD (ou registre sem o número)." };
     contato = existente
       ? { existente }

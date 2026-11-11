@@ -759,6 +759,8 @@ export interface AssistantAnswer {
   itens?: { label: string; meta?: string; href: string }[];
   blocos?: AssistantBlock[];
   acao?: AssistantActionProposal;
+  /** Quando uma mensagem pede várias mudanças que exigem CONFIRMAR, todas vêm aqui (acao é a primeira). */
+  acoes?: AssistantActionProposal[];
 }
 
 export type AssistantBlock =

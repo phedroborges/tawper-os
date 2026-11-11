@@ -87,7 +87,8 @@ function proposer(kind: Parameters<typeof planNegocio>[0]) {
     const plan = planNegocio(kind, args, snapshot, visible, ctx.actor);
     if (!plan.ok) return { data: plan };
     const acao: AssistantActionProposal = proposal({ kind, status: "awaiting_confirmation", title: plan.title, summary: plan.summary, confirmationText: plan.confirmationText, actorId: ctx.actor.id, payload: plan.payload });
-    ctx.acao = acao;
+    ctx.acoes = [...(ctx.acoes ?? []).filter((item) => !(item.kind === acao.kind && item.payload?.companyId === plan.payload.companyId)), acao];
+    ctx.acao = ctx.acoes[0];
     return { data: { ok: true, aguardando_confirmacao: plan.summary }, reply: plan.summary, empresaId: plan.payload.companyId };
   };
 }

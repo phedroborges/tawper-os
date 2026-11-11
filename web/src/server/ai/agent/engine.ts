@@ -28,23 +28,27 @@ async function callModel(messages: Message[], tools: AgentTool[], deadline: numb
   for (const route of routes) {
     const remaining = deadline - Date.now();
     if (remaining <= 0) return null;
-    const reasoning = /^(?:openai\/)?(?:gpt-5|o[134])/.test(route.model);
+    // Modelo só do agente (AGENT_MODEL), para trocar sem mexer nas outras funções de IA. Vale na rota direta da OpenAI.
+    const model = route.provider === "openai" && process.env.AGENT_MODEL?.trim() ? process.env.AGENT_MODEL.trim() : route.model;
+    const reasoning = /^(?:openai\/)?(?:gpt-[5-9]|o[134])/.test(model);
+    // Com ferramentas, os modelos gpt-5.6 e gpt-6.x só aceitam raciocínio desligado (a API devolve 400 sem isso).
+    const effort = process.env.AGENT_REASONING_EFFORT || (/^(?:openai\/)?gpt-(?:5\.(?:[6-9]|\d{2,})|[6-9])/.test(model) ? "none" : undefined);
     try {
       const response = await fetch(route.url, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${route.key}` },
         body: JSON.stringify({
-          model: route.model,
+          model,
           messages,
           tools: tools.map((tool) => ({ type: "function", function: { name: tool.name, description: tool.description, parameters: tool.parameters } })),
           tool_choice: "auto",
-          ...(reasoning ? { max_completion_tokens: 4000 } : { max_tokens: 1200, temperature: 0.2 }),
+          ...(reasoning ? { max_completion_tokens: 4000, ...(effort ? { reasoning_effort: effort } : {}) } : { max_tokens: 1200, temperature: 0.2 }),
         }),
         signal: AbortSignal.timeout(remaining),
         cache: "no-store",
       });
       if (!response.ok) {
-        console.warn("[agente] modelo falhou", { model: route.model, status: response.status });
+        console.warn("[agente] modelo falhou", { model, status: response.status });
         // Limite de requisições ou instabilidade da OpenAI: espera um pouco antes da próxima tentativa.
         if (response.status === 429 || response.status >= 500) await new Promise((resolve) => setTimeout(resolve, Math.min(4000, Math.max(0, deadline - Date.now() - 1000))));
         continue;
@@ -54,9 +58,9 @@ async function callModel(messages: Message[], tools: AgentTool[], deadline: numb
         usage?: { prompt_tokens?: number; completion_tokens?: number };
       };
       const message = body.choices?.[0]?.message;
-      if (message) return { message, model: route.model, entrada: body.usage?.prompt_tokens ?? 0, saida: body.usage?.completion_tokens ?? 0 };
+      if (message) return { message, model, entrada: body.usage?.prompt_tokens ?? 0, saida: body.usage?.completion_tokens ?? 0 };
     } catch {
-      console.warn("[agente] modelo sem resposta", { model: route.model });
+      console.warn("[agente] modelo sem resposta", { model });
     }
   }
   return null;
@@ -103,7 +107,7 @@ export async function runAgent(input: {
   const done = new Map<string, ToolOutput>();
   const result: AgentResult = { texto: "", gravou: [], passos: [], contexto: [], desfazer: [], marcas: [], tokens: { entrada: 0, saida: 0 } };
   const recibos: string[] = [];
-  const finish = (texto: string): AgentResult => ({ ...result, acao: input.ctx.acao, texto: composeReply(texto, recibos) });
+  const finish = (texto: string): AgentResult => ({ ...result, acao: input.ctx.acao, acoes: input.ctx.acoes, texto: composeReply(texto, recibos) });
 
   for (let step = 0; step < MAX_STEPS; step += 1) {
     const started = Date.now();

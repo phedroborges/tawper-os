@@ -339,6 +339,32 @@ export async function addContactRecord(contact: Omit<Contact, "id">, actorId?: s
   return row.data.id as string;
 }
 
+/** Janela de 12 h em volta do prazo: duas tarefas iguais com prazo no mesmo dia contam como a mesma. */
+export function duplicateDueWindow(dueAt: string) {
+  const at = new Date(dueAt).getTime();
+  if (Number.isNaN(at)) return null;
+  return { from: new Date(at - 12 * 3_600_000).toISOString(), to: new Date(at + 12 * 3_600_000).toISOString() };
+}
+
+async function findPendingDuplicateActivity(companyId: string, titulo: string, dueAt: string) {
+  const window = duplicateDueWindow(dueAt);
+  const title = titulo.trim();
+  if (!window || !title) return null;
+  const found = await getSupabaseAdmin()
+    .from("activities")
+    .select("id")
+    .eq("organization_id", TAWPER_ORG_ID)
+    .eq("company_id", companyId)
+    .eq("status", "pending")
+    .eq("title", title)
+    .gte("due_at", window.from)
+    .lte("due_at", window.to)
+    .limit(1)
+    .maybeSingle();
+  if (found.error) throw new Error(found.error.message);
+  return found.data?.id ? String(found.data.id) : null;
+}
+
 export async function addActivityRecord(activity: {
   companyId: string;
   dealId?: string;
@@ -351,6 +377,9 @@ export async function addActivityRecord(activity: {
   origem?: Activity["origem"];
 }, options?: { actorId?: string; actorType?: "user" | "ai"; requestId?: string }) {
   if (!isUuid(activity.companyId)) return null;
+  // Mesma tarefa pendente (empresa + título + dia) não nasce duas vezes: testes e reenvios acumularam 6 a 7 cópias iguais.
+  const repetida = await findPendingDuplicateActivity(activity.companyId, activity.titulo, activity.dueAt).catch(() => null);
+  if (repetida) return repetida;
   const actors = await ensureOperators();
   const origin = activity.origem === "ia" ? "ai" : activity.origem === "regra" ? "rule" : activity.origem === "integracao" ? "integration" : "manual";
   const ownerId = await resolveOwner(activity.ownerId, actors);

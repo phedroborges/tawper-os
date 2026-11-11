@@ -59,7 +59,7 @@ export async function askJSON<T>(opts: JSONRequest): Promise<T | null> {
     const remaining = deadline - Date.now();
     if (remaining <= 0) break;
     const startedAt = Date.now();
-    const reasoningModel = /^(?:openai\/)?(?:gpt-5|o[134])/.test(route.model);
+    const reasoningModel = /^(?:openai\/)?(?:gpt-[5-9]|o[134])/.test(route.model);
     try {
       const response = await fetch(route.url, {
         method: "POST", headers: { "Content-Type": "application/json", Authorization: `Bearer ${route.key}` },

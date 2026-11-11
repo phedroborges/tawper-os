@@ -23,7 +23,10 @@ export const moverEtapa: AgentTool = {
     const pedido = str(args.pedido, 1500) || ctx.question;
     const answer = await planAssistantAction({ question: pedido, history: ctx.history, actorId: ctx.actor.id });
     if (!answer) return { data: { ok: false, erro: "Não entendi qual cliente e qual etapa. Pergunte ao usuário." } };
-    if (answer.acao?.status === "awaiting_confirmation") ctx.acao = answer.acao;
+    if (answer.acao?.status === "awaiting_confirmation") {
+      ctx.acoes = [...(ctx.acoes ?? []), answer.acao];
+      ctx.acao = ctx.acoes[0];
+    }
     return { data: { ok: true, resposta: answer.texto }, reply: answer.texto };
   },
 };

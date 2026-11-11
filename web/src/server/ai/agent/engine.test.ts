@@ -131,4 +131,33 @@ describe("runAgent", () => {
     expect((await run([]))?.texto).toBe("Não consigo.");
     expect(sentBody(1).messages.at(-1)?.content).toContain("desconhecida");
   });
+
+  it("AGENT_MODEL troca só o modelo do agente e liga o raciocínio desligado nos gpt-5.6", async () => {
+    vi.stubEnv("OPENAI_MODEL", "gpt-5.4");
+    vi.stubEnv("AGENT_MODEL", "gpt-5.6-terra");
+    fetchMock.mockResolvedValueOnce(model({ content: "Oi." }));
+    await run([]);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as { model: string; reasoning_effort?: string };
+    expect(body.model).toBe("gpt-5.6-terra");
+    expect(body.reasoning_effort).toBe("none");
+  });
+
+  it("gpt-6.1-terra também sai com raciocínio desligado", async () => {
+    vi.stubEnv("AGENT_MODEL", "gpt-6.1-terra");
+    fetchMock.mockResolvedValueOnce(model({ content: "Oi." }));
+    await run([]);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as { model: string; reasoning_effort?: string };
+    expect(body.model).toBe("gpt-6.1-terra");
+    expect(body.reasoning_effort).toBe("none");
+  });
+
+  it("sem AGENT_MODEL usa o OPENAI_MODEL e não manda esforço de raciocínio ao gpt-5.4", async () => {
+    vi.stubEnv("OPENAI_MODEL", "gpt-5.4");
+    vi.stubEnv("AGENT_MODEL", "");
+    fetchMock.mockResolvedValueOnce(model({ content: "Oi." }));
+    await run([]);
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string) as { model: string; reasoning_effort?: string };
+    expect(body.model).toBe("gpt-5.4");
+    expect(body.reasoning_effort).toBeUndefined();
+  });
 });

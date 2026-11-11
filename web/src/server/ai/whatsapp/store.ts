@@ -207,12 +207,16 @@ export async function recordWhatsAppAgentReply(input: {
   body: string;
   externalMessageId: string;
   action?: AssistantActionProposal;
+  /** Quando há mais de uma ação aguardando CONFIRMAR na mesma resposta (action é a primeira). */
+  actions?: AssistantActionProposal[];
   /** Anotação interna (ids do que foi lido ou gravado) que volta ao modelo nas próximas mensagens. */
   contexto?: string;
   /** Como desfazer o que esta resposta gravou; vale enquanto o usuário não responder DESFAZER. */
   desfazer?: Undo[];
 }) {
   const action = input.action?.status === "awaiting_confirmation" ? JSON.stringify(input.action) : null;
+  const actions = (input.actions ?? []).filter((item) => item.status === "awaiting_confirmation");
+  const actionsJson = actions.length > 1 ? JSON.stringify(actions) : null;
   const contexto = input.contexto?.slice(0, 1500) || null;
   const desfazer = input.desfazer?.length ? JSON.stringify(input.desfazer) : null;
   await db()`
@@ -225,6 +229,8 @@ export async function recordWhatsAppAgentReply(input: {
       jsonb_build_object('outbox_event_id', ${input.outboxEventId}::text) ||
       case when ${action}::text is null then '{}'::jsonb
            else jsonb_build_object('action', ${action}::jsonb, 'action_status', 'pending') end ||
+      case when ${actionsJson}::text is null then '{}'::jsonb
+           else jsonb_build_object('actions', ${actionsJson}::jsonb) end ||
       case when ${contexto}::text is null then '{}'::jsonb
            else jsonb_build_object('contexto', ${contexto}::text) end ||
       case when ${desfazer}::text is null then '{}'::jsonb
@@ -271,6 +277,7 @@ export async function claimPendingWhatsAppAction(sessionId: string) {
   const rows = await db()<{
     id: string;
     action: AssistantActionProposal;
+    actions: AssistantActionProposal[] | null;
   }[]>`
     with candidate as (
       select id
@@ -287,7 +294,7 @@ export async function claimPendingWhatsAppAction(sessionId: string) {
        set metadata = jsonb_set(message.metadata, '{action_status}', to_jsonb('executing'::text), true)
       from candidate
      where message.id = candidate.id
-    returning message.id::text, message.metadata -> 'action' as action
+    returning message.id::text, message.metadata -> 'action' as action, message.metadata -> 'actions' as actions
   `;
   return rows[0] ?? null;
 }

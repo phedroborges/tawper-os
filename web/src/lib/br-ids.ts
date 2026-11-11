@@ -102,6 +102,21 @@ export function storedWhatsApp(value?: string | null): string | undefined {
   return isValidWhatsApp(value) ? normalizeWhatsApp(value) : undefined;
 }
 
+/**
+ * Como `storedWhatsApp`, mas aceita o celular antigo sem o 9º dígito (DDD + 8 dígitos começando em 6 a 9,
+ * ex.: 82 9111-2222) e põe o 9 na frente. Quem dita o número pelo WhatsApp costuma omitir o 9.
+ * Número fixo (8 dígitos começando em 2 a 5) continua inválido.
+ */
+export function storedWhatsAppAssumindoNove(value?: string | null): string | undefined {
+  const exact = storedWhatsApp(value);
+  if (exact) return exact;
+  const national = nationalPhone(value);
+  if (national.length === 10 && /[6-9]/.test(national[2]) && DDDS.has(national.slice(0, 2))) {
+    return storedWhatsApp(`${national.slice(0, 2)}9${national.slice(2)}`);
+  }
+  return undefined;
+}
+
 export function digitsQueryMatch(query: string, ...values: (string | undefined | null)[]): boolean {
   const q = onlyDigits(query);
   if (q.length < 3) return false;

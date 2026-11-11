@@ -1,5 +1,5 @@
 import { ACTIVITY_TYPES, ORIGENS, PAPEIS, REGIOES } from "@/lib/constants";
-import { storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
+import { storedCNPJ, storedWhatsAppAssumindoNove } from "@/lib/br-ids";
 import type { ActivityType, Company, Contact, Papel, User } from "@/lib/types";
 import { normalize } from "@/lib/utils";
 import { invalidateCrmReadCache } from "@/server/crm";
@@ -53,7 +53,7 @@ export function planNewClient(args: Record<string, unknown>, base: Base, actor: 
   const cnpj = rawCnpj ? storedCNPJ(rawCnpj) : undefined;
   if (rawCnpj && !cnpj) return { ok: false, erro: "CNPJ inválido: os dígitos verificadores não conferem (por voz é fácil errar um número). Peça para a pessoa digitar o CNPJ, ou ofereça cadastrar sem CNPJ por enquanto." };
   const rawPhone = str(args.contato_whatsapp, 30);
-  const phone = rawPhone ? storedWhatsApp(rawPhone) : undefined;
+  const phone = rawPhone ? storedWhatsAppAssumindoNove(rawPhone) : undefined;
   if (rawPhone && !phone) return { ok: false, erro: "WhatsApp inválido. Precisa de celular brasileiro com DDD." };
 
   const owner = pickOwner(args, actor, base.users);

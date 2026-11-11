@@ -89,10 +89,14 @@ async function answerJob(job: WhatsAppAgentJob) {
     const pending = await claimPendingWhatsAppAction(sessionId);
     // Sem proposta guardada, "confirmo" é resposta a uma pergunta do próprio agente: segue para a conversa normal.
     if (pending) {
-      const result = await executeAssistantAction({ actorId: resolved.user.id, action: pending.action });
-      await finishPendingWhatsAppAction(pending.id, result.ok ? "executed" : "failed");
-      const sent = await sendWhatsAppAgentText(sender, result.message);
-      await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: result.message, externalMessageId: sent.messageId });
+      // Uma mensagem pode ter deixado várias mudanças aguardando (ex.: vender uma conta e perder outra): CONFIRMAR executa todas, na ordem.
+      const lote = pending.actions?.length ? pending.actions : [pending.action];
+      const resultados: { ok: boolean; message: string }[] = [];
+      for (const action of lote) resultados.push(await executeAssistantAction({ actorId: resolved.user.id, action }));
+      await finishPendingWhatsAppAction(pending.id, resultados.every((item) => item.ok) ? "executed" : "failed");
+      const message = resultados.map((item) => item.message).join("\n\n");
+      const sent = await sendWhatsAppAgentText(sender, message);
+      await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: message, externalMessageId: sent.messageId });
       return;
     }
   } else if (/^(cancelar|cancela|cancelado|nao confirmar)$/.test(normalizedQuestion)) {
@@ -159,14 +163,14 @@ async function answerJob(job: WhatsAppAgentJob) {
     ? await runToolAgent({ actor: resolved.user, question, history: withNotes, consultar: (pergunta) => ask(pergunta, true), requestId: job.id })
     : null;
   console.info("[agente] caminho da resposta", toolsOn ? (viaFerramentas ? "ferramentas" : "fluxo antigo (o modelo não respondeu com ferramentas)") : "fluxo antigo (TAWPER_AGENT_TOOLS_ENABLED ou TAWPER_AGENT_WRITES_ENABLED desligada)");
-  let answer = viaFerramentas ? { texto: viaFerramentas.texto, acao: viaFerramentas.acao } : await ask(question, false);
+  let answer = viaFerramentas ? { texto: viaFerramentas.texto, acao: viaFerramentas.acao, acoes: viaFerramentas.acoes } : await ask(question, false);
   // Sem a IA (crédito, limite ou queda da OpenAI) o fluxo antigo só entende palavra-chave: melhor avisar do que mandar o texto de ajuda.
   if (toolsOn && !viaFerramentas && answer.texto === ASSISTANT_HELP) answer = { texto: IA_FORA };
   const desfazer = viaFerramentas?.desfazer ?? [];
   const text = `${renderWhatsAppAnswer(answer)}${desfazer.length ? "\n\n↩️ Errei? Responda DESFAZER." : ""}`;
   const sent = await sendWhatsAppAgentText(sender, text);
   const contexto = viaFerramentas?.contexto.join(" | ");
-  await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId, action: answer.acao, contexto, desfazer });
+  await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId, action: answer.acao, actions: answer.acoes, contexto, desfazer });
   await recordWhatsAppAgentRun({
     sessionId,
     correlationId: job.id,

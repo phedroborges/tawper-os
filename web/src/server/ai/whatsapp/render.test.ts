@@ -50,4 +50,19 @@ describe("formatação da resposta para WhatsApp", () => {
     expect(text).toContain("CONFIRMAR");
     expect(text).toContain("CANCELAR");
   });
+
+  it("lista cada ação quando uma mensagem deixa várias aguardando e pede um CONFIRMAR só", () => {
+    const base = { status: "awaiting_confirmation" as const, actorId: "u1", createdAt: "2026-11-11T12:00:00Z", expiresAt: "2026-11-11T12:15:00Z" };
+    const text = renderWhatsAppAnswer({
+      texto: "Preparei as duas mudanças.",
+      acoes: [
+        { ...base, id: "a1", kind: "win_deal", title: "Venda: Ativos", summary: "x", confirmationText: "Confirmar venda da Ativos (R$ 30.000)" },
+        { ...base, id: "a2", kind: "lose_deal", title: "Perda: Santa Helena", summary: "y", confirmationText: "Confirmar perda da Santa Helena" },
+      ],
+    } as never);
+    expect(text).toContain("Confirmar 2 ações");
+    expect(text).toContain("1. Confirmar venda da Ativos (R$ 30.000)");
+    expect(text).toContain("2. Confirmar perda da Santa Helena");
+    expect(text).toContain("CONFIRMAR* para executar todas");
+  });
 });
