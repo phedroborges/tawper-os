@@ -63,5 +63,5 @@ export interface AgentResult {
   marcas: string[];
   empresaId?: string;
   modelo?: string;
-  tokens: { entrada: number; saida: number };
+  tokens: { entrada: number; saida: number; cache?: number };
 }

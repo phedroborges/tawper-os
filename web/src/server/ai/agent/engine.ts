@@ -11,7 +11,8 @@ type Message =
   | { role: "system" | "user"; content: string }
   | { role: "assistant"; content: string | null; tool_calls?: ToolCall[] }
   | { role: "tool"; tool_call_id: string; content: string };
-type ModelReply = { message: { content?: string | null; tool_calls?: ToolCall[] }; model: string; entrada: number; saida: number };
+/** cache: quantos tokens de entrada a OpenAI reaproveitou (cobrados a uma fração do preço). */
+type ModelReply = { message: { content?: string | null; tool_calls?: ToolCall[] }; model: string; entrada: number; saida: number; cache: number };
 
 function parseArgs(raw: string): Record<string, unknown> | null {
   try {
@@ -55,10 +56,11 @@ async function callModel(messages: Message[], tools: AgentTool[], deadline: numb
       }
       const body = (await response.json()) as {
         choices?: { message?: ModelReply["message"] }[];
-        usage?: { prompt_tokens?: number; completion_tokens?: number };
+        usage?: { prompt_tokens?: number; completion_tokens?: number; prompt_tokens_details?: { cached_tokens?: number } };
       };
       const message = body.choices?.[0]?.message;
-      if (message) return { message, model, entrada: body.usage?.prompt_tokens ?? 0, saida: body.usage?.completion_tokens ?? 0 };
+      if (message)
+        return { message, model, entrada: body.usage?.prompt_tokens ?? 0, saida: body.usage?.completion_tokens ?? 0, cache: body.usage?.prompt_tokens_details?.cached_tokens ?? 0 };
     } catch {
       console.warn("[agente] modelo sem resposta", { model });
     }
@@ -121,6 +123,7 @@ export async function runAgent(input: {
     result.modelo = reply.model;
     result.tokens.entrada += reply.entrada;
     result.tokens.saida += reply.saida;
+    if (reply.cache) result.tokens.cache = (result.tokens.cache ?? 0) + reply.cache;
     const calls = message.tool_calls ?? [];
     result.passos.push({
       kind: "model",

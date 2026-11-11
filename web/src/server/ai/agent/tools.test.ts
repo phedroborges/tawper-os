@@ -37,7 +37,7 @@ vi.mock("../action-engine", () => ({
 }));
 
 import { dueFrom } from "./dates";
-import { agentSystemPrompt } from "./index";
+import { AGENT_TOOLS, agentSystemPrompt } from "./index";
 import { consultarCrm } from "./tools/consultar-crm";
 import { planRegistro, registrarAtividade } from "./tools/registrar-atividade";
 import { planReagendar, planTarefa, planFechar, concluirTarefa, cancelarTarefa, reagendarTarefa } from "./tools/tarefas";
@@ -237,6 +237,15 @@ describe("prompt e consulta", () => {
     const prompt = agentSystemPrompt(douglas());
     expect(prompt).toContain("Douglas");
     expect(prompt).not.toContain("cadastro de cliente em andamento");
+  });
+
+  it("o prompt cita todas as ferramentas e deixa o que muda (usuário, data) no fim, para o começo entrar no cache", () => {
+    const prompt = agentSystemPrompt(douglas(), new Date("2026-11-11T12:00:00Z"));
+    for (const tool of AGENT_TOOLS) expect(prompt).toContain(tool.name);
+    const prefixo = prompt.slice(0, prompt.indexOf("## Agora"));
+    expect(prefixo.length).toBeGreaterThan(3000);
+    expect(prefixo).not.toContain("Douglas");
+    expect(agentSystemPrompt(douglas(), new Date("2026-11-12T18:30:00Z")).startsWith(prefixo)).toBe(true);
   });
 
   it("a consulta responde direto ao usuário", async () => {

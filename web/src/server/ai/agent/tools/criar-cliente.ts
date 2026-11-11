@@ -131,7 +131,7 @@ export const criarCliente: AgentTool = {
       nome: { type: "string", description: "Nome fantasia da empresa." },
       razao_social: { type: "string", description: "Opcional. Só se o usuário disser a razão social. Não confundir com CNPJ." },
       cidade: { type: "string" },
-      uf: { type: "string", description: "Sigla do estado, ex.: SP." },
+      uf: { type: "string", description: "Sigla do estado. Deduza pela cidade quando ela for conhecida (Ribeirão Preto → SP, Rio Verde → GO); pergunte só se não souber." },
       cnpj: { type: "string", description: "Opcional. 14 dígitos." },
       ramo: { type: "string", description: "Opcional. Ex.: usina de cana." },
       regiao: { type: "string", description: `Opcional. Uma de: ${REGIOES.join(", ")}.` },

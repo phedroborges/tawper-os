@@ -84,7 +84,7 @@ export function planRegistro(args: Record<string, unknown>, base: Base, visible:
     return {
       ok: false,
       faltando: ["proximo_passo"],
-      dica: `${company.nome} ficaria sem próximo passo. Sugira um que faça sentido com o que foi contado (tipo, o quê e quando) e pergunte se pode ser esse. Nada foi gravado ainda.`,
+      dica: `${company.nome} ficaria sem próximo passo. Sugira um que faça sentido com o que foi contado (tipo, o quê e quando) e pergunte se pode ser esse. Nada foi gravado ainda. Se a mensagem fala de outros clientes, grave o que for deles antes de perguntar.`,
     };
   }
 

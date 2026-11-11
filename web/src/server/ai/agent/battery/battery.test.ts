@@ -85,7 +85,7 @@ function weekdayNextWeek(weekday: number) {
 }
 
 // ---------- leitura das gravações simuladas ----------
-type Rodada = { calls: Call[]; respostas: string[]; ferramentas: string[][]; marcas: string[]; acoes: { kind: string; payload?: Record<string, unknown> }[]; tokens: { entrada: number; saida: number }; ms: number };
+type Rodada = { calls: Call[]; respostas: string[]; ferramentas: string[][]; marcas: string[]; acoes: { kind: string; payload?: Record<string, unknown> }[]; tokens: { entrada: number; saida: number; cache: number }; ms: number };
 const named = (r: Rodada, name: string) => r.calls.filter((call) => call.name === name);
 const arg = <T>(call: Call, index = 0) => call.args[index] as T;
 type Act = { companyId: string; tipo: string; titulo: string; dueAt: string };
@@ -448,6 +448,32 @@ const CASOS: Caso[] = [
     turnos: ["Quais são minhas tarefas hoje?", "E em que etapa a Santa Helena está?"],
     checar: (r) => [!r.ferramentas.flat().includes("consultar_crm") && "não consultou o CRM", /não entendi|posso responder com base/i.test(ultima(r)) && "devolveu texto de ajuda"],
   },
+  // ---------- regras do prompt 2026-11-11.2 ----------
+  {
+    nome: "Pessoa nova com nome parecido de contato existente (João Pedro × João Batista)",
+    turnos: ["Liguei pro João Pedro da Santa Helena, ele é o novo gerente agrícola e pediu catálogo das mangueiras."],
+    checar: (r) => {
+      const novo = named(r, "addContactRecord").some((call) => /jo[aã]o pedro/i.test(arg<{ nome: string }>(call).nome));
+      return [registros(r, IDS.santaHelena) > 0 && !novo && "registrou a ligação sem cadastrar o João Pedro (usou outro contato?)", !registros(r, IDS.santaHelena) && !/\?/.test(ultima(r)) && "nem registrou nem perguntou"];
+    },
+  },
+  {
+    nome: "Espera sem data: pergunta antes de gravar",
+    turnos: ["A Ativos pediu pra voltar a falar só na próxima safra."],
+    checar: (r) => {
+      const sb = r.acoes.find((acao) => acao.kind === "set_standby");
+      return [escritas(r) > 0 && "gravou algo antes de fechar a espera", !sb && !/\?/.test(ultima(r)) && "nem propôs a espera nem perguntou o que falta"];
+    },
+  },
+  {
+    nome: "Estado deduzido pela cidade (não pergunta a UF)",
+    turnos: ["Cadastra pra mim a Usina São Francisco, de Sertãozinho. Contato ainda não tenho."],
+    checar: (r) => {
+      const cad = named(r, "registerCompany");
+      const uf = cad[0] ? arg<{ company: { uf?: string } }>(cad[0]).company.uf : undefined;
+      return [/\bestado\b|\bUF\b/i.test(r.respostas.join(" ")) && "perguntou o estado", cad.length !== 1 && `cadastrou ${cad.length} vez(es)`, cad[0] && uf !== "SP" && `UF errada: ${uf}`];
+    },
+  },
 ];
 
 async function rodar(caso: Caso): Promise<Rodada> {
@@ -458,7 +484,7 @@ async function rodar(caso: Caso): Promise<Rodada> {
   const marcas: string[] = [];
   const acoes: Rodada["acoes"] = [];
   const history: ChatTurn[] = [];
-  const tokens = { entrada: 0, saida: 0 };
+  const tokens = { entrada: 0, saida: 0, cache: 0 };
   const inicio = Date.now();
   await rodada.run(calls, async () => {
     for (const turno of caso.turnos) {
@@ -477,6 +503,7 @@ async function rodar(caso: Caso): Promise<Rodada> {
       marcas.push(...(result?.marcas ?? []));
       tokens.entrada += result?.tokens.entrada ?? 0;
       tokens.saida += result?.tokens.saida ?? 0;
+      tokens.cache += result?.tokens.cache ?? 0;
       for (const item of result?.acoes?.length ? result.acoes : result?.acao ? [result.acao] : []) acoes.push({ kind: item.kind, payload: item.payload as Record<string, unknown> | undefined });
       history.push({ role: "user", content: turno }, { role: "assistant", content: result?.contexto.length ? `${texto}\n[interno: ${result.contexto.join(" | ")}]` : texto });
     }
@@ -492,7 +519,7 @@ describe.skipIf(!ON)("bateria do cotidiano (modelo real)", () => {
     const casos = only ? CASOS.filter((caso) => caso.nome.toLowerCase().includes(only)) : CASOS;
     process.env.AI_GATEWAY_API_KEY = "";
     const report: { modelo: string; caso: string; ok: boolean; falhas: string[]; respostas: string[]; ferramentas: string[][]; gravacoes: string[] }[] = [];
-    const extra: Record<string, { entrada: number; saida: number; ms: number; runs: number }> = {};
+    const extra: Record<string, { entrada: number; saida: number; cache: number; ms: number; runs: number }> = {};
     for (const alvo of models) {
       // "gpt-5.4@low" = modelo gpt-5.4 com esforço de raciocínio low.
       const [modelo, esforco] = alvo.split("@");
@@ -507,7 +534,7 @@ describe.skipIf(!ON)("bateria do cotidiano (modelo real)", () => {
         const results = await Promise.all(batch.map(async (caso) => ({ caso, r: await rodar(caso) })));
         for (const { caso, r } of results) {
           const falhas = [...caso.checar(r), ...geral(r)].filter((item): item is string => typeof item === "string");
-          (extra[alvo] ??= { entrada: 0, saida: 0, ms: 0, runs: 0 }, extra[alvo].entrada += r.tokens.entrada, extra[alvo].saida += r.tokens.saida, extra[alvo].ms += r.ms, extra[alvo].runs += 1);
+          (extra[alvo] ??= { entrada: 0, saida: 0, cache: 0, ms: 0, runs: 0 }, extra[alvo].entrada += r.tokens.entrada, extra[alvo].saida += r.tokens.saida, extra[alvo].cache += r.tokens.cache, extra[alvo].ms += r.ms, extra[alvo].runs += 1);
           report.push({ modelo: alvo, caso: caso.nome, ok: !falhas.length, falhas, respostas: r.respostas, ferramentas: r.ferramentas, gravacoes: r.calls.map((call) => `${call.name} ${JSON.stringify(call.args).slice(0, 300)}`) });
         }
       }
@@ -516,7 +543,7 @@ describe.skipIf(!ON)("bateria do cotidiano (modelo real)", () => {
     for (const modelo of models) {
       const rows = report.filter((item) => item.modelo === modelo);
       const e = extra[modelo];
-      const custo = e ? `  | por conversa: ${Math.round(e.entrada / e.runs)} tokens de entrada, ${Math.round(e.saida / e.runs)} de saída, ${(e.ms / e.runs / 1000).toFixed(1)} s` : "";
+      const custo = e ? `  | por conversa: ${Math.round(e.entrada / e.runs)} tokens de entrada (${Math.round((100 * e.cache) / Math.max(1, e.entrada))}% do cache), ${Math.round(e.saida / e.runs)} de saída, ${(e.ms / e.runs / 1000).toFixed(1)} s` : "";
       lines.push(`
 === ${modelo}: ${rows.filter((item) => item.ok).length}/${rows.length}${custo}`);
       for (const caso of casos) {
