@@ -228,13 +228,13 @@ export async function recordWhatsAppAgentReply(input: {
       ${input.externalMessageId || null}, ${input.body},
       jsonb_build_object('outbox_event_id', ${input.outboxEventId}::text) ||
       case when ${action}::text is null then '{}'::jsonb
-           else jsonb_build_object('action', ${action}::jsonb, 'action_status', 'pending') end ||
+           else jsonb_build_object('action', ${action}::text::jsonb, 'action_status', 'pending') end ||
       case when ${actionsJson}::text is null then '{}'::jsonb
-           else jsonb_build_object('actions', ${actionsJson}::jsonb) end ||
+           else jsonb_build_object('actions', ${actionsJson}::text::jsonb) end ||
       case when ${contexto}::text is null then '{}'::jsonb
            else jsonb_build_object('contexto', ${contexto}::text) end ||
       case when ${desfazer}::text is null then '{}'::jsonb
-           else jsonb_build_object('desfazer', ${desfazer}::jsonb, 'desfazer_status', 'pending') end
+           else jsonb_build_object('desfazer', ${desfazer}::text::jsonb, 'desfazer_status', 'pending') end
     )
   `;
 }
@@ -243,6 +243,18 @@ export async function recordWhatsAppAgentReply(input: {
  * Pega a última resposta com gravação ainda desfazível (até 2 horas). Responder DESFAZER de novo
  * pega a anterior: desfaz de trás para frente, uma resposta por vez.
  */
+/** Linhas gravadas antes da correção têm o JSON em dobro (um texto dentro do jsonb): desembrulha. */
+function fromJson<T>(value: unknown): T | null {
+  if (typeof value === "string") {
+    try {
+      return JSON.parse(value) as T;
+    } catch {
+      return null;
+    }
+  }
+  return (value ?? null) as T | null;
+}
+
 export async function claimWhatsAppUndo(sessionId: string) {
   const rows = await db()<{ id: string; desfazer: Undo[] }[]>`
     with candidate as (
@@ -262,7 +274,8 @@ export async function claimWhatsAppUndo(sessionId: string) {
      where message.id = candidate.id
     returning message.id::text, message.metadata -> 'desfazer' as desfazer
   `;
-  return rows[0] ?? null;
+  const row = rows[0];
+  return row ? { ...row, desfazer: fromJson<Undo[]>(row.desfazer) ?? [] } : null;
 }
 
 export async function finishWhatsAppUndo(messageId: string, status: "done" | "failed") {
@@ -296,7 +309,8 @@ export async function claimPendingWhatsAppAction(sessionId: string) {
      where message.id = candidate.id
     returning message.id::text, message.metadata -> 'action' as action, message.metadata -> 'actions' as actions
   `;
-  return rows[0] ?? null;
+  const row = rows[0];
+  return row ? { ...row, action: fromJson<AssistantActionProposal>(row.action) as AssistantActionProposal, actions: fromJson<AssistantActionProposal[]>(row.actions) } : null;
 }
 
 export async function finishPendingWhatsAppAction(messageId: string, status: "executed" | "failed" | "cancelled") {
