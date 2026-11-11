@@ -6,7 +6,7 @@ import { LiveConversas } from "./live";
 export const dynamic = "force-dynamic";
 
 async function ConversasContent() {
-  const initial = await loadProofSnapshot().catch(() => null);
+  const initial = await loadProofSnapshot("", { fast: true }).catch(() => null);
   if (!initial) return <div role="alert" className="p-6">Não foi possível carregar o WhatsApp. Verifique a conexão e atualize a página para tentar novamente.</div>;
   if (!initial.enabled || !initial.configured) return <DemoConversas />;
   return <LiveConversas initial={initial} />;

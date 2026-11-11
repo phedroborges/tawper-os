@@ -107,7 +107,7 @@ export function LiveInbox({ initial, selected: selectedPeer, onSelect }: { initi
       <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 px-1">
         <h1 className="text-[19px] font-bold tracking-[-0.01em] text-ink">Conversas</h1>
         <span className="inline-flex items-center gap-1.5 text-[12px] text-muted">
-          <span className={cn("size-2 rounded-full", snap.status.loggedIn ? "bg-ok" : "bg-amber-500")} />
+          <span className={cn("size-2 rounded-full", snap.statusPending ? "bg-muted" : snap.status.loggedIn ? "bg-ok" : "bg-amber-500")} />
           {snap.status.name || "Tawper"} · {formatWhatsApp(snap.status.phone) || "número não identificado"} · {chat.statusLabel}
         </span>
         <span className="ml-auto text-[12px] text-muted">
@@ -117,7 +117,7 @@ export function LiveInbox({ initial, selected: selectedPeer, onSelect }: { initi
       {(error || notice) && (
         <div className={cn("mb-2 rounded-[8px] border px-4 py-2 text-[13px]", error ? "border-brand/25 bg-brand-soft text-brand" : "border-ok/20 bg-ok-soft text-ok")}>{error || notice}</div>
       )}
-      {!snap.status.loggedIn && (
+      {!snap.statusPending && !snap.status.loggedIn && (
         <div className="mb-2 flex flex-wrap items-center gap-3 rounded-[8px] border border-amber-200 bg-amber-50 px-4 py-2 text-[12.5px] text-amber-950">
           <span className="font-medium">WhatsApp desconectado.</span>
           <span>Leia o QR no celular do número da Tawper para voltar a receber e enviar.</span>

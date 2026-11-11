@@ -6,6 +6,7 @@ import {
   getStevoQr,
   getStevoStatus,
   getStevoStatusCached,
+  peekStevoStatus,
   ensureLiveWebhook,
   refreshStevoQr,
   registerStevoWebhook,
@@ -44,6 +45,8 @@ export type ProofSnapshot = {
   enabled: boolean;
   configured: boolean;
   status: StevoStatus;
+  /** true quando a Stevo ainda não respondeu: o status chega depois, por /api/whatsapp/status. */
+  statusPending?: boolean;
   qr: StevoQr;
   webhookUrl: string | null;
   publicUrl: string;
@@ -61,6 +64,7 @@ export type ProofSnapshot = {
 export type Agent = { id: string; name: string; role: string };
 
 const emptyQr: StevoQr = { image: null, pairingCode: null, code: null };
+const pendingStatus: StevoStatus = { configured: true, connected: false, loggedIn: false, proxy: false, name: "", phone: "" };
 
 function isManagerRole(role: string) {
   return role === "admin" || role === "gestor";
@@ -76,7 +80,11 @@ function peerOf(raw: string) {
   return peer;
 }
 
-export async function loadProofSnapshot(selectedPeer = ""): Promise<ProofSnapshot> {
+/**
+ * @param opts.fast abre a tela só com o banco: o status da Stevo entra se já estiver em cache;
+ *   senão segue como pendente e a tela o busca depois, sem travar a abertura.
+ */
+export async function loadProofSnapshot(selectedPeer = "", opts: { fast?: boolean } = {}): Promise<ProofSnapshot> {
   await requireSessionCookies();
   const enabled = proofEnabled();
   const configured = stevoConfigured();
@@ -95,15 +103,18 @@ export async function loadProofSnapshot(selectedPeer = ""): Promise<ProofSnapsho
       conversations: [],
     };
   }
+  const known = opts.fast ? peekStevoStatus() : null;
+  if (opts.fast && !known) getStevoStatusCached().catch(() => undefined); // aquece o cache para a consulta da tela
+  const pending = Boolean(opts.fast && !known);
   const [status, previews, history, conversations] = await Promise.all([
-    getStevoStatusCached(), listLivePreviews().catch(() => null),
+    opts.fast ? Promise.resolve(known ?? pendingStatus) : getStevoStatusCached(), listLivePreviews().catch(() => null),
     selectedPeer ? listLiveMessagesFor(peerVariants(selectedPeer)).catch(() => null) : Promise.resolve([]),
     listLiveConversations().catch(() => null),
   ]);
   const recent = previews ?? await listMessages();
   const events = [...new Map([...recent, ...(history ?? [])].map((event) => [event.id, event])).values()]
     .sort((a, b) => b.receivedAt.localeCompare(a.receivedAt));
-  const qr = status.loggedIn ? emptyQr : await getStevoQr().catch(() => emptyQr);
+  const qr = status.loggedIn || pending ? emptyQr : await getStevoQr().catch(() => emptyQr);
   // Em segundo plano: conferir o webhook na Stevo não pode atrasar a abertura da tela.
   if (status.loggedIn) ensureLiveWebhook().catch(() => false);
   syncForwardedFlagsFromDebug().catch(() => undefined);
@@ -111,6 +122,7 @@ export async function loadProofSnapshot(selectedPeer = ""): Promise<ProofSnapsho
     enabled,
     configured,
     status,
+    statusPending: pending || undefined,
     qr,
     webhookUrl: webhookPublicUrl(),
     publicUrl: appPublicUrl(),

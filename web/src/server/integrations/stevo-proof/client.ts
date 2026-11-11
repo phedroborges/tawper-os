@@ -110,13 +110,22 @@ export async function getStevoStatus(): Promise<StevoStatus> {
 }
 
 const STATUS_TTL_MS = 10_000;
-let statusCache: { at: number; value: Promise<StevoStatus> } | null = null;
+let statusCache: { at: number; value: Promise<StevoStatus>; done?: StevoStatus } | null = null;
+
+/** Status já consultado e ainda válido, sem esperar a Stevo; null se não houver. */
+export function peekStevoStatus(): StevoStatus | null {
+  return statusCache?.done && Date.now() - statusCache.at < STATUS_TTL_MS ? statusCache.done : null;
+}
 
 /** Vários atendentes com a tela aberta compartilham a mesma consulta à Stevo. */
 export function getStevoStatusCached(): Promise<StevoStatus> {
   if (statusCache && Date.now() - statusCache.at < STATUS_TTL_MS) return statusCache.value;
   const value = getStevoStatus();
-  statusCache = { at: Date.now(), value };
+  const entry: { at: number; value: Promise<StevoStatus>; done?: StevoStatus } = { at: Date.now(), value };
+  statusCache = entry;
+  value.then((done) => {
+    entry.done = done;
+  }, () => undefined);
   value.catch(() => {
     if (statusCache?.value === value) statusCache = null;
   });

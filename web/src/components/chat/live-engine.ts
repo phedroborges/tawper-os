@@ -192,6 +192,23 @@ export function useLiveChat({ initial, enabled = true, intervalMs = 3000, select
     };
   }, [enabled, loaded]);
 
+  // Abertura rápida: o servidor entregou só o banco; o status da Stevo chega agora, em segundo plano.
+  const pendingStatus = Boolean(snap?.statusPending);
+  useEffect(() => {
+    if (!pendingStatus) return;
+    let alive = true;
+    const settle = (body: { status: Snapshot["status"]; qr: Snapshot["qr"] } | null) => {
+      if (!alive) return;
+      setSnap((current) => (current ? { ...(body ? { ...current, status: body.status, qr: body.qr } : current), statusPending: undefined } : current));
+    };
+    fetch("/api/whatsapp/status", { cache: "no-store" })
+      .then((res) => (res.ok ? res.json() : null))
+      .then(settle, () => settle(null));
+    return () => {
+      alive = false;
+    };
+  }, [pendingStatus]);
+
   const refresh = useCallback(async () => {
     const live = await fetchLiveFeed(selected);
     if (!live) return;
@@ -228,11 +245,12 @@ export function useLiveChat({ initial, enabled = true, intervalMs = 3000, select
   const threads = useMemo(() => (snap ? threadsOf(snap) : []), [snap]);
   const threadOf = useCallback((peer: string) => threads.find((t) => sameChat(t.peer, peer)) ?? null, [threads]);
   const canReply = useCallback((thread: Thread | null) => !thread?.ownerId || thread.ownerId === agent.id, [agent.id]);
-  const statusLabel = snap?.status.loggedIn ? "online" : snap?.status.connected ? "reconectando" : "offline";
+  const statusLabel = snap?.statusPending ? "verificando" : snap?.status.loggedIn ? "online" : snap?.status.connected ? "reconectando" : "offline";
 
   /** Confere tudo que impede o envio e diz o motivo. */
   const assertCanSend = (peer: string) => {
     if (!peer) throw new Error("Abra o número do cliente antes de enviar.");
+    if (snap?.statusPending) throw new Error("Verificando a conexão do WhatsApp. Tente de novo em instantes.");
     if (!snap?.status.loggedIn) throw new Error("O WhatsApp está offline. Espere a sessão voltar ou atualize o QR.");
     const thread = threadOf(peer);
     if (!canReply(thread)) throw new Error(`Esta conversa está com ${thread?.ownerName || "outro atendente"}. Assuma para responder.`);
