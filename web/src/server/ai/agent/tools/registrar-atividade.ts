@@ -62,6 +62,10 @@ export function planRegistro(args: Record<string, unknown>, base: Base, visible:
     tarefa = base.activities.find((item) => item.id === args.concluir_tarefa_id && item.companyId === company.id);
     if (!tarefa) return { ok: false, erro: "concluir_tarefa_id não é uma tarefa desta empresa. Use o id de tarefas_pendentes do buscar_cliente." };
     if (tarefa.status !== "pendente") return { ok: false, erro: `A tarefa "${tarefa.titulo}" já não está pendente.` };
+    // Visita não faz uma ligação pendente, nem WhatsApp faz uma visita: só conclui a tarefa do mesmo tipo de contato (achado no teste real).
+    if (tipo && tipo !== "Outro" && (FEITO as readonly string[]).includes(tarefa.tipo) && tarefa.tipo !== "Outro" && tarefa.tipo !== tipo) {
+      return { ok: false, erro: `A tarefa "${tarefa.titulo}" é uma ${tarefa.tipo.toLowerCase()} e o que o usuário fez foi ${tipo.toLowerCase()}: não é a mesma coisa. Registre sem concluir_tarefa_id e, no fim, pergunte se essa tarefa também foi feita (cite o título).` };
+    }
     const outro = said ? otherContactInTask(tarefa, base.contacts, said) : undefined;
     if (outro) return { ok: false, erro: `A tarefa "${tarefa.titulo}" é com ${outro}, e o usuário não falou de ${outro.split(" ")[0]}. Registre sem concluir_tarefa_id e, no fim, pergunte se essa tarefa foi feita.` };
   }

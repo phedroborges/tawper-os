@@ -111,6 +111,7 @@ export async function runAgent(input: {
   const recibos: string[] = [];
   const finish = (texto: string): AgentResult => ({ ...result, acao: input.ctx.acao, acoes: input.ctx.acoes, texto: composeReply(texto, recibos) });
 
+  let vazias = 0;
   for (let step = 0; step < MAX_STEPS; step += 1) {
     const started = Date.now();
     const reply = await callModel(messages, input.tools, deadline);
@@ -134,6 +135,12 @@ export async function runAgent(input: {
     });
     if (!calls.length) {
       const texto = (message.content ?? "").trim();
+      // Às vezes o modelo devolve vazio, sem texto e sem ferramenta, a uma frase perfeitamente clara (visto no teste real). Pergunta de novo antes de desistir.
+      if (!texto && !recibos.length && vazias < 2) {
+        vazias += 1;
+        result.marcas.push("resposta_vazia_repetida");
+        continue;
+      }
       return finish(texto || (recibos.length ? "" : "Não entendi o pedido. Pode repetir?"));
     }
 

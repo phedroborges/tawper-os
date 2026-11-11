@@ -62,6 +62,21 @@ describe("runAgent", () => {
     expect((await run([tool]))?.texto).toBe("✅ Registrado.");
   });
 
+  it("resposta vazia do modelo (sem texto e sem ferramenta) é repetida antes de dizer que não entendeu", async () => {
+    fetchMock.mockResolvedValueOnce(model({ content: "" })).mockResolvedValueOnce(model({ content: "Agendado para quarta." }));
+    const result = await run([]);
+    expect(result?.texto).toBe("Agendado para quarta.");
+    expect(result?.marcas).toEqual(["resposta_vazia_repetida"]);
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("depois de duas respostas vazias seguidas desiste com a frase de sempre", async () => {
+    fetchMock.mockResolvedValue(model({ content: "" }));
+    const result = await run([]);
+    expect(result?.texto).toBe("Não entendi o pedido. Pode repetir?");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("não conta como gravado nem mostra comprovante quando a ferramenta recusa, e marca para revisão", async () => {
     const tool = writer(async () => ({ data: { ok: false, erro: "CNPJ inválido" }, recibo: "✅ não deveria aparecer" }));
     fetchMock.mockResolvedValueOnce(model(call("gravar", {}))).mockResolvedValueOnce(model({ content: "O CNPJ não confere." }));

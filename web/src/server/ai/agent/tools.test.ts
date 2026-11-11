@@ -91,6 +91,9 @@ describe("registrar atividade", () => {
     const ok = planRegistro({ empresa_id: IDS.santaHelena, tipo: "Ligação", resumo: "Joana recebeu.", concluir_tarefa_id: IDS.tarefaJoana }, base, minhaCarteira);
     expect(ok).toMatchObject({ ok: true, tarefa: { id: IDS.tarefaJoana } });
     expect(planRegistro({ empresa_id: IDS.ativos, tipo: "Ligação", resumo: "x", concluir_tarefa_id: IDS.tarefaJoana }, base, minhaCarteira)).toMatchObject({ ok: false });
+    // Visita ou WhatsApp não concluem uma ligação pendente (achado no teste real).
+    expect(planRegistro({ empresa_id: IDS.ativos, tipo: "Visita", resumo: "Passei lá.", concluir_tarefa_id: IDS.tarefaMarcelo }, base, minhaCarteira)).toMatchObject({ ok: false, erro: expect.stringContaining("não é a mesma coisa") });
+    expect(planRegistro({ empresa_id: IDS.santaHelena, tipo: "WhatsApp", resumo: "Mandei.", concluir_tarefa_id: IDS.tarefaJoana }, base, minhaCarteira)).toMatchObject({ ok: false });
   });
 
   it("não deixa a empresa sem próximo passo: pede um antes de gravar", () => {

@@ -471,6 +471,22 @@ const CASOS: Caso[] = [
     turnos: ["liga pra ele amanhã"],
     checar: (r) => [escritas(r) > 0 && "gravou sem saber quem é", /que eu ligue|eu ligo|eu vou ligar/i.test(ultima(r)) && "falou como se ele mesmo fosse ligar"],
   },
+  {
+    nome: "Real: contato por outro canal não conclui a tarefa pendente",
+    turnos: ["Mandei WhatsApp pra Joana da Santa Helena falando do orçamento, ela visualizou mas não respondeu."],
+    checar: (r) => [
+      named(r, "completeActivityRecord").some((call) => arg(call) === IDS.tarefaJoana) && "concluiu a ligação da Joana sem o usuário dizer que ligou",
+      registros(r, IDS.santaHelena) < 1 && "não registrou o WhatsApp",
+    ],
+  },
+  {
+    nome: "Real: visita à pessoa não conclui a ligação pendente dela",
+    turnos: ["Visitei a Ativos de Mineiros hoje, conversei com o Marcelo e mostrei o catálogo, ele gostou. Volto a falar com ele na segunda."],
+    checar: (r) => [
+      named(r, "completeActivityRecord").some((call) => arg(call) === IDS.tarefaMarcelo) && "concluiu a ligação do Marcelo sem o usuário dizer que ligou",
+      registros(r, IDS.ativos) < 1 && "não registrou a visita",
+    ],
+  },
   // ---------- regras do prompt 2026-11-11.2 ----------
   {
     nome: "Pessoa nova com nome parecido de contato existente (João Pedro × João Batista)",
