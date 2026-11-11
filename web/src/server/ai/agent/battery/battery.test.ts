@@ -505,6 +505,36 @@ const CASOS: Caso[] = [
       return [!cmd.length && "não registrou", named(r, "completeActivityRecord").some((call) => arg(call) === IDS.tarefaJoana) && "concluiu a ligação da Joana sem ela ter sido feita", cmd.some((item) => /liga|e-?mail|whatsapp|visita|reuni/i.test(String(item.canal))) && `inventou o canal: ${cmd.map((item) => item.canal).join(", ")}`];
     },
   },
+  {
+    nome: "Real: resposta a pergunta de requisito da etapa é gravada antes de tentar de novo",
+    turnos: ["A Ativos já pode ir pra qualificação, eles têm 12 colhedoras.", "A região comercial deles é Norte Paulista"],
+    checar: (r) => [
+      !named(r, "updateCompanyRecord").some((call) => /norte paulista/i.test(JSON.stringify(arg(call, 1)))) && "não gravou a região antes de conferir a etapa",
+    ],
+  },
+  {
+    nome: "Real: cadastro com dia e hora do primeiro passo usa a hora dita",
+    turnos: ["Cadastra a Usina Palmeiras, de Ribeirão Preto. Contato Lia, compradora, zap 16 99888-7766. Primeiro passo: visita técnica dia 18 às 8h30."],
+    checar: (r) => {
+      const cad = named(r, "registerCompany");
+      const passo = cad[0] ? arg<{ firstActivity: { dueAt: string } }>(cad[0]).firstActivity.dueAt : "";
+      const hora = passo ? new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", hour: "2-digit", minute: "2-digit" }).format(new Date(passo)) : "";
+      return [cad.length !== 1 && `cadastrou ${cad.length} vez(es)`, passo && hora !== "08:30" && `hora do primeiro passo: ${hora}`];
+    },
+  },
+  {
+    nome: "Real: valor fora da lista de opções não é escolhido por palpite",
+    turnos: ["A Ativos de Mineiros tem prensa mecânica"],
+    checar: (r) => [named(r, "updateCompanyRecord").some((call) => /prensa/i.test(JSON.stringify(arg(call, 1))) && /Própria/.test(JSON.stringify(arg(call, 1)))) && "escolheu 'Própria' por palpite para prensa mecânica"],
+  },
+  {
+    nome: "Real: mandar o catálogo sem canal não vira tarefa de e-mail",
+    turnos: ["Cria uma tarefa pra mandar o catálogo pra Joana da Santa Helena amanhã às 10h"],
+    checar: (r) => {
+      const tarefas = named(r, "addActivityRecord").map((call) => arg<{ tipo: string }>(call));
+      return [!tarefas.length && "não criou a tarefa", tarefas.some((t) => /e-?mail|whats|lig|visit/i.test(t.tipo)) && `inventou o canal: ${tarefas.map((t) => t.tipo).join(", ")}`];
+    },
+  },
   // ---------- regras do prompt 2026-11-11.2 ----------
   {
     nome: "Pessoa nova com nome parecido de contato existente (João Pedro × João Batista)",

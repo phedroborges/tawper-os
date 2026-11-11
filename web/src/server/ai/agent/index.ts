@@ -35,7 +35,7 @@ export const AGENT_TOOLS: AgentTool[] = [
 ];
 
 /** Troque a cada mudança do agente: aparece em /api/health e mostra qual versão está no ar. */
-export const AGENT_VERSION = "2026-11-11.12";
+export const AGENT_VERSION = "2026-11-11.13";
 
 export function agentToolsEnabled() {
   return process.env.TAWPER_AGENT_TOOLS_ENABLED === "true" && process.env.TAWPER_AGENT_WRITES_ENABLED === "true";
@@ -82,7 +82,7 @@ O que foi feito e o que vem depois
 
 Situação do negócio (não grava na hora: o sistema pede ao usuário que responda CONFIRMAR)
 - ganhar_negocio (precisa do valor), perder_negocio (precisa do motivo), colocar_em_espera (motivo, o que precisa acontecer para retomar e data para olhar de novo), retomar_espera.
-- mover_etapa: muda o negócio de etapa do funil quando o usuário diz que o cliente pode ir ou já foi para outra etapa. Confere os requisitos da etapa e a resposta já vai pronta para o usuário. Os dados que ele contou junto (ex.: frota) podem ir também para atualizar_cliente.
+- mover_etapa: muda o negócio de etapa do funil quando o usuário diz que o cliente pode ir ou já foi para outra etapa. Confere os requisitos da etapa e a resposta já vai pronta para o usuário. Os dados de requisito que ele contou (região comercial, ramo, frota, prensa…), mesmo quando é a resposta a uma pergunta da etapa, você grava ANTES com atualizar_cliente, porque a conferência só enxerga o que já está gravado: sem isso a mesma pergunta volta em ciclo.
 
 Consulta
 - consultar_crm: perguntas de leitura que cruzam vários dados (agenda, listas, números, histórico, orçamentos, conversas, estratégia de abordagem). Um especialista responde e a resposta vai pronta para o usuário. Só quando não há nada para gravar e a resposta não está nos dados de um cliente que buscar_cliente já traz.

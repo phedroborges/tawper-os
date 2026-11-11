@@ -4,7 +4,7 @@ import type { ActivityType, Company, Contact, Papel, User } from "@/lib/types";
 import { normalize } from "@/lib/utils";
 import { invalidateCrmReadCache } from "@/server/crm";
 import { registerCompany } from "@/server/persist";
-import { fmtWhen } from "../dates";
+import { dueFrom, fmtWhen, isPastDay, pastDayError } from "../dates";
 import { findCompanies } from "../search";
 import type { AgentTool } from "../types";
 import { isUuid, loadScope, str, userAsked } from "./shared";
@@ -79,7 +79,11 @@ export function planNewClient(args: Record<string, unknown>, base: Base, actor: 
   const tipoRaw = str(args.proximo_passo_tipo, 30);
   const tipo = ACTIVITY_TYPES.find((item) => normalize(item) === normalize(tipoRaw)) ?? (phone ? "WhatsApp" : "Ligação");
   const dias = Math.min(60, Math.max(0, Math.round(Number(args.proximo_passo_prazo_dias ?? 1)) || 1));
-  const due = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + dias, 12, 0, 0));
+  // Data e hora exatas do primeiro passo, quando o usuário disse ("dia 18 às 8h30"); sem elas vale "em quantos dias".
+  const exata = args.proximo_passo_data ? dueFrom(args.proximo_passo_data, args.proximo_passo_hora) : null;
+  if (exata && "erro" in exata) return { ok: false, erro: `proximo_passo_data: ${exata.erro}` };
+  if (exata && isPastDay(exata.iso, now)) return { ok: false, erro: `proximo_passo_data: ${pastDayError(exata.iso, now)}` };
+  const due = exata ? new Date(exata.iso) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + dias, 12, 0, 0));
   const regiaoRaw = str(args.regiao, 60);
   const regiao = REGIOES.find((item) => normalize(item) === normalize(regiaoRaw));
   const origemRaw = str(args.origem, 60);
@@ -145,6 +149,8 @@ export const criarCliente: AgentTool = {
       proximo_passo_titulo: { type: "string", description: "O que fazer primeiro com esse cliente. Ex.: Ligar para qualificar frota e prensa." },
       proximo_passo_tipo: { type: "string", description: `Opcional. Um de: ${ACTIVITY_TYPES.join(", ")}.` },
       proximo_passo_prazo_dias: { type: "number", description: "Em quantos dias. Padrão 1 (amanhã)." },
+      proximo_passo_data: { type: "string", description: "AAAA-MM-DD do primeiro passo, quando o usuário disse o dia (já convertido pelo calendário). Tem prioridade sobre proximo_passo_prazo_dias." },
+      proximo_passo_hora: { type: "string", description: "HH:MM do primeiro passo, se o usuário disse (ex.: 08:30). Sem hora: 09:00." },
       responsavel: { type: "string", description: "Opcional. Nome de quem fica responsável. Padrão: o próprio usuário." },
       confirmar_duplicado: { type: "boolean", description: "true só depois do usuário confirmar que NÃO é o cliente parecido já existente." },
     },

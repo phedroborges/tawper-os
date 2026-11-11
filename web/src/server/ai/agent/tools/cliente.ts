@@ -83,7 +83,7 @@ export function planAtualizarCliente(args: Record<string, unknown>, base: Base, 
 export const atualizarCliente: AgentTool = {
   name: "atualizar_cliente",
   description:
-    "Corrige ou completa o cadastro de um cliente: nome, razão social, CNPJ, cidade, CEP, endereço, ramo, região, colhedoras, prensa, marca atual, concorrente, potencial, urgência, ou acrescenta uma observação. Mande só o que o usuário disse que mudou.",
+    "Corrige ou completa o cadastro de um cliente: nome, razão social, CNPJ, cidade, CEP, endereço, ramo, região, colhedoras, prensa, marca atual, concorrente, potencial, urgência, ou acrescenta uma observação. Mande só o que o usuário disse que mudou. Campos com lista de opções (região, prensa, marca, potencial, urgência): só preencha se o que ele disse corresponde claramente a uma opção; se disse outra coisa (ex.: prensa \"mecânica\", região \"Sudeste\"), não escolha por palpite: acrescente como observação e pergunte qual opção vale.",
   writes: true,
   parameters: {
     type: "object",

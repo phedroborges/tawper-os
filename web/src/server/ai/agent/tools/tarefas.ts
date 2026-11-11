@@ -40,7 +40,7 @@ export const criarTarefa: AgentTool = {
     type: "object",
     properties: {
       empresa_id: { type: "string", description: "id que veio de buscar_cliente." },
-      tipo: { type: "string", enum: ACTIVITY_TYPES },
+      tipo: { type: "string", enum: ACTIVITY_TYPES, description: "Só use ligação, visita, reunião, WhatsApp ou e-mail se o usuário disse o canal; \"mandar o catálogo\" ou \"enviar a proposta\" sem canal é Cotação ou Outro, nunca e-mail por palpite." },
       titulo: { type: "string", description: "Ex.: Ligar para o João e ver se recebeu o orçamento." },
       descricao: { type: "string", description: "Opcional. Detalhes que o usuário deu." },
       ...quando,
