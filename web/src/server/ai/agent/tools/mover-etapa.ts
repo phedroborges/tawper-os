@@ -1,3 +1,4 @@
+import { FUNNELS } from "@/lib/constants";
 import { planAssistantAction } from "../../action-engine";
 import type { AgentTool } from "../types";
 import { str } from "./shared";
@@ -22,7 +23,10 @@ export const moverEtapa: AgentTool = {
   async run(args, ctx) {
     const pedido = str(args.pedido, 1500) || ctx.question;
     const answer = await planAssistantAction({ question: pedido, history: ctx.history, actorId: ctx.actor.id });
-    if (!answer) return { data: { ok: false, erro: "Não entendi qual cliente e qual etapa. Pergunte ao usuário." } };
+    if (!answer) {
+      const etapas = Object.values(FUNNELS).map((funil) => `${funil.nome}: ${funil.stages.map((stage) => stage.nome).join(", ")}`).join(". ");
+      return { data: { ok: false, erro: `Não entendi qual cliente e qual etapa. Etapas que existem (cada cliente está em um funil só): ${etapas}. Se o usuário disse uma etapa que não está aí, mostre as do funil dele e pergunte qual; se faltou o cliente, pergunte.` } };
+    }
     if (answer.acao?.status === "awaiting_confirmation") {
       ctx.acoes = [...(ctx.acoes ?? []), answer.acao];
       ctx.acao = ctx.acoes[0];
