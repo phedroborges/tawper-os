@@ -184,7 +184,7 @@ export const registrarAtividade: AgentTool = {
     const com = plan.contato ? ` com ${plan.contato.existente?.nome ?? plan.contato.novo?.nome}` : "";
     const recibo = [
       `✅ Registrado na ${plan.company.nome}: ${plan.tipo.toLowerCase()}${com}.`,
-      contatoNovo && `✅ ${plan.contato?.novo?.nome} adicionado aos contatos da ${plan.company.nome}.`,
+      contatoNovo && `✅ Contato adicionado na ${plan.company.nome}: ${plan.contato?.novo?.nome}.`,
       plan.tarefa && `✅ Tarefa concluída: ${plan.tarefa.titulo}.`,
       plan.next && `📅 Próximo passo: ${plan.next.titulo} (${plan.next.tipo}), ${fmtWhen(plan.next.dueAt)}.`,
     ].filter(Boolean).join("\n");

@@ -448,6 +448,29 @@ const CASOS: Caso[] = [
     turnos: ["Quais são minhas tarefas hoje?", "E em que etapa a Santa Helena está?"],
     checar: (r) => [!r.ferramentas.flat().includes("consultar_crm") && "não consultou o CRM", /não entendi|posso responder com base/i.test(ultima(r)) && "devolveu texto de ajuda"],
   },
+  // ---------- achados do teste real no WhatsApp, 11/11 (versão .3) ----------
+  {
+    nome: "Real: dados de um contato vêm da busca, não de uma consulta genérica",
+    turnos: ["Me passa o cargo e o whatsapp da Joana da Santa Helena"],
+    checar: (r) => [
+      named(r, "consultar").length > 0 && "mandou para a consulta genérica em vez de responder pela busca",
+      !/compras/i.test(ultima(r)) && "não disse o cargo (Compras)",
+      !/99999[- ]?0000/.test(ultima(r)) && "não disse o WhatsApp",
+    ],
+  },
+  {
+    nome: "Real: espera com só o mês não pergunta o dia",
+    turnos: ["A Ativos pediu pra voltar a conversar só em março, quando fecharem o orçamento deles. Coloca em espera."],
+    checar: (r) => {
+      const sb = r.acoes.find((acao) => acao.kind === "set_standby");
+      return [!sb && "não propôs a espera", sb && !/-03-/.test(String(sb.payload?.reavaliacao ?? "")) && `reavaliação fora de março: ${sb.payload?.reavaliacao}`, /qual dia|que dia/i.test(ultima(r)) && "perguntou o dia do mês"];
+    },
+  },
+  {
+    nome: "Real: pergunta sem cliente não diz que vai ligar",
+    turnos: ["liga pra ele amanhã"],
+    checar: (r) => [escritas(r) > 0 && "gravou sem saber quem é", /que eu ligue|eu ligo|eu vou ligar/i.test(ultima(r)) && "falou como se ele mesmo fosse ligar"],
+  },
   // ---------- regras do prompt 2026-11-11.2 ----------
   {
     nome: "Pessoa nova com nome parecido de contato existente (João Pedro × João Batista)",
