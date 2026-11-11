@@ -77,18 +77,25 @@ export function planReagendar(args: Record<string, unknown>, base: Base, visible
   const due = dueFrom(args.data, args.hora);
   if ("erro" in due) return { ok: false as const, erro: due.erro };
   if (isPastDay(due.iso, now)) return { ok: false as const, erro: pastDayError(due.iso, now) };
+  // "Adiar" é para depois, "antecipar" é para antes: o contrário é engano do pedido, e pergunta é melhor que mover para o lado errado.
+  const atual = new Date(task.dueAt).getTime();
+  const nova = new Date(due.iso).getTime();
+  if (args.sentido === "adiar" && nova <= atual) return { ok: false as const, erro: `A tarefa "${task.titulo}" já está em ${fmtWhen(task.dueAt)}, e a data pedida não é depois disso. Pergunte ao usuário para qual dia ele quer adiar.` };
+  if (args.sentido === "antecipar" && nova >= atual) return { ok: false as const, erro: `A tarefa "${task.titulo}" já está em ${fmtWhen(task.dueAt)}, e a data pedida não é antes disso. Pergunte ao usuário para qual dia ele quer antecipar.` };
   const company = base.companies.find((item) => item.id === task.companyId);
   return { ok: true as const, task, company, dueAt: due.iso };
 }
 
 export const reagendarTarefa: AgentTool = {
   name: "reagendar_tarefa",
-  description: "Muda a data (e hora) de uma tarefa pendente. Use quando o usuário pede para adiar, antecipar ou passar uma tarefa para outro dia.",
+  description:
+    "Muda a data (e hora) de uma tarefa pendente. Use quando o usuário pede para adiar, antecipar ou passar uma tarefa para outro dia. Só use a tarefa cujo título corresponde ao que o usuário descreveu: se ele fala de uma tarefa que não está em tarefas_pendentes, não escolha outra parecida; diga que não achou e pergunte qual é.",
   writes: true,
   parameters: {
     type: "object",
     properties: {
       tarefa_id: { type: "string", description: "id de tarefas_pendentes do buscar_cliente." },
+      sentido: { type: "string", enum: ["adiar", "antecipar", "outro"], description: "adiar = para mais tarde que a data atual; antecipar = para mais cedo; outro = só trocar a data." },
       ...quando,
     },
     required: ["tarefa_id", "data"],

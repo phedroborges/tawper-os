@@ -487,6 +487,16 @@ const CASOS: Caso[] = [
       registros(r, IDS.ativos) < 1 && "não registrou a visita",
     ],
   },
+  {
+    nome: "Real: adiar não pode ir para antes da data atual",
+    turnos: ["Adia a visita técnica da Santa Helena pra amanhã"],
+    checar: (r) => [named(r, "runCommand").some((call) => arg<Cmd>(call).command === "reschedule") && "adiou para uma data anterior à atual", !/\?/.test(ultima(r)) && "não perguntou para qual dia"],
+  },
+  {
+    nome: "Real: tarefa que não existe não vira outra parecida",
+    turnos: ["Reagenda a reunião de diretoria da Santa Helena pra sexta"],
+    checar: (r) => [named(r, "runCommand").some((call) => arg<Cmd>(call).command === "reschedule") && "reagendou uma tarefa que o usuário não descreveu", !/\?|não (achei|encontrei|tem|há)/i.test(ultima(r)) && "não avisou que não achou"],
+  },
   // ---------- regras do prompt 2026-11-11.2 ----------
   {
     nome: "Pessoa nova com nome parecido de contato existente (João Pedro × João Batista)",

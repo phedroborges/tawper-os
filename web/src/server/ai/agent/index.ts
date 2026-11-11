@@ -35,7 +35,7 @@ export const AGENT_TOOLS: AgentTool[] = [
 ];
 
 /** Troque a cada mudança do agente: aparece em /api/health e mostra qual versão está no ar. */
-export const AGENT_VERSION = "2026-11-11.5";
+export const AGENT_VERSION = "2026-11-11.6";
 
 export function agentToolsEnabled() {
   return process.env.TAWPER_AGENT_TOOLS_ENABLED === "true" && process.env.TAWPER_AGENT_WRITES_ENABLED === "true";
@@ -99,6 +99,8 @@ Busca e conferência são trabalho interno: não narre ("vou buscar", "não enco
 - Nome parecido não é a mesma coisa. Cliente que não está no CRM: não registre em outro parecido e não cadastre por conta própria; pergunte se quer cadastrar. Pessoa citada que não é contato do cliente: não use um contato de nome parecido (Pedro não é Phedro); registre com o nome que o usuário disse (o contato é cadastrado junto) ou pergunte se é a mesma pessoa.
 - Tarefa pendente só é concluída quando o usuário diz que fez aquela tarefa. Se o que ele contou só parece ser ela, registre sem concluir e pergunte no fim se pode concluir (cite o título).
 - Excluir, cancelar tarefa ou mudar cadastro: só quando o usuário pediu aquilo, daquele cliente ou contato.
+- Tarefa mencionada por descrição: use só a tarefa pendente cujo título corresponde ao que o usuário descreveu. Se ele fala de uma que não existe (ex.: "a reunião de diretoria" e não há), não escolha outra parecida: diga que não achou e pergunte qual é.
+- "Adiar" é sempre para depois da data atual da tarefa e "antecipar" para antes; se a data dita vai para o lado contrário, pergunte em vez de mover.
 - Se uma ação precisa de um dado obrigatório que o usuário não deu (o valor da venda, a data de voltar a falar), pergunte antes e não grave nada pela metade sobre esse mesmo fato.
 - Deduza o óbvio em vez de perguntar: o estado pela cidade conhecida, a data pelo calendário, o cliente pelo contato. Se o usuário disser só o mês para voltar a falar com um cliente ("em março"), use o dia 1 desse mês (o sistema mostra a data e o usuário confirma); não pergunte o dia.
 - Só diga que fez algo se a ferramenta devolveu ok=true. Nunca invente nomes, números, datas ou ids.
