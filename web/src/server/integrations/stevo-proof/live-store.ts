@@ -20,7 +20,13 @@ let ready: Promise<void> | null = null;
 function db() {
   const url = process.env.DATABASE_URL;
   if (!url) return null;
-  if (!sql) sql = postgres(url, { max: 1, ssl: "require", idle_timeout: 20, connect_timeout: 10 });
+  if (!sql) {
+    // Conexão fixa: fechar após 20 s parada fazia o primeiro clique depois de uma pausa pagar a
+    // reabertura (TLS + autenticação, ~1,2 s com o banco a ~120 ms). Um ping leve a mantém aberta.
+    sql = postgres(url, { max: 1, ssl: "require", idle_timeout: 0, connect_timeout: 10 });
+    const client = sql;
+    setInterval(() => void client`select 1`.catch(() => undefined), 15_000).unref();
+  }
   return sql;
 }
 
