@@ -19,6 +19,6 @@ export async function POST(request: Request) {
     const sent = await sendProofText(body.to, body.text);
     return NextResponse.json({ ok: true, ...sent });
   } catch (cause) {
-    return jsonAuthError(cause) ?? NextResponse.json({ error: cause instanceof Error ? cause.message : "Não foi possível enviar." }, { status: 502 });
+    return jsonAuthError(cause) ?? NextResponse.json({ error: cause instanceof Error ? cause.message : "Não foi possível enviar." }, { status: 400 }); // não 502: o proxy troca respostas 502 pela página dele
   }
 }
