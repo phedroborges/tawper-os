@@ -68,7 +68,17 @@ async function callModel(messages: Message[], tools: AgentTool[], deadline: numb
   return null;
 }
 
-const FILLER = /mais alguma coisa|precisar de (mais )?(algo|alguma)|(é|e) só (avisar|chamar|falar|mandar)|estou à disposição/i;
+/**
+ * O histórico mostra cada resposta anterior com a anotação "[interno: …]" (ids) e o modelo às vezes a copia na resposta nova
+ * (visto no teste real, com ids de empresas e contatos indo para o WhatsApp). Nunca sai para o usuário: corta da anotação em diante,
+ * e tira também a linha "Errei? Responda DESFAZER", que o sistema mesmo acrescenta.
+ */
+export function stripInternal(texto: string) {
+  const cut = texto.split(/\[\s*interno/i)[0] ?? "";
+  return cut.replace(/^.*Errei\?\s*Responda DESFAZER.*$/gim, "").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+const FILLER =/mais alguma coisa|precisar de (mais )?(algo|alguma)|(é|e) só (avisar|chamar|falar|mandar)|estou à disposição/i;
 /** "⚠️ A cidade foi atualizada…", "⚠️ Lembre-se de ligar amanhã": aviso que só repete o comprovante. */
 const RESTATE =
   /\b(registrei|agendei|cadastrei|criei|reagendei|anotei|atualizei|adicionei|exclu[ií]|removi|conclu[ií]|marquei|cancelei|tirei)\b|\b(foi|foram|est[aá]|est[aã]o|fica|ficou|ficam)\s+(\S+\s+)?(registrad|agendad|cadastrad|reagendad|criad|atualizad|adicionad|exclu[ií]d|removid|conclu[ií]d|marcad|cancelad)[oa]s?\b|\b(alterad|atualizad|registrad|adicionad|cancelad|agendad|reagendad|conclu[ií]d|exclu[ií]d|removid|feit)[oa]s?\b|^⚠️\s*(lembre|n[aã]o esque)/i;
@@ -109,7 +119,7 @@ export async function runAgent(input: {
   const done = new Map<string, ToolOutput>();
   const result: AgentResult = { texto: "", gravou: [], passos: [], contexto: [], desfazer: [], marcas: [], tokens: { entrada: 0, saida: 0 } };
   const recibos: string[] = [];
-  const finish = (texto: string): AgentResult => ({ ...result, acao: input.ctx.acao, acoes: input.ctx.acoes, texto: composeReply(texto, recibos) });
+  const finish = (texto: string): AgentResult => ({ ...result, acao: input.ctx.acao, acoes: input.ctx.acoes, texto: composeReply(stripInternal(texto), recibos) });
 
   let vazias = 0;
   for (let step = 0; step < MAX_STEPS; step += 1) {

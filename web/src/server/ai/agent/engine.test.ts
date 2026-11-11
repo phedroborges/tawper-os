@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { composeReply, runAgent } from "./engine";
+import { composeReply, runAgent, stripInternal } from "./engine";
 import type { AgentContext, AgentTool } from "./types";
 
 const ctx = { actor: {}, question: "oi", history: [], consultar: vi.fn() } as unknown as AgentContext;
@@ -60,6 +60,14 @@ describe("runAgent", () => {
     const tool = writer(async () => ({ wrote: true, recibo: "✅ Registrado.", data: { ok: true } }));
     fetchMock.mockResolvedValueOnce(model(call("gravar", {}))).mockResolvedValueOnce(model({ content: "" }));
     expect((await run([tool]))?.texto).toBe("✅ Registrado.");
+  });
+
+  it("a anotação interna copiada pelo modelo nunca chega ao usuário", async () => {
+    fetchMock.mockResolvedValueOnce(model({ content: "Feito.\n\n↩️ Errei? Responda DESFAZER.\n[interno: Ativos empresa_id=c1 (contatos: Marcelo contato_id=f1)]" }));
+    const result = await run([]);
+    expect(result?.texto).toBe("Feito.");
+    expect(stripInternal("Só texto")).toBe("Só texto");
+    expect(stripInternal("[interno: x]")).toBe("");
   });
 
   it("resposta vazia do modelo (sem texto e sem ferramenta) é repetida antes de dizer que não entendeu", async () => {
