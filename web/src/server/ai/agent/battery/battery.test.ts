@@ -550,6 +550,14 @@ const CASOS: Caso[] = [
     turnos: ["Fiz uma visita na Usina Vale do Rio hoje de manhã, falei com a Helena. Volto lá semana que vem."],
     checar: (r) => [registros(r, IDS.perdida) < 1 && "não registrou a visita na conta perdida", /retomar|reabrir/i.test(ultima(r)) && "ofereceu retomar/reabrir"],
   },
+  {
+    nome: "Real: confirmar 'é outra empresa' cadastra de verdade, sem comprovante inventado",
+    turnos: ["Cadastra a Usina Palmeiras, de Rio Verde, Goiás. Contato Lia, compradora, zap 64 99888-7766.", "Sim, é outra empresa"],
+    checar: (r) => [
+      r.respostas.some((texto) => /^(✅|📅)/mu.test(texto)) && named(r, "registerCompany").length === 0 && "disse que cadastrou sem gravar nada",
+      r.marcas.includes("comprovante_inventado") && !named(r, "registerCompany").length && "inventou comprovante e não gravou",
+    ],
+  },
   // ---------- regras do prompt 2026-11-11.2 ----------
   {
     nome: "Pessoa nova com nome parecido de contato existente (João Pedro × João Batista)",

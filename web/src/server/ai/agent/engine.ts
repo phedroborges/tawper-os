@@ -78,6 +78,9 @@ export function stripInternal(texto: string) {
   return cut.replace(/^.*Errei\?\s*Responda DESFAZER.*$/gim, "").replace(/\n{3,}/g, "\n\n").trim();
 }
 
+/** Linha que começa como os comprovantes que o sistema mesmo monta depois de uma gravação. */
+const COMPROVANTE = /^\s*(✅|📅|✏️|🗑️)/mu;
+
 const FILLER =/mais alguma coisa|precisar de (mais )?(algo|alguma)|(é|e) só (avisar|chamar|falar|mandar)|estou à disposição/i;
 /** "⚠️ A cidade foi atualizada…", "⚠️ Lembre-se de ligar amanhã": aviso que só repete o comprovante. */
 const RESTATE =
@@ -150,6 +153,18 @@ export async function runAgent(input: {
         vazias += 1;
         result.marcas.push("resposta_vazia_repetida");
         continue;
+      }
+      // Comprovante (✅ 📅 ✏️ 🗑️) só existe se uma ferramenta gravou de verdade. O modelo às vezes copia o formato do histórico e "confirma"
+      // um cadastro que não aconteceu (visto no teste real: "Cliente cadastrado" sem chamar nada). Manda chamar a ferramenta; se insistir, não deixa passar.
+      if (!recibos.length && COMPROVANTE.test(texto)) {
+        result.marcas.push("comprovante_inventado");
+        if (vazias < 2) {
+          vazias += 1;
+          messages.push({ role: "assistant", content: texto });
+          messages.push({ role: "system", content: "ATENÇÃO: você escreveu um comprovante sem chamar nenhuma ferramenta. Nada foi gravado. Chame agora a ferramenta que faz o que o usuário pediu e só depois responda; se faltar um dado, pergunte." });
+          continue;
+        }
+        return finish("Não consegui gravar isso agora. Tente de novo em instantes e confira no sistema.");
       }
       return finish(texto || (recibos.length ? "" : "Não entendi o pedido. Pode repetir?"));
     }

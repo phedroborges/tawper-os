@@ -131,7 +131,7 @@ const contatoCampos = {
   nome: { type: "string" },
   cargo: { type: "string" },
   papel: { type: "string", enum: PAPEIS },
-  whatsapp: { type: "string", description: "Celular com DDD." },
+  whatsapp: { type: "string", description: "Celular com DDD, exatamente como o usuário disse. Não complete nem corrija dígitos: o sistema acrescenta o 9 sozinho." },
   email: { type: "string" },
 };
 

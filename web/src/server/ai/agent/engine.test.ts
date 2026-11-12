@@ -62,6 +62,26 @@ describe("runAgent", () => {
     expect((await run([tool]))?.texto).toBe("✅ Registrado.");
   });
 
+  it("comprovante escrito pelo modelo sem ferramenta gravar não chega ao usuário: manda chamar a ferramenta", async () => {
+    const tool = writer(async () => ({ wrote: true, recibo: "✅ Cadastrado de verdade.", data: { ok: true } }));
+    fetchMock
+      .mockResolvedValueOnce(model({ content: "✅ Cliente cadastrado: X (Y).\n📅 Próximo passo: ligar." }))
+      .mockResolvedValueOnce(model(call("gravar", {})))
+      .mockResolvedValueOnce(model({ content: "" }));
+    const result = await run([tool]);
+    expect(result?.texto).toBe("✅ Cadastrado de verdade.");
+    expect(result?.marcas).toContain("comprovante_inventado");
+    expect(sentBody(1).messages.at(-1)?.content).toContain("Nada foi gravado");
+  });
+
+  it("se o modelo insiste em comprovante sem gravar, o usuário recebe aviso honesto, nunca o comprovante falso", async () => {
+    fetchMock.mockResolvedValue(model({ content: "✅ Cliente cadastrado: X." }));
+    const result = await run([]);
+    expect(result?.texto).toContain("Não consegui gravar");
+    expect(result?.texto).not.toContain("✅");
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+  });
+
   it("a anotação interna copiada pelo modelo nunca chega ao usuário", async () => {
     fetchMock.mockResolvedValueOnce(model({ content: "Feito.\n\n↩️ Errei? Responda DESFAZER.\n[interno: Ativos empresa_id=c1 (contatos: Marcelo contato_id=f1)]" }));
     const result = await run([]);

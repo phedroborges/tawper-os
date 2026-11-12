@@ -147,7 +147,7 @@ export const registrarAtividade: AgentTool = {
       resumo: { type: "string", description: "O que aconteceu, em 1 a 3 frases objetivas, só com o que o usuário contou." },
       contato_nome: { type: "string", description: "Com quem foi a conversa, se o usuário disse." },
       contato_cargo: { type: "string" },
-      contato_whatsapp: { type: "string", description: "Só se o usuário passou o número." },
+      contato_whatsapp: { type: "string", description: "Só se o usuário passou o número, exatamente como ele disse. Não complete nem corrija dígitos: o sistema acrescenta o 9 sozinho." },
       concluir_tarefa_id: {
         type: "string",
         description: "id da tarefa pendente que o usuário disse ter feito (\"aquela ligação pra Joana eu já fiz\" conclui a ligação da Joana). Conversa com outra pessoa não conclui a tarefa de outro contato. Se não ficou claro, registre sem concluir e pergunte.",

@@ -144,7 +144,7 @@ export const criarCliente: AgentTool = {
       contato_nome: { type: "string", description: "Opcional. Pergunte uma vez; se o usuário não souber, siga sem." },
       contato_cargo: { type: "string" },
       contato_papel: { type: "string", description: `Opcional. Um de: ${PAPEIS.join(", ")}.` },
-      contato_whatsapp: { type: "string", description: "Celular com DDD." },
+      contato_whatsapp: { type: "string", description: "Celular com DDD, exatamente como o usuário disse. Não complete nem corrija dígitos: o sistema acrescenta o 9 sozinho." },
       contato_email: { type: "string" },
       proximo_passo_titulo: { type: "string", description: "O que fazer primeiro com esse cliente. Ex.: Ligar para qualificar frota e prensa." },
       proximo_passo_tipo: { type: "string", description: `Opcional. Um de: ${ACTIVITY_TYPES.join(", ")}.` },
