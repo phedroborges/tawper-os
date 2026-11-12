@@ -56,13 +56,14 @@ describe("formatação da resposta para WhatsApp", () => {
     const text = renderWhatsAppAnswer({
       texto: "Preparei as duas mudanças.",
       acoes: [
-        { ...base, id: "a1", kind: "win_deal", title: "Venda: Ativos", summary: "x", confirmationText: "Confirmar venda da Ativos (R$ 30.000)" },
-        { ...base, id: "a2", kind: "lose_deal", title: "Perda: Santa Helena", summary: "y", confirmationText: "Confirmar perda da Santa Helena" },
+        { ...base, id: "a1", kind: "win_deal", title: "Venda: Ativos", summary: "Vou registrar a venda da Ativos: R$ 30.000,00.\nO negócio fecha como ganho.", confirmationText: "Confirmar venda" },
+        { ...base, id: "a2", kind: "lose_deal", title: "Perda: Santa Helena", summary: "Vou marcar o negócio da Santa Helena como perdido.\nMotivo: Preço", confirmationText: "Confirmar perda" },
       ],
     } as never);
     expect(text).toContain("Confirmar 2 ações");
-    expect(text).toContain("1. Confirmar venda da Ativos (R$ 30.000)");
-    expect(text).toContain("2. Confirmar perda da Santa Helena");
+    // Mostra empresa e valor, não só o rótulo curto "Confirmar venda".
+    expect(text).toContain("1. Vou registrar a venda da Ativos: R$ 30.000,00.");
+    expect(text).toContain("2. Vou marcar o negócio da Santa Helena como perdido.");
     expect(text).toContain("CONFIRMAR* para executar todas");
   });
 });

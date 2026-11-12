@@ -289,6 +289,10 @@ describe("ganhar, perder, espera: só propõem, gravam no CONFIRMAR", () => {
     expect(planNegocio("win_deal", { empresa_id: IDS.ativos }, base, minhaCarteira, douglasUser)).toMatchObject({ ok: false, faltando: ["valor da venda"] });
     expect(planNegocio("win_deal", { empresa_id: IDS.ativos, valor: 48500 }, base, minhaCarteira, douglasUser)).toMatchObject({ ok: true, payload: { kind: "win_deal", dealId: IDS.dealAtivos, valor: 48500 } });
     expect(planNegocio("win_deal", { empresa_id: IDS.colorado, valor: 10 }, base, minhaCarteira, douglasUser)).toMatchObject({ ok: false, erro: expect.stringContaining("carteira") });
+    // Conta em espera não fecha venda sem ser retomada (achado no teste real); perder continua possível.
+    const emEspera = { ...base, companies: base.companies.map((company) => (company.id === IDS.ativos ? { ...company, status: "espera" as const } : company)) };
+    expect(planNegocio("win_deal", { empresa_id: IDS.ativos, valor: 10 }, emEspera, minhaCarteira, douglasUser)).toMatchObject({ ok: false, erro: expect.stringContaining("em espera") });
+    expect(planNegocio("lose_deal", { empresa_id: IDS.ativos, motivo: "preço" }, emEspera, minhaCarteira, douglasUser)).toMatchObject({ ok: true });
   });
 
   it("perda usa o motivo da lista quando bate", () => {

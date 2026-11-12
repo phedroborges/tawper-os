@@ -58,6 +58,7 @@ export function planNegocio(kind: "win_deal" | "lose_deal" | "set_standby" | "re
   const deal = openDeal(base, company.id);
   if (!deal) return { ok: false, erro: `A ${company.nome} não tem negócio aberto.` };
   if (kind === "win_deal") {
+    if (company.status === "espera") return { ok: false, erro: `A ${company.nome} está em espera: para registrar a venda, ela primeiro precisa ser retomada (retomar_espera).` };
     const valor = Number(String(args.valor ?? "").replace(/[^\d,.-]/g, "").replace(/\.(?=\d{3}(\D|$))/g, "").replace(",", "."));
     if (!Number.isFinite(valor) || valor <= 0) return { ok: false, faltando: ["valor da venda"] };
     const obs = str(args.observacao, 500) || undefined;
