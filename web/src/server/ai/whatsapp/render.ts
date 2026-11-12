@@ -55,7 +55,11 @@ export function renderWhatsAppAnswer(answer: AssistantAnswer, maxLength = 3900) 
     const itens = varias.map((item, index) => `${index + 1}. ${clean((item.summary ?? "").split("\n")[0] || item.confirmationText || item.title)}`).join("\n");
     parts.push(`⚠️ Confirmar ${varias.length} ações:\n${itens}\nResponda somente *CONFIRMAR* para executar todas ou *CANCELAR* para descartar todas. A confirmação expira em 15 minutos.`);
   } else if (answer.acao?.status === "awaiting_confirmation") {
-    parts.push(`⚠️ ${clean(answer.acao.confirmationText ?? "Confirmar ação")}\nResponda somente *CONFIRMAR* para executar ou *CANCELAR* para descartar. A confirmação expira em 15 minutos.`);
+    // Se o texto da resposta não diz o que vai acontecer (empresa, valor, motivo), a primeira linha do resumo entra aqui: ninguém confirma às cegas.
+    const resumo = clean((answer.acao.summary ?? "").split("\n")[0]);
+    const jaDito = Boolean(resumo) && clean(answer.texto).includes(resumo);
+    const rotulo = clean(answer.acao.confirmationText ?? "Confirmar ação");
+    parts.push(`⚠️ ${resumo && !jaDito ? `${resumo}\n${rotulo}` : rotulo}\nResponda somente *CONFIRMAR* para executar ou *CANCELAR* para descartar. A confirmação expira em 15 minutos.`);
   }
   const text = parts.filter(Boolean).join("\n\n").replace(/\n{3,}/g, "\n\n").trim();
   if (text.length <= maxLength) return text;

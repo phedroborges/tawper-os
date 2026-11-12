@@ -51,6 +51,16 @@ describe("formatação da resposta para WhatsApp", () => {
     expect(text).toContain("CANCELAR");
   });
 
+  it("ação única: se o texto do modelo não diz o que vai acontecer, o resumo entra antes do pedido de confirmação", () => {
+    const acao = { status: "awaiting_confirmation" as const, id: "a1", kind: "lose_deal", title: "Perda: Rio Claro", summary: "Vou marcar o negócio da Rio Claro como perdido.\nMotivo: Preço", confirmationText: "Confirmar perda", actorId: "u1", createdAt: "2026-11-11T12:00:00Z", expiresAt: "2026-11-11T12:15:00Z" };
+    const sem = renderWhatsAppAnswer({ texto: "A Sertão está em espera. Quer retomar?", acao } as never);
+    expect(sem).toContain("Vou marcar o negócio da Rio Claro como perdido.");
+    expect(sem).toContain("Confirmar perda");
+    // Quando o texto já traz o resumo (resposta direta da ferramenta), não repete.
+    const com = renderWhatsAppAnswer({ texto: "Vou marcar o negócio da Rio Claro como perdido.\nMotivo: Preço", acao } as never);
+    expect(com.match(/Vou marcar o negócio da Rio Claro/g)).toHaveLength(1);
+  });
+
   it("lista cada ação quando uma mensagem deixa várias aguardando e pede um CONFIRMAR só", () => {
     const base = { status: "awaiting_confirmation" as const, actorId: "u1", createdAt: "2026-11-11T12:00:00Z", expiresAt: "2026-11-11T12:15:00Z" };
     const text = renderWhatsAppAnswer({
