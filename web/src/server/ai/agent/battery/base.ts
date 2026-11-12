@@ -12,6 +12,7 @@ export const IDS = {
   ativos: "c0000000-0000-4000-8000-000000000001",
   santaHelena: "c0000000-0000-4000-8000-000000000002",
   colorado: "c0000000-0000-4000-8000-000000000003",
+  perdida: "c0000000-0000-4000-8000-000000000006",
   dealAtivos: "d0000000-0000-4000-8000-000000000001",
   dealSantaHelena: "d0000000-0000-4000-8000-000000000002",
   tarefaMarcelo: "e0000000-0000-4000-8000-000000000001",
@@ -53,11 +54,14 @@ export function batteryBase() {
       company(IDS.ativos, "Ativos de Mineiros", "Mineiros", "GO", IDS.douglas),
       company(IDS.santaHelena, "Usina Santa Helena", "Rio Verde", "GO", IDS.douglas),
       company(IDS.colorado, "Usina Colorado", "Guaíra", "SP", IDS.paulo),
+      // Conta já perdida: continua aceitando registro de histórico.
+      { ...company(IDS.perdida, "Usina Vale do Rio", "Jataí", "GO", IDS.douglas), status: "perdida" } as Company,
     ],
     contacts: [
       contact("f0000000-0000-4000-8000-000000000001", IDS.ativos, "Marcelo Souza", "Comprador", "Comprador"),
       contact("f0000000-0000-4000-8000-000000000002", IDS.santaHelena, "Joana Ribeiro", "Compras", "Comprador"),
       contact("f0000000-0000-4000-8000-000000000003", IDS.santaHelena, "João Batista", "Supervisor de manutenção", "Técnico"),
+      contact("f0000000-0000-4000-8000-000000000006", IDS.perdida, "Helena Duarte", "Compradora", "Comprador"),
       // Os dois que o agente antigo criou por engano na conversa real do Phedro (03/11).
       contact(IDS.contatoCerto, IDS.ativos, "Contato Certo", "Cargo do Contato", "Outro"),
       contact(IDS.contatoPhedro, IDS.ativos, "Phedro", "", "Outro"),

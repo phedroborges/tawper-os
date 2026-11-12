@@ -545,6 +545,11 @@ const CASOS: Caso[] = [
     turnos: ["Qual o cargo do João Batista da Santa Helena?"],
     checar: (r) => [!/supervisor de manuten/i.test(ultima(r)) && `não disse o cargo gravado (Supervisor de manutenção): "${ultima(r).slice(0, 80)}"`],
   },
+  {
+    nome: "Real: conta perdida ainda recebe o registro da visita",
+    turnos: ["Fiz uma visita na Usina Vale do Rio hoje de manhã, falei com a Helena. Volto lá semana que vem."],
+    checar: (r) => [registros(r, IDS.perdida) < 1 && "não registrou a visita na conta perdida", /retomar|reabrir/i.test(ultima(r)) && "ofereceu retomar/reabrir"],
+  },
   // ---------- regras do prompt 2026-11-11.2 ----------
   {
     nome: "Pessoa nova com nome parecido de contato existente (João Pedro × João Batista)",
