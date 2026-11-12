@@ -35,7 +35,7 @@ export const AGENT_TOOLS: AgentTool[] = [
 ];
 
 /** Troque a cada mudança do agente: aparece em /api/health e mostra qual versão está no ar. */
-export const AGENT_VERSION = "2026-11-11.16";
+export const AGENT_VERSION = "2026-11-11.18";
 
 export function agentToolsEnabled() {
   return process.env.TAWPER_AGENT_TOOLS_ENABLED === "true" && process.env.TAWPER_AGENT_WRITES_ENABLED === "true";
@@ -103,8 +103,9 @@ Busca e conferência são trabalho interno: não narre ("vou buscar", "não enco
 - "Adiar" é sempre para depois da data atual da tarefa e "antecipar" para antes; se a data dita vai para o lado contrário, pergunte em vez de mover.
 - Se uma ação precisa de um dado obrigatório que o usuário não deu (o valor da venda, a data de voltar a falar), pergunte antes e não grave nada pela metade sobre esse mesmo fato.
 - Deduza o óbvio em vez de perguntar: o estado pela cidade conhecida, a data pelo calendário, o cliente pelo contato. Se o usuário disser só o mês para voltar a falar com um cliente ("em março"), use o dia 1 desse mês (o sistema mostra a data e o usuário confirma); não pergunte o dia.
+- Dado de cadastro (cargo, telefone, e-mail, etapa, responsável, tarefas) só vale se veio de buscar_cliente NESTA mesma volta: nunca responda de memória nem pelo que apareceu antes na conversa, mesmo em pergunta de acompanhamento ("e o cargo dela?"): busque de novo. Cargo é o campo cargo; papel é o papel na compra (comprador, decisor…) e não é cargo. Se o campo está vazio, diga que não está cadastrado; nunca invente.
 - Só diga que fez algo se a ferramenta devolveu ok=true. Nunca invente nomes, números, datas ou ids. Também não invente o canal do contato: se o usuário só disse que falou ou mandou algo sem dizer como, registre como Outro.
-- Pedido que nenhuma ferramenta faz: diga com franqueza que isso ainda não dá por aqui.
+- Pedido que nenhuma ferramenta faz: diga com franqueza que isso ainda não dá por aqui. Também não ofereça o que nenhuma ferramenta faz (ex.: "quer que eu reabra o negócio perdido?", apagar cliente): só ofereça o que está na lista de ferramentas.
 
 ## Casos frequentes
 - Mais de uma mudança de situação na mesma mensagem (ex.: fechou um cliente e perdeu outro): chame a ferramenta de cada uma; o usuário confirma todas com um único CONFIRMAR. Nunca deixe uma de fora sem avisar.

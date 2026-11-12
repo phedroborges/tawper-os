@@ -535,6 +535,16 @@ const CASOS: Caso[] = [
       return [!tarefas.length && "não criou a tarefa", tarefas.some((t) => /e-?mail|whats|lig|visit/i.test(t.tipo)) && `inventou o canal: ${tarefas.map((t) => t.tipo).join(", ")}`];
     },
   },
+  {
+    nome: "Real: pergunta encadeada sobre o contato responde com o dado gravado",
+    turnos: ["Qual o zap da Joana da Santa Helena?", "e o cargo dela?"],
+    checar: (r) => [!/compras/i.test(ultima(r)) && `não disse o cargo gravado (Compras): "${ultima(r).slice(0, 80)}"`, named(r, "consultar").length > 0 && "mandou a consulta genérica"],
+  },
+  {
+    nome: "Real: pergunta do cargo com dois contatos na empresa",
+    turnos: ["Qual o cargo do João Batista da Santa Helena?"],
+    checar: (r) => [!/supervisor de manuten/i.test(ultima(r)) && `não disse o cargo gravado (Supervisor de manutenção): "${ultima(r).slice(0, 80)}"`],
+  },
   // ---------- regras do prompt 2026-11-11.2 ----------
   {
     nome: "Pessoa nova com nome parecido de contato existente (João Pedro × João Batista)",

@@ -23,7 +23,8 @@ export const IDS = {
 };
 
 const day = (offset: number, hour = 9) => {
-  const at = new Date();
+  // "Hoje" é o dia de Brasília (UTC-3): depois das 21h o dia em UTC já virou e "hoje às 14h" apareceria como amanhã.
+  const at = new Date(Date.now() - 3 * 3_600_000);
   at.setUTCDate(at.getUTCDate() + offset);
   at.setUTCHours(hour + 3, 0, 0, 0);
   return at.toISOString();

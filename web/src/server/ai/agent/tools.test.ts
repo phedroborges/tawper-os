@@ -51,6 +51,8 @@ const MARCELO = "f0000000-0000-4000-8000-000000000001";
 
 const base = batteryBase();
 const minhaCarteira = new Set([IDS.ativos, IDS.santaHelena]);
+/** Dia de Brasília daqui a N dias: não muda conforme a hora em que o teste roda (depois das 21h o dia em UTC já virou). */
+const brt = (days: number) => new Date(Date.now() - 3 * 3_600_000 + days * 86_400_000).toISOString().slice(0, 10);
 const future = (days: number) => new Date(Date.now() + days * 86_400_000).toISOString().slice(0, 10);
 const ctx = { actor: douglas(), question: "", history: [], consultar: vi.fn(), requestId: "job-1" } as unknown as AgentContext;
 
@@ -163,9 +165,9 @@ describe("tarefas", () => {
     expect(planReagendar({ tarefa_id: IDS.tarefaColorado, data: future(9) }, base, minhaCarteira)).toMatchObject({ ok: false });
     expect(planReagendar({ tarefa_id: "Visita técnica", data: future(9) }, base, minhaCarteira)).toMatchObject({ ok: false });
     // A visita está daqui a 2 dias: "adiar" para antes recusa, "antecipar" para antes passa.
-    expect(planReagendar({ tarefa_id: IDS.visitaSantaHelena, data: future(1), sentido: "adiar" }, base, minhaCarteira)).toMatchObject({ ok: false, erro: expect.stringContaining("adiar") });
-    expect(planReagendar({ tarefa_id: IDS.visitaSantaHelena, data: future(1), sentido: "antecipar" }, base, minhaCarteira)).toMatchObject({ ok: true });
-    expect(planReagendar({ tarefa_id: IDS.visitaSantaHelena, data: future(9), sentido: "antecipar" }, base, minhaCarteira)).toMatchObject({ ok: false });
+    expect(planReagendar({ tarefa_id: IDS.visitaSantaHelena, data: brt(1), sentido: "adiar" }, base, minhaCarteira)).toMatchObject({ ok: false, erro: expect.stringContaining("adiar") });
+    expect(planReagendar({ tarefa_id: IDS.visitaSantaHelena, data: brt(1), sentido: "antecipar" }, base, minhaCarteira)).toMatchObject({ ok: true });
+    expect(planReagendar({ tarefa_id: IDS.visitaSantaHelena, data: brt(9), sentido: "antecipar" }, base, minhaCarteira)).toMatchObject({ ok: false });
     expect([sentidoDito("Adia a visita pra amanhã"), sentidoDito("empurra a ligação pra sexta"), sentidoDito("Antecipa a visita"), sentidoDito("puxa pra terça"), sentidoDito("Passa a visita pra dia 3")]).toEqual(["adiar", "adiar", "antecipar", "antecipar", undefined]);
   });
 
