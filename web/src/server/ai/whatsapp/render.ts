@@ -40,8 +40,22 @@ function renderBlock(block: AssistantBlock) {
   ].join("\n");
 }
 
+/**
+ * O modelo às vezes copia do histórico o pedido de confirmação que o sistema já mandou antes ("Confirmar 2 ações", "Confirmar venda",
+ * "Responda somente CONFIRMAR…"). O renderizador acrescenta o dele, então a cópia sai para não duplicar a mensagem.
+ */
+function semPedidoDeConfirmacao(texto: string) {
+  return texto
+    .split("\n")
+    .filter((linha) => !/confirmar\s+\d+\s+a[cç][oõ]es|^\W*confirmar\s+(venda|perda|espera|retomada|mudan[cç]a|a[cç][aã]o)\b|responda\s+(somente|apenas)\s+\W*confirmar/i.test(linha.trim()))
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
+
 export function renderWhatsAppAnswer(answer: AssistantAnswer, maxLength = 3900) {
-  const parts = [clean(answer.texto)];
+  const pendente = answer.acao?.status === "awaiting_confirmation" || (answer.acoes ?? []).some((item) => item.status === "awaiting_confirmation");
+  const parts = [clean(pendente ? semPedidoDeConfirmacao(answer.texto) : answer.texto)];
   for (const block of answer.blocos ?? []) {
     const rendered = renderBlock(block);
     if (rendered && rendered !== parts[0]) parts.push(rendered);

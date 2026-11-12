@@ -61,6 +61,20 @@ describe("formatação da resposta para WhatsApp", () => {
     expect(com.match(/Vou marcar o negócio da Rio Claro/g)).toHaveLength(1);
   });
 
+  it("tira do texto do modelo o pedido de confirmação copiado do histórico, para não duplicar", () => {
+    const base = { status: "awaiting_confirmation" as const, actorId: "u1", createdAt: "2026-11-11T12:00:00Z", expiresAt: "2026-11-11T12:15:00Z" };
+    const text = renderWhatsAppAnswer({
+      texto: "Confirmar 2 ações:\nConfirmar venda\nConfirmar perda\nResponda somente CONFIRMAR para executar todas ou CANCELAR para descartar todas.",
+      acoes: [
+        { ...base, id: "a1", kind: "win_deal", title: "Venda: Sertão", summary: "Vou registrar a venda da Sertão: R$ 10.000,00.", confirmationText: "Confirmar venda" },
+        { ...base, id: "a2", kind: "lose_deal", title: "Perda: Rio Claro", summary: "Vou marcar o negócio da Rio Claro como perdido.", confirmationText: "Confirmar perda" },
+      ],
+    } as never);
+    expect(text.match(/Confirmar 2 ações/g)).toHaveLength(1);
+    expect(text.match(/Responda somente/g)).toHaveLength(1);
+    expect(text).toContain("1. Vou registrar a venda da Sertão: R$ 10.000,00.");
+  });
+
   it("lista cada ação quando uma mensagem deixa várias aguardando e pede um CONFIRMAR só", () => {
     const base = { status: "awaiting_confirmation" as const, actorId: "u1", createdAt: "2026-11-11T12:00:00Z", expiresAt: "2026-11-11T12:15:00Z" };
     const text = renderWhatsAppAnswer({
