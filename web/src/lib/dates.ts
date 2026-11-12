@@ -119,3 +119,40 @@ export function greeting(now = new Date()) {
 export function longToday(now = new Date()) {
   return now.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" });
 }
+
+/** Período de filtro em datas de calendário ("AAAA-MM-DD"); vazio = sem limite daquele lado. */
+export interface Period {
+  from: string;
+  to: string;
+}
+
+export const NO_PERIOD: Period = { from: "", to: "" };
+
+export function inPeriod(iso: string | undefined, p: Period): boolean {
+  if (!p.from && !p.to) return true;
+  if (!iso) return false;
+  const day = toInputDate(iso);
+  return (!p.from || day >= p.from) && (!p.to || day <= p.to);
+}
+
+export type PeriodPreset = "tudo" | "mes" | "mes_passado" | "30" | "90" | "ano";
+
+export function presetPeriod(preset: PeriodPreset, now = new Date()): Period {
+  const iso = (d: Date) => toInputDate(d.toISOString());
+  const y = now.getFullYear();
+  const m = now.getMonth();
+  switch (preset) {
+    case "mes":
+      return { from: iso(new Date(y, m, 1, 12)), to: iso(new Date(y, m + 1, 0, 12)) };
+    case "mes_passado":
+      return { from: iso(new Date(y, m - 1, 1, 12)), to: iso(new Date(y, m, 0, 12)) };
+    case "30":
+      return { from: iso(addDays(now, -30)), to: iso(now) };
+    case "90":
+      return { from: iso(addDays(now, -90)), to: iso(now) };
+    case "ano":
+      return { from: `${y}-01-01`, to: `${y}-12-31` };
+    default:
+      return NO_PERIOD;
+  }
+}

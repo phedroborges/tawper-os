@@ -1,17 +1,18 @@
 "use client";
 
-import { AlertTriangle, GitMerge, GripVertical, Pause, Trophy } from "lucide-react";
+import { AlertTriangle, GitMerge, GripVertical, Headset, Pause, Trophy } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
-import { DaysInStage, DueLabel, UserAvatar } from "@/components/crm/crm";
+import { DaysInStage, DueLabel, PeriodFilter, RegionSelect, UserAvatar } from "@/components/crm/crm";
 import { Badge, PageHeader, Segmented, Select } from "@/components/ui/primitives";
-import { FUNNELS, REGIOES, isManager, stageIndex } from "@/lib/constants";
+import { FUNNELS, isManager, saleLabel, stageIndex } from "@/lib/constants";
 import { stageKeyToUi } from "@/lib/crm-map";
-import { daysSince } from "@/lib/dates";
+import { daysSince, fmtDateShort, inPeriod, NO_PERIOD, type Period } from "@/lib/dates";
+import { matchesRegionFilter } from "@/lib/regions";
 import { useNow } from "@/lib/hooks";
-import { canSeeCompany, isStagnant, missingCriteria, nextStepOf } from "@/lib/selectors";
+import { canSeeCompany, inSupport, isStagnant, missingCriteria, nextStepOf } from "@/lib/selectors";
 import { useCurrentUser, useStore, warnNoBack } from "@/lib/store";
 import type { Deal, FunnelId } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
@@ -28,6 +29,8 @@ function Kanban() {
   const [funnel, setFunnel] = useState<FunnelId>((params.get("f") as FunnelId) === "recorrencia" ? "recorrencia" : "aquisicao");
   const [owner, setOwner] = useState("");
   const [regiao, setRegiao] = useState("");
+  const [period, setPeriod] = useState<Period>(NO_PERIOD);
+  const hasPeriod = Boolean(period.from || period.to);
   const [onlyRisk, setOnlyRisk] = useState(false);
   const [dragId, setDragId] = useState<string | null>(null);
   const [over, setOver] = useState<string | null>(null);
@@ -40,12 +43,13 @@ function Kanban() {
         const c = s.companies.find((x) => x.id === d.companyId);
         if (!c || !canSeeCompany(user, c)) return false;
         if (owner && c.ownerId !== owner) return false;
-        if (regiao && c.regiao !== regiao) return false;
-        if (d.status === "aberta") return c.status === "ativa" || c.status === "espera";
-        if (d.status === "ganha") return d.closedAt ? daysSince(d.closedAt, now) <= 45 : false;
+        if (!matchesRegionFilter(regiao, c.uf)) return false;
+        // Negócio aberto: data em que entrou na etapa atual. Venda: data da venda (sem filtro, os últimos 90 dias).
+        if (d.status === "aberta") return (c.status === "ativa" || c.status === "espera") && inPeriod(d.stageEnteredAt, period);
+        if (d.status === "ganha") return d.closedAt ? (hasPeriod ? inPeriod(d.closedAt, period) : daysSince(d.closedAt, now) <= 90) : false;
         return false;
       }),
-    [s.deals, s.companies, funnel, user, owner, regiao, now],
+    [s.deals, s.companies, funnel, user, owner, regiao, period, hasPeriod, now],
   );
 
   const risky = (d: Deal) => {
@@ -106,7 +110,7 @@ function Kanban() {
       <PageHeader
         kicker="Kanban · movimentação validada"
         title="Funis comerciais"
-        subtitle="Arraste o cartão para mudar de etapa. O sistema valida o que falta e cria a tarefa da etapa seguinte."
+        subtitle={funnel === "recorrencia" ? "A recorrência é um ciclo: registrou a venda, o cliente volta para o Pós-venda e a venda fica na coluna Vendas." : "Arraste o cartão para mudar de etapa. O sistema valida o que falta e cria a tarefa da etapa seguinte."}
         actions={
           <Segmented
             value={funnel}
@@ -132,12 +136,8 @@ function Kanban() {
             ))}
           </Select>
         )}
-        <Select value={regiao} onChange={(e) => setRegiao(e.target.value)} className="w-auto">
-          <option value="">Todas as regiões</option>
-          {REGIOES.map((r) => (
-            <option key={r}>{r}</option>
-          ))}
-        </Select>
+        <RegionSelect value={regiao} onChange={setRegiao} ufs={s.companies.map((c) => c.uf)} />
+        <PeriodFilter value={period} onChange={setPeriod} />
         <button
           type="button"
           onClick={() => setOnlyRisk((v) => !v)}
@@ -179,7 +179,7 @@ function Kanban() {
                   </div>
                   <div className="mt-0.5 flex justify-between text-[11px] text-muted">
                     <span>{total ? moneyShort(total) : "—"}</span>
-                    <span>{st.terminal ? "últimos 45 dias" : `limite ${st.limiteDias}d`}</span>
+                    <span>{st.terminal ? (hasPeriod ? "no período" : "últimos 90 dias") : `limite ${st.limiteDias}d`}</span>
                   </div>
                 </header>
                 <div className="scrollbar-thin flex max-h-[calc(100vh-290px)] min-h-[140px] flex-col gap-2 overflow-y-auto p-2">
@@ -218,9 +218,10 @@ function Kanban() {
                           <UserAvatar userId={c.ownerId} size={22} />
                         </div>
                         {d.status === "ganha" ? (
-                          <div className="mt-2 flex items-center justify-between text-[12px]">
-                            <Badge tone="green">{d.funnel === "aquisicao" ? "1ª venda" : `ciclo ${d.ciclo}`}</Badge>
-                            <span className="font-bold text-ok">{moneyShort(d.valorRealizado ?? d.valor)}</span>
+                          <div className="mt-2 flex items-center justify-between gap-2 text-[12px]">
+                            <Badge tone="green">{saleLabel(d)}</Badge>
+                            <span className="text-[11px] text-muted">{fmtDateShort(d.closedAt)}</span>
+                            <span className="ml-auto text-[13.5px] font-bold text-ok">{moneyShort(d.valorRealizado ?? d.valor)}</span>
                           </div>
                         ) : (
                           <>
@@ -229,6 +230,11 @@ function Kanban() {
                               {c.status === "espera" && (
                                 <Badge tone="amber">
                                   <Pause size={10} /> espera
+                                </Badge>
+                              )}
+                              {inSupport(s, c.id) && (
+                                <Badge tone="amber">
+                                  <Headset size={10} /> em suporte
                                 </Badge>
                               )}
                               {c.influenciadoraId && (

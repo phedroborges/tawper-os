@@ -1,5 +1,6 @@
 "use client";
 
+import { presetPeriod, type Period, type PeriodPreset } from "@/lib/dates";
 import { REGIOES, UFS_POR_REGIAO } from "@/lib/regions";
 import {
   AlertTriangle,
@@ -443,5 +444,37 @@ export function RegionSelect({ value, onChange, ufs, className }: { value: strin
         </optgroup>
       ))}
     </Select>
+  );
+}
+
+const PERIOD_PRESETS: { value: PeriodPreset; label: string }[] = [
+  { value: "tudo", label: "Qualquer data" },
+  { value: "mes", label: "Este mês" },
+  { value: "mes_passado", label: "Mês passado" },
+  { value: "30", label: "Últimos 30 dias" },
+  { value: "90", label: "Últimos 90 dias" },
+  { value: "ano", label: "Este ano" },
+];
+
+/** Filtro de data: atalhos prontos ou as duas datas à mão. */
+export function PeriodFilter({ value, onChange }: { value: Period; onChange: (p: Period) => void }) {
+  const preset = PERIOD_PRESETS.find((o) => {
+    const p = presetPeriod(o.value);
+    return p.from === value.from && p.to === value.to;
+  });
+  return (
+    <div className="flex flex-wrap items-center gap-1.5">
+      <Select value={preset?.value ?? "custom"} onChange={(e) => e.target.value !== "custom" && onChange(presetPeriod(e.target.value as PeriodPreset))} className="w-auto" aria-label="Período">
+        {PERIOD_PRESETS.map((o) => (
+          <option key={o.value} value={o.value}>
+            {o.label}
+          </option>
+        ))}
+        {!preset && <option value="custom">Datas escolhidas</option>}
+      </Select>
+      <input type="date" aria-label="De" value={value.from} max={value.to || undefined} onChange={(e) => onChange({ ...value, from: e.target.value })} className="h-10 rounded-[6px] border border-line bg-white px-2 text-[12.5px] text-ink" />
+      <span className="text-[12px] text-muted">até</span>
+      <input type="date" aria-label="Até" value={value.to} min={value.from || undefined} onChange={(e) => onChange({ ...value, to: e.target.value })} className="h-10 rounded-[6px] border border-line bg-white px-2 text-[12.5px] text-ink" />
+    </div>
   );
 }

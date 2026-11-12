@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
 import { Modal } from "@/components/ui/overlay";
 import { Badge, Button, Checkbox, Field, Input, Select, Textarea } from "@/components/ui/primitives";
-import { FUNNELS, getStage, MARCAS, MOTIVOS_ESPERA, MOTIVOS_PERDA, PAPEIS, PAPEL_GUIA, influenciaDoPapel, PRENSAS, RAMOS, stageIndex, type Criterion } from "@/lib/constants";
+import { FUNNELS, getStage, saleLabel, MARCAS, MOTIVOS_ESPERA, MOTIVOS_PERDA, PAPEIS, PAPEL_GUIA, influenciaDoPapel, PRENSAS, RAMOS, stageIndex, type Criterion } from "@/lib/constants";
 import { addDays, fmtDateShort, fmtDue, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { criterionMet, daysInStage, pendingOf } from "@/lib/selectors";
 import { runWithoutAutoAdvance, useStore, warnNoBack, type ActivityDraft } from "@/lib/store";
@@ -431,7 +431,7 @@ export function WinDealModal({ dealId }: { dealId: string }) {
       <Modal
         onClose={close}
         size="md"
-        kicker={isFirst ? "Primeira venda registrada" : "Recompra registrada"}
+        kicker={`${saleLabel(deal)} registrada`}
         title={`${company.nome} — ${money(Number(valor))}`}
         icon={<PartyPopper size={18} />}
         footer={
@@ -453,7 +453,8 @@ export function WinDealModal({ dealId }: { dealId: string }) {
           {[
             `Venda registrada: ${money(Number(valor))}`,
             quote ? `Orçamento ${quote.numero} marcado como aceito` : "Oportunidade encerrada como ganha",
-            `Conta movida para o funil de Recorrência · ciclo ${ciclo}`,
+            isFirst ? "Cliente passou para o funil de Recorrência, em Pós-venda" : `Cliente voltou para o Pós-venda · ciclo ${ciclo}`,
+            "A venda fica registrada na coluna Vendas do funil",
             `Pós-venda agendado para ${fmtDateShort(done.posVendaDue)} (confirmar entrega e aplicação)`,
             "Venda, histórico e auditoria gravados no banco",
           ].map((t) => (
@@ -471,7 +472,7 @@ export function WinDealModal({ dealId }: { dealId: string }) {
   return (
     <Modal
       onClose={close}
-      kicker={isFirst ? "Encerrar como ganha · primeira venda" : `Recompra · ciclo ${deal.ciclo}`}
+      kicker={`Registrar venda · ${saleLabel(deal)}`}
       title={company.nome}
       icon={<Trophy size={18} />}
       footer={

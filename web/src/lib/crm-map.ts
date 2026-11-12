@@ -2,7 +2,6 @@
 
 const STAGE_UI_TO_DB: Record<string, string> = {
   apresentacao: "apresentacao_empresa",
-  suporte: "relacionamento",
 };
 
 const STAGE_DB_TO_UI: Record<string, string> = {

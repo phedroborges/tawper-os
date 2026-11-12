@@ -17,11 +17,6 @@ export function regionForUf(uf?: string | null): string {
   return UF_REGIAO.get((uf ?? "").trim().toUpperCase()) ?? "";
 }
 
-/** Mantém a assinatura usada no cadastro (CEP/GPS): a região é sempre a da UF. */
-export function pickRegiaoFromLocation(_cidade?: string, uf?: string, _atual?: string): string {
-  return regionForUf(uf);
-}
-
 /** Filtro de região das telas: "" = todas, "Sudeste" = a região inteira, "uf:SP" = um estado. */
 export function matchesRegionFilter(filter: string, uf?: string | null): boolean {
   if (!filter) return true;

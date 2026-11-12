@@ -4,6 +4,7 @@ import postgres from "postgres";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import { storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import type { ActivityType, Company, Contact, Prioridade } from "@/lib/types";
+import { nextBusinessDay } from "@/lib/route-schedule";
 import { ensureOperators, updateCompanyRecord } from "@/server/persist";
 
 /** Os comandos de negócio rodam no banco (funções crm_*): cada um é uma transação só. */
@@ -92,6 +93,7 @@ export type Command =
   | { command: "loseDeal"; dealId: string; motivo: string; obs?: string; actorId: string }
   | { command: "setStandby"; companyId: string; motivo: string; condicao: string; reavaliacao: string; responsavelId: string; actorId: string }
   | { command: "resumeStandby"; companyId: string; actorId: string }
+  | { command: "reopenCompany"; companyId: string; actorId: string }
   | { command: "reschedule"; activityId: string; dueAt: string; actorId: string }
   | { command: "saveStrategy"; companyId: string; data: { objetivo: string; diagnostico?: string; barreira?: string; estrategia: string; resultadoEsperado?: string; proximaRevisao?: string }; origem?: "manual" | "ia-aprovada"; actorId: string }
   | { command: "addInteraction"; companyId: string; dealId?: string; canal: string; kind: string; titulo: string; conteudo?: string; autorId: string }
@@ -138,6 +140,8 @@ export async function runCommand(cmd: Command): Promise<unknown> {
         p_title: cmd.titulo, p_content: cmd.conteudo ?? null, p_actor: fromAi ? null : await actorOf(cmd.autorId), p_origin: fromAi ? "ai" : "user",
       });
     }
+    case "reopenCompany":
+      return reopenCompany(cmd);
     case "mergeCompany":
       return mergeCompany(cmd);
   }
@@ -289,6 +293,65 @@ async function mergeCompany(cmd: Extract<Command, { command: "mergeCompany" }>) 
       throw new Error("A união precisa da função crm_add_interaction no banco. Aplique as migrations e tente de novo.");
     }
     throw error;
+  } finally {
+    await sql.end({ timeout: 5 });
+  }
+}
+
+/**
+ * Reabre um cliente perdido: volta a ativo com um negócio novo em Qualificação (ele já é conhecido,
+ * não recomeça em Lead) e um primeiro passo de retomada. Tudo numa transação.
+ */
+async function reopenCompany(cmd: Extract<Command, { command: "reopenCompany" }>) {
+  need(isUuid(cmd.companyId), "Esta empresa ainda não está no banco.");
+  const actor = await actorOf(cmd.actorId);
+  const url = process.env.DATABASE_URL;
+  if (!url) throw new Error("DATABASE_URL ausente para reabrir o cliente.");
+  const due = nextBusinessDay(nextBusinessDay(new Date()));
+  due.setUTCHours(13, 0, 0, 0); // 10h de Brasília
+  const sql = postgres(url, { max: 1, ssl: "require" });
+  try {
+    return await sql.begin(async (tx) => {
+      await tx`select app.crm_begin(${actor}::uuid, 'user')`;
+      await tx`select set_config('app.bypass_stage_rules', 'on', true)`;
+      const found = await tx<{ trade_name: string; owner_id: string | null; status: string }[]>`
+        select trade_name, owner_id::text, status::text from public.companies
+         where id = ${cmd.companyId}::uuid and organization_id = ${TAWPER_ORG_ID}::uuid
+         for update
+      `;
+      need(found[0], "Empresa não encontrada.");
+      need(found[0].status === "lost", "Só cliente perdido pode ser reaberto.");
+      const open = await tx`select 1 from public.opportunities where company_id = ${cmd.companyId}::uuid and status = 'open' limit 1`;
+      need(!open.length, "Este cliente já tem um negócio aberto.");
+      const stage = await tx<{ id: string; funnel_id: string; probability: number }[]>`
+        select s.id::text, s.funnel_id::text, s.probability from public.stages s
+          join public.funnels f on f.id = s.funnel_id
+         where f.organization_id = ${TAWPER_ORG_ID}::uuid and f.key = 'aquisicao' and s.key = 'qualificacao'
+         limit 1
+      `;
+      need(stage[0], "Etapa de Qualificação não encontrada.");
+      const ownerId = found[0].owner_id ?? actor;
+      await tx`update public.companies set status = 'active', loss_reason = null where id = ${cmd.companyId}::uuid`;
+      const deal = await tx<{ id: string }[]>`
+        insert into public.opportunities (organization_id, company_id, owner_id, funnel_id, stage_id, title, status, probability, created_by)
+        values (${TAWPER_ORG_ID}::uuid, ${cmd.companyId}::uuid, ${ownerId}::uuid, ${stage[0].funnel_id}::uuid, ${stage[0].id}::uuid,
+                ${`Retomada — ${found[0].trade_name}`}, 'open', ${stage[0].probability}, ${actor}::uuid)
+        returning id::text
+      `;
+      need(deal[0], "Não foi possível abrir o negócio.");
+      const activity = await tx<{ id: string }[]>`
+        insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, created_by)
+        values (${TAWPER_ORG_ID}::uuid, ${cmd.companyId}::uuid, ${deal[0].id}::uuid, 'call', 'Retomar contato com o cliente reaberto',
+                ${ownerId}::uuid, ${due.toISOString()}::timestamptz, 'high', 'pending', 'rule', ${actor}::uuid)
+        returning id::text
+      `;
+      await tx`select public.crm_add_interaction(
+        ${cmd.companyId}::uuid, ${deal[0].id}::uuid, 'system', 'stage',
+        'Cliente reaberto em Qualificação', 'Estava perdido. Volta para a Qualificação porque já é conhecido.',
+        ${actor}::uuid, 'user'
+      )`;
+      return { dealId: deal[0].id, activityId: activity[0]?.id };
+    });
   } finally {
     await sql.end({ timeout: 5 });
   }

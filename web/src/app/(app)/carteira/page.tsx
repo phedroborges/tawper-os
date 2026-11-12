@@ -10,7 +10,7 @@ import { FUNNELS, MARCAS, PRENSAS, isManager } from "@/lib/constants";
 import { matchesRegionFilter } from "@/lib/regions";
 import { fmtAgo } from "@/lib/dates";
 import { useNow } from "@/lib/hooks";
-import { alertsOf, currentDealOf, isStagnant, lastInteractionAt, nextStepOf, qualityOf, visibleCompanies } from "@/lib/selectors";
+import { alertsOf, currentDealOf, isStagnant, lastInteractionAt, nextStepOf, qualityOf, visibleCompanies, inSupport } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { digitsQueryMatch } from "@/lib/br-ids";
 import { cn, normalize } from "@/lib/utils";
@@ -199,6 +199,7 @@ export default function CarteiraPage() {
                             {c.nome}
                           </Link>
                           {c.status !== "ativa" && <StatusBadge c={c} />}
+                          {inSupport(s, c.id) && <Badge tone="amber">em suporte</Badge>}
                           {c.importadoDe && <Badge tone="outline">{c.importadoDe}</Badge>}
                         </div>
                         <div className="mt-0.5 text-[11.5px] text-muted">

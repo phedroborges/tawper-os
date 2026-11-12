@@ -6,12 +6,14 @@ import {
   ChevronRight,
   Ellipsis,
   GitMerge,
+  Headset,
   Megaphone,
   MessageCircle,
   Pause,
   Pencil,
   Play,
   Plus,
+  RotateCcw,
   Sparkles,
   StickyNote,
   Trash2,
@@ -29,7 +31,7 @@ import { MenuItem, Popover } from "@/components/ui/overlay";
 import { Badge, Button, Card, CardHeader, Empty } from "@/components/ui/primitives";
 import { FUNNELS, getStage, isManager, isMuriloLouis, papelRotulo } from "@/lib/constants";
 import { fmtAgo, fmtDate, fmtDateTime } from "@/lib/dates";
-import { canSeeCompany, currentDealOf, daysInStage, lastInteractionAt, openDealOf, pendingOf, qualityOf, timelineOf } from "@/lib/selectors";
+import { canSeeCompany, currentDealOf, daysInStage, inSupport, lastInteractionAt, openDealOf, pendingOf, qualityOf, timelineOf } from "@/lib/selectors";
 import { reportError, useCurrentUser, useStore } from "@/lib/store";
 import { peerOf } from "@/lib/contact-match";
 import { useUI } from "@/lib/ui-store";
@@ -72,6 +74,13 @@ function EmpresaView() {
   const nextStage = deal ? FUNNELS[deal.funnel].stages[FUNNELS[deal.funnel].stages.findIndex((x) => x.id === deal.stageId) + 1] : undefined;
 
   /** Avança de um clique (mesma regra da ficha do cliente na conversa). */
+  const reabrir = () => {
+    if (!company) return;
+    s.reopenCompany(company.id)
+      .then(() => toast("Cliente reaberto", { sub: "Voltou para Qualificação, com um primeiro passo de retomada" }))
+      .catch((e) => reportError(e, "Não foi possível reabrir o cliente"));
+  };
+
   const avancar = () => {
     if (deal) advance(deal, company);
   };
@@ -146,6 +155,11 @@ function EmpresaView() {
               </div>
               <div className="mt-2 flex flex-wrap items-center gap-1.5">
                 {company.status !== "ativa" && <StatusBadge c={company} />}
+                {inSupport(s, company.id) && (
+                  <Badge tone="amber">
+                    <Headset size={11} /> Em suporte
+                  </Badge>
+                )}
                 {company.urgencia === "Alta" && <UrgencyBadge u={company.urgencia} />}
                 {company.clienteDesde && <Badge tone="green">cliente desde {fmtDate(company.clienteDesde)}</Badge>}
                 {company.importadoDe && <Badge tone="outline">{company.importadoDe === "Moskit" ? "veio do Moskit" : "veio da planilha"}</Badge>}
@@ -158,6 +172,11 @@ function EmpresaView() {
               <Button variant="outline" size="sm" onClick={() => open({ kind: "quick", companyId: company.id })}>
                 <Sparkles size={14} /> Registrar
               </Button>
+              {company.status === "perdida" && (
+                <Button variant="primary" size="sm" onClick={reabrir} title="Volta para Qualificação: o cliente já é conhecido">
+                  <RotateCcw size={14} /> Reabrir cliente
+                </Button>
+              )}
               {deal && company.status === "ativa" && nextStage && (
                 <Button variant="primary" size="sm" onClick={avancar} title={nextStage.terminal ? undefined : `Critérios pendentes abrem a validação da etapa`}>
                   {nextStage.terminal ? "Registrar venda" : `Avançar para ${nextStage.nome}`} <ArrowRight size={14} />
@@ -206,10 +225,21 @@ function EmpresaView() {
                         </MenuItem>
                       )
                     )}
-                    {deal && (
-                      <MenuItem icon={<XCircle size={14} />} danger onClick={() => { close(); open({ kind: "lose", dealId: deal.id }); }}>
-                        Marcar como perdida
+                    {company.status !== "perdida" && (
+                      <MenuItem icon={<Headset size={14} />} onClick={() => { close(); open({ kind: "newActivity", companyId: company.id, preset: { tipo: "Suporte", titulo: "Resolver chamado técnico", prioridade: "Alta" } }); }} sub="marca o cliente como Em suporte">
+                        Abrir suporte
                       </MenuItem>
+                    )}
+                    {company.status === "perdida" ? (
+                      <MenuItem icon={<RotateCcw size={14} />} onClick={() => { close(); reabrir(); }} sub="volta para Qualificação">
+                        Reabrir
+                      </MenuItem>
+                    ) : (
+                      deal && (
+                        <MenuItem icon={<XCircle size={14} />} danger onClick={() => { close(); open({ kind: "lose", dealId: deal.id }); }}>
+                          Marcar como perdida
+                        </MenuItem>
+                      )
                     )}
                     {isManager(user) && (
                       <MenuItem icon={<Megaphone size={14} />} onClick={() => { close(); open({ kind: "cobranca", companyId: company.id }); }} sub="notifica o responsável">

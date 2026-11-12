@@ -30,6 +30,11 @@ export function pendingOf(d: Data, companyId: string) {
   return d.activities.filter((a) => a.companyId === companyId && a.status === "pendente").sort(byDueAsc);
 }
 
+/** Cliente "em suporte": tem chamado aberto (atividade pendente do tipo Suporte). Não é etapa de funil. */
+export function inSupport(d: Pick<Data, "activities">, companyId: string) {
+  return d.activities.some((a) => a.companyId === companyId && a.status === "pendente" && a.tipo === "Suporte");
+}
+
 export function nextStepOf(d: Data, companyId: string) {
   return pendingOf(d, companyId)[0];
 }

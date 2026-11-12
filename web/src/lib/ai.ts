@@ -221,7 +221,6 @@ const REC_HINTS: StageHint[] = [
   { re: /fechou|aprovou o pedido|mandou o pedido|pedido de compra/, stageId: "recompra", motivo: "O cliente confirmou a recompra." },
   { re: /orcamento|cotacao|lista|reposicao/, stageId: "orcamento_r", motivo: "Nova demanda para orçar." },
   { re: /reforma|entressafra|estoque|safra que vem|proxima safra/, stageId: "previsao", motivo: "Demanda futura mapeada.", checks: [{ re: /./, id: "demanda_mapeada" }] },
-  { re: /vazamento|vazando|defeito|problema|suporte|estourou/, stageId: "suporte", motivo: "Chamado técnico aberto." },
   {
     re: /chegou|entregue|recebeu|recebemos|montamos|aplicado|gostou/,
     stageId: "posvenda",

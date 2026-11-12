@@ -77,6 +77,11 @@ export const ROLE_LABEL: Record<User["role"], string> = {
   representante: "Representante",
 };
 
+/** "1ª venda", "2ª venda"… A venda da aquisição é a 1ª; o ciclo N da recorrência é a venda N+1. */
+export function saleLabel(deal: { funnel: FunnelId; ciclo: number }) {
+  return `${deal.funnel === "aquisicao" ? 1 : deal.ciclo + 1}ª venda`;
+}
+
 export function isManager(u?: User) {
   return u?.role === "admin" || u?.role === "gestor";
 }
@@ -255,17 +260,6 @@ const RECORRENCIA: StageDef[] = [
     tarefas: [{ titulo: "Pós-venda: confirmar entrega e aplicação", tipo: "Ligação", prazoDias: 5 }],
   },
   {
-    id: "suporte",
-    funnel: "recorrencia",
-    nome: "Suporte",
-    curto: "Suporte",
-    objetivo: "Resolver dúvidas e chamados sem consumir o vendedor.",
-    limiteDias: 7,
-    probabilidade: 20,
-    criterios: [{ id: "suporte_resolvido", label: "Chamado técnico resolvido", kind: "check" }],
-    tarefas: [{ titulo: "Resolver chamado técnico", tipo: "Suporte", prazoDias: 1 }],
-  },
-  {
     id: "relacionamento",
     funnel: "recorrencia",
     nome: "Relacionamento",
@@ -301,9 +295,9 @@ const RECORRENCIA: StageDef[] = [
   {
     id: "negociacao_r",
     funnel: "recorrencia",
-    nome: "Negociação recorrente",
+    nome: "Negociação",
     curto: "Negoc.",
-    objetivo: "Acompanhar a decisão de recompra e registrar concorrência, objeções e condições.",
+    objetivo: "Cliente pedindo orçamentos em sequência: sinal de compra próxima. Registrar concorrência, objeções e condições.",
     limiteDias: 15,
     probabilidade: 80,
     criterios: [],
@@ -312,9 +306,9 @@ const RECORRENCIA: StageDef[] = [
   {
     id: "recompra",
     funnel: "recorrencia",
-    nome: "Recompra",
-    curto: "Recompra",
-    objetivo: "Registrar o ganho e reiniciar o ciclo.",
+    nome: "Vendas",
+    curto: "Vendas",
+    objetivo: "Cada venda fica registrada aqui; o cliente volta sozinho para o Pós-venda.",
     limiteDias: 0,
     probabilidade: 100,
     criterios: [],
@@ -325,7 +319,7 @@ const RECORRENCIA: StageDef[] = [
 
 export const FUNNELS: Record<FunnelId, { id: FunnelId; nome: string; subtitulo: string; stages: StageDef[] }> = {
   aquisicao: { id: "aquisicao", nome: "Aquisição", subtitulo: "Prospecção até a primeira venda", stages: AQUISICAO },
-  recorrencia: { id: "recorrencia", nome: "Recorrência", subtitulo: "Pós-venda, relacionamento e recompra", stages: RECORRENCIA },
+  recorrencia: { id: "recorrencia", nome: "Recorrência", subtitulo: "Ciclo contínuo: vendeu, o cliente volta para o Pós-venda", stages: RECORRENCIA },
 };
 
 const STAGE_INDEX = new Map<string, StageDef>();

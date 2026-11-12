@@ -91,6 +91,8 @@ interface Actions {
   loseDeal: (dealId: string, input: { motivo: string; obs?: string }) => Promise<void>;
   setStandby: (companyId: string, s: Omit<Standby, "inicio">) => Promise<void>;
   resumeStandby: (companyId: string) => Promise<void>;
+  /** Cliente perdido volta a ativo, com negócio novo em Qualificação. */
+  reopenCompany: (companyId: string) => Promise<void>;
 
   addInteraction: (i: Omit<Interaction, "id" | "at"> & { at?: string }) => Promise<void>;
 
@@ -711,6 +713,10 @@ export const useStore = create<AppState>()(
 
         resumeStandby: async (companyId) => {
           await sendCommand({ command: "resumeStandby", companyId, actorId: me() });
+        },
+
+        reopenCompany: async (companyId) => {
+          await sendCommand({ command: "reopenCompany", companyId, actorId: me() });
         },
 
         addInteraction: async (i) => {
