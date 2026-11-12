@@ -39,3 +39,11 @@ export function visitRouteDescription(route: string, index: number, total: numbe
   const place = `Parada ${index + 1} de ${total}.`;
   return route.trim() ? `${place}\n${route.trim()}` : place;
 }
+
+/** Mensagem que o vendedor manda do próprio WhatsApp para confirmar a visita. */
+export function visitConfirmationText(contato: string | undefined, visitAt: Date, vendedor?: string) {
+  const dia = visitAt.toLocaleDateString("pt-BR", { weekday: "long", day: "2-digit", month: "2-digit" });
+  const hora = visitAt.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
+  const quem = vendedor ? `${vendedor}, da Tawper` : "a Tawper";
+  return `Olá${contato ? `, ${contato.split(" ")[0]}` : ""}! Aqui é ${quem}. Confirmando nossa visita ${dia} por volta das ${hora}. Esse horário continua bom para você?`;
+}

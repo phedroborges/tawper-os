@@ -4,9 +4,10 @@ import { AlertTriangle, LayoutGrid, List, Plus, Search, SlidersHorizontal, X } f
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { DaysInStage, DueLabel, QualityMeter, StagePill, StatusBadge, UserAvatar, userName } from "@/components/crm/crm";
+import { DaysInStage, DueLabel, QualityMeter, StagePill, StatusBadge, UserAvatar, userName, RegionSelect } from "@/components/crm/crm";
 import { Badge, Card, Input, LinkButton, PageHeader, Segmented, Select } from "@/components/ui/primitives";
-import { FUNNELS, MARCAS, PRENSAS, REGIOES, isManager } from "@/lib/constants";
+import { FUNNELS, MARCAS, PRENSAS, isManager } from "@/lib/constants";
+import { matchesRegionFilter } from "@/lib/regions";
 import { fmtAgo } from "@/lib/dates";
 import { useNow } from "@/lib/hooks";
 import { alertsOf, currentDealOf, isStagnant, lastInteractionAt, nextStepOf, qualityOf, visibleCompanies } from "@/lib/selectors";
@@ -44,7 +45,7 @@ export default function CarteiraPage() {
         if (status === "espera" && c.status !== "espera") return false;
         if (status === "perdidas" && c.status !== "perdida") return false;
         if (owner && c.ownerId !== owner) return false;
-        if (regiao && c.regiao !== regiao) return false;
+        if (!matchesRegionFilter(regiao, c.uf)) return false;
         if (funil && deal?.funnel !== funil) return false;
         if (etapa && deal?.stageId !== etapa) return false;
         if (marca && c.marcaAtual !== marca) return false;
@@ -143,12 +144,7 @@ export default function CarteiraPage() {
         </div>
         {maisFiltros && (
         <div className="mt-2 flex flex-wrap items-center gap-2 border-t border-line pt-2">
-          <Select value={regiao} onChange={(e) => setRegiao(e.target.value)} className="w-auto">
-            <option value="">Todas as regiões</option>
-            {REGIOES.map((r) => (
-              <option key={r}>{r}</option>
-            ))}
-          </Select>
+          <RegionSelect value={regiao} onChange={setRegiao} ufs={s.companies.map((c) => c.uf)} />
           <Select value={funil} onChange={(e) => { setFunil(e.target.value); setEtapa(""); }} className="w-auto">
             <option value="">Os dois funis</option>
             <option value="aquisicao">Aquisição</option>

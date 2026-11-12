@@ -84,7 +84,7 @@ export function CopilotCard({ company, compact }: { company: Company; compact?: 
         </div>
       }
     >
-      <div className="space-y-3 text-[12.5px]">
+      <div className="space-y-3 text-[12.5px] break-words">
         <div>
           <div className="text-[14px] font-semibold text-ink">{pending.titulo}</div>
           <p className="mt-0.5 text-ink/80">{pending.texto}</p>
@@ -189,12 +189,12 @@ export function StrategyTab({ company }: { company: Company }) {
   };
 
   return (
-    <div className="grid gap-5 p-4 lg:grid-cols-[1fr_1fr]">
+    <div className="grid gap-5 p-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] [&>*]:min-w-0">
       <div className="space-y-4">
         <Card className="shadow-none">
           <CardHeader
-            kicker={strategy ? `Estratégia vigente · v${strategy.versao}` : "Estratégia da conta"}
-            title={strategy?.objetivo ?? "Nenhuma estratégia registrada"}
+            kicker={strategy ? `Versão ${strategy.versao}` : "Estratégia da conta"}
+            title={strategy ? "Estratégia vigente" : "Nenhuma estratégia registrada"}
             action={
               !editing && (
                 <Button size="xs" variant="outline" onClick={() => setEditing(true)}>
@@ -205,21 +205,21 @@ export function StrategyTab({ company }: { company: Company }) {
           />
           {editing ? (
             <div className="space-y-3 p-4">
-              <Field label="Objetivo comercial atual">
-                <Input value={f.objetivo} onChange={(e) => setF({ ...f, objetivo: e.target.value })} />
+              <Field label="Objetivo comercial atual" required>
+                <Input value={f.objetivo} onChange={(e) => setF({ ...f, objetivo: e.target.value })} placeholder="Ex.: Fechar a primeira venda de mangueiras até a safra" />
               </Field>
               <Field label="Diagnóstico">
-                <Textarea value={f.diagnostico} onChange={(e) => setF({ ...f, diagnostico: e.target.value })} rows={2} />
+                <Textarea value={f.diagnostico} onChange={(e) => setF({ ...f, diagnostico: e.target.value })} rows={2} placeholder="Ex.: 12 colhedoras, compra da Gates há 3 anos, manutenção reclama de prazo" />
               </Field>
               <Field label="Barreira principal">
-                <Input value={f.barreira} onChange={(e) => setF({ ...f, barreira: e.target.value })} />
+                <Input value={f.barreira} onChange={(e) => setF({ ...f, barreira: e.target.value })} placeholder="Ex.: Contrato com o concorrente até março" />
               </Field>
-              <Field label="Estratégia definida">
-                <Textarea value={f.estrategia} onChange={(e) => setF({ ...f, estrategia: e.target.value })} rows={2} />
+              <Field label="Estratégia definida" required>
+                <Textarea value={f.estrategia} onChange={(e) => setF({ ...f, estrategia: e.target.value })} rows={2} placeholder="Ex.: Homologar um kit de teste na entressafra e entrar pelo gerente de manutenção" />
               </Field>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <Field label="Resultado esperado">
-                  <Input value={f.resultadoEsperado} onChange={(e) => setF({ ...f, resultadoEsperado: e.target.value })} />
+                  <Input value={f.resultadoEsperado} onChange={(e) => setF({ ...f, resultadoEsperado: e.target.value })} placeholder="Ex.: Pedido de R$ 40 mil em janeiro" />
                 </Field>
                 <Field label="Próxima revisão">
                   <Input type="date" value={f.proximaRevisao} onChange={(e) => setF({ ...f, proximaRevisao: e.target.value })} />
@@ -236,13 +236,14 @@ export function StrategyTab({ company }: { company: Company }) {
               </div>
             </div>
           ) : strategy ? (
-            <dl className="grid gap-3 p-4 text-[12.5px]">
+            <dl className="grid gap-3 p-4 text-[12.5px] break-words">
               {[
+                ["Objetivo", strategy.objetivo],
                 ["Diagnóstico", strategy.diagnostico],
                 ["Barreira principal", strategy.barreira],
                 ["Estratégia definida", strategy.estrategia],
                 ["Resultado esperado", strategy.resultadoEsperado],
-              ].map(([k, v]) => (
+              ].filter(([, v]) => v).map(([k, v]) => (
                 <div key={k}>
                   <dt className="label">{k}</dt>
                   <dd className="mt-0.5 text-ink/85">{v}</dd>
@@ -265,7 +266,7 @@ export function StrategyTab({ company }: { company: Company }) {
             <CardHeader kicker="Histórico de estratégias" title={`${history.length} versão(ões) anterior(es)`} action={<History size={15} className="text-muted" />} />
             <ul>
               {history.map((h) => (
-                <li key={`${h.versao}-${h.revisadaEm}`} className="border-b border-line/70 px-4 py-2.5 text-[12.5px] last:border-b-0">
+                <li key={`${h.versao}-${h.revisadaEm}`} className="border-b border-line/70 px-4 py-2.5 text-[12.5px] break-words last:border-b-0">
                   <div className="font-semibold text-ink">
                     v{h.versao} · {h.objetivo}
                   </div>

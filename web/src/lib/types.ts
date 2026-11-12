@@ -382,6 +382,8 @@ export interface RouteStop {
   companyId: string;
   objetivo: string;
   motivo: string;
+  /** Início da visita já calculado pela agenda da rota (dia útil, 8h às 18h). */
+  horario?: string;
 }
 
 export interface RoutePlan {

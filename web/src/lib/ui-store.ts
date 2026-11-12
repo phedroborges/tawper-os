@@ -35,8 +35,6 @@ interface UIState {
   close: () => void;
   assistantOpen: boolean;
   setAssistant: (v: boolean) => void;
-  guideOpen: boolean;
-  setGuide: (v: boolean) => void;
   mobileNav: boolean;
   setMobileNav: (v: boolean) => void;
   toasts: Toast[];
@@ -89,9 +87,7 @@ export const useUI = create<UIState>()((set, get) => ({
   open: (flow) => set({ flow }),
   close: () => set({ flow: null }),
   assistantOpen: false,
-  setAssistant: (assistantOpen) => set({ assistantOpen, guideOpen: assistantOpen ? false : get().guideOpen }),
-  guideOpen: false,
-  setGuide: (guideOpen) => set({ guideOpen, assistantOpen: guideOpen ? false : get().assistantOpen }),
+  setAssistant: (assistantOpen) => set({ assistantOpen }),
   mobileNav: false,
   setMobileNav: (mobileNav) => set({ mobileNav }),
   toasts: [],

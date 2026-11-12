@@ -1,5 +1,6 @@
 "use client";
 
+import { REGIOES, UFS_POR_REGIAO } from "@/lib/regions";
 import {
   AlertTriangle,
   ArrowRight,
@@ -30,7 +31,7 @@ import {
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { AIBadge } from "@/components/ai/ai";
-import { Avatar, Badge, Button } from "@/components/ui/primitives";
+import { Avatar, Badge, Button, Select } from "@/components/ui/primitives";
 import { FUNNELS, getStage } from "@/lib/constants";
 import { dayDiff, dueState, fmtAgo, fmtDateTime, fmtDue } from "@/lib/dates";
 import { daysInStage, stagnationLevel, type Alert, type TimelineItem } from "@/lib/selectors";
@@ -424,3 +425,23 @@ export function timeAgo(iso?: string) {
   return iso ? fmtAgo(iso) : "—";
 }
 
+
+/** Filtro de região: a região inteira ou um estado dentro dela. Só mostra os estados que têm cliente. */
+export function RegionSelect({ value, onChange, ufs, className }: { value: string; onChange: (v: string) => void; ufs: (string | undefined)[]; className?: string }) {
+  const present = new Set(ufs.map((u) => (u ?? "").toUpperCase()).filter(Boolean));
+  return (
+    <Select value={value} onChange={(e) => onChange(e.target.value)} className={className ?? "w-auto"} aria-label="Região">
+      <option value="">Todas as regiões</option>
+      {REGIOES.filter((r) => UFS_POR_REGIAO[r].some((u) => present.has(u))).map((r) => (
+        <optgroup key={r} label={r}>
+          <option value={r}>{r} (toda a região)</option>
+          {UFS_POR_REGIAO[r].filter((u) => present.has(u)).map((u) => (
+            <option key={u} value={`uf:${u}`}>
+              {u}
+            </option>
+          ))}
+        </optgroup>
+      ))}
+    </Select>
+  );
+}

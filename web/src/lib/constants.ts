@@ -11,7 +11,7 @@ export const USERS: User[] = [
     initials: "ML",
     color: "#d41624",
     phone: "(17) 99701-2201",
-    regions: ["Noroeste Paulista", "Norte Paulista"],
+    regions: ["Sudeste"],
   },
   {
     id: "u-douglas",
@@ -22,7 +22,7 @@ export const USERS: User[] = [
     initials: "DF",
     color: "#123a7b",
     phone: "(17) 99701-2202",
-    regions: ["Noroeste Paulista"],
+    regions: ["Sudeste"],
   },
   {
     id: "u-paulo",
@@ -33,7 +33,7 @@ export const USERS: User[] = [
     initials: "PA",
     color: "#0f7a5a",
     phone: "(17) 99701-2203",
-    regions: ["Paranapanema", "Oeste Paulista"],
+    regions: ["Sudeste"],
   },
   {
     id: "u-nilton",
@@ -44,7 +44,7 @@ export const USERS: User[] = [
     initials: "NI",
     color: "#8a5a00",
     phone: "(17) 99701-2204",
-    regions: ["Mato Grosso do Sul", "Goiás"],
+    regions: ["Centro-Oeste"],
   },
   {
     id: "u-fernando",
@@ -55,7 +55,7 @@ export const USERS: User[] = [
     initials: "FE",
     color: "#5b3fa6",
     phone: "(17) 99701-2205",
-    regions: ["Triângulo Mineiro", "Oeste Paulista"],
+    regions: ["Sudeste", "Centro-Oeste"],
   },
   {
     id: "u-phedro",
@@ -124,7 +124,7 @@ const AQUISICAO: StageDef[] = [
     probabilidade: 5,
     criterios: [
       { id: "cidade", label: "Cidade e estado", kind: "field", field: "cidade" },
-      { id: "regiao", label: "Região", kind: "field", field: "regiao" },
+      { id: "regiao", label: "Região", kind: "field", field: "regiao", hint: "automática pela UF" },
       { id: "ramo", label: "Ramo de atividade", kind: "field", field: "ramo" },
       { id: "contato", label: "Pelo menos um contato", kind: "contact" },
     ],
@@ -341,17 +341,7 @@ export function stageIndex(funnel: FunnelId, id: string) {
   return FUNNELS[funnel].stages.findIndex((s) => s.id === mapped || s.id === id);
 }
 
-export const REGIOES = [
-  "Noroeste Paulista",
-  "Norte Paulista",
-  "Oeste Paulista",
-  "Paranapanema",
-  "Triângulo Mineiro",
-  "Goiás",
-  "Mato Grosso do Sul",
-];
-
-export const UFS = ["SP", "MG", "GO", "MS", "PR", "MT"];
+export { REGIOES, UFS } from "./regions";
 
 export const RAMOS = [
   "Usina sucroenergética",
@@ -364,7 +354,7 @@ export const RAMOS = [
 
 export const PRENSAS: Prensa[] = ["Própria", "Comodato Tawper", "Comodato concorrente", "Não possui"];
 
-export const MARCAS = ["Parker", "Gates", "Manuli", "Continental", "Eaton", "Tawper", "Diversas / sem padrão"];
+export const MARCAS = ["Parker", "Gates", "Manuli", "Continental", "Eaton", "Copecar", "Tawper", "Diversas / sem padrão"];
 
 export const PAPEIS: Papel[] = ["Decisor", "Comprador", "Técnico", "Mecânico", "Financeiro", "Almoxarifado", "Influenciador", "Outro"];
 

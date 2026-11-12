@@ -1,5 +1,6 @@
 import "server-only";
 
+import { regionForUf, UFS_POR_REGIAO } from "@/lib/regions";
 import postgres from "postgres";
 import { stageKeyToDb } from "@/lib/crm-map";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
@@ -104,11 +105,15 @@ function whatsapp(raw?: string | null): string | null {
   return stored;
 }
 
-async function regionId(name?: string | null): Promise<string | null> {
+/** Região do Brasil pela UF. A linha em `regions` é criada na primeira vez que a região aparece. */
+async function regionIdForUf(uf?: string | null): Promise<string | null> {
+  const name = regionForUf(uf);
   if (!name) return null;
   const sb = getSupabaseAdmin();
   const row = await sb.from("regions").select("id").eq("organization_id", TAWPER_ORG_ID).eq("name", name).maybeSingle();
-  return (row.data?.id as string) ?? null;
+  if (row.data?.id) return row.data.id as string;
+  const created = await sb.from("regions").insert({ organization_id: TAWPER_ORG_ID, name, states: UFS_POR_REGIAO[name] }).select("id").maybeSingle();
+  return (created.data?.id as string) ?? null;
 }
 
 export async function registerCompany(input: {
@@ -134,7 +139,7 @@ export async function registerCompany(input: {
       cnpj: cnpj(input.company.cnpj),
       status: "active",
       owner_id: ownerId,
-      region_id: await regionId(input.company.regiao),
+      region_id: await regionIdForUf(input.company.uf),
       city: input.company.cidade || null,
       state: input.company.uf || null,
       postal_code: input.company.cep ? input.company.cep.replace(/\D/g, "").slice(0, 8) || null : null,
@@ -228,7 +233,7 @@ export async function registerCompany(input: {
     cnpj: cnpj(input.company.cnpj) ?? undefined,
     status: "ativa",
     ownerId,
-    regiao: input.company.regiao,
+    regiao: regionForUf(input.company.uf) || undefined,
     cidade: input.company.cidade,
     uf: input.company.uf,
     cep: input.company.cep,
@@ -307,7 +312,7 @@ export async function updateCompanyRecord(id: string, patch: Partial<Company>, a
   if (patch.concorrente !== undefined) row.competitor = patch.concorrente || null;
   if (patch.observacoes !== undefined) row.notes = patch.observacoes || null;
   if (patch.potencial) row.potential = LEVEL_TO_DB[patch.potencial] ?? null;
-  if (patch.regiao !== undefined) row.region_id = await regionId(patch.regiao);
+  if (patch.uf !== undefined) row.region_id = await regionIdForUf(patch.uf);
   if (patch.ownerId) row.owner_id = await resolveOwner(patch.ownerId, actors);
   if (!Object.keys(row).length) return;
   const upd = await sb.from("companies").update(row).eq("id", id).eq("organization_id", TAWPER_ORG_ID);

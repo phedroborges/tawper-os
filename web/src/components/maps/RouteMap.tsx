@@ -47,6 +47,8 @@ export type DrivingRouteSummary = {
   durationText: string;
   /** Ordem otimizada dos ids (quando optimizeWaypoints=true). */
   orderedIds: string[];
+  /** Tempo de estrada de cada trecho, na ordem final: legSeconds[i] = da parada i até a i+1. */
+  legSeconds: number[];
 };
 
 type Props = {
@@ -91,6 +93,8 @@ function DirectionsLayer({
   const map = useMap();
   const routesLib = useMapsLibrary("routes");
   const [renderer, setRenderer] = useState<google.maps.DirectionsRenderer | null>(null);
+  // Linha reta tracejada entre as paradas: aparece quando o Google não devolve o trajeto.
+  const fallbackLine = useRef<google.maps.Polyline | null>(null);
   const onComputedRef = useRef(onRouteComputed);
   onComputedRef.current = onRouteComputed;
 
@@ -122,6 +126,7 @@ function DirectionsLayer({
 
   useEffect(() => {
     if (!routesLib || !renderer) return;
+    fallbackLine.current?.setMap(null);
     if (sequence.length < 2) {
       renderer.set("directions", null);
       onComputedRef.current?.(null);
@@ -174,18 +179,26 @@ function DirectionsLayer({
           distanceText: formatKm(distanceMeters),
           durationText: formatDuration(durationSeconds),
           orderedIds: ordered,
+          legSeconds: route.legs.map((leg) => leg.duration?.value ?? 0),
         });
       })
       .catch((err) => {
         console.warn("[RouteMap] Directions falhou — usando estimativa por cidade", err);
         if (!cancelled) {
           renderer.set("directions", null);
+          fallbackLine.current = new google.maps.Polyline({
+            map,
+            path: sequence.map((s) => s.pos),
+            strokeOpacity: 0,
+            icons: [{ icon: { path: "M 0,-1 0,1", strokeOpacity: 0.9, strokeColor: "#123a7b", scale: 3 }, offset: "0", repeat: "14px" }],
+          });
           onComputedRef.current?.(null);
         }
       });
 
     return () => {
       cancelled = true;
+      fallbackLine.current?.setMap(null);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [routesLib, renderer, sequenceKey, optimizeWaypoints]);

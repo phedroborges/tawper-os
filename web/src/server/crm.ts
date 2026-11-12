@@ -1,5 +1,6 @@
 import "server-only";
 
+import { regionForUf } from "@/lib/regions";
 import { checklistFromRequirements, hasRetornoNote, stageKeyToUi } from "@/lib/crm-map";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import type { Activity, AuditEntry, Canal, Company, Contact, Deal, DemoData, Interaction, InteractionKind, Strategy, User } from "@/lib/types";
@@ -96,7 +97,7 @@ export async function getDbHealth(): Promise<DbHealth> {
 
 export async function loadCrmSnapshot(): Promise<CrmSlice> {
   const sb = getSupabaseAdmin();
-  const [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes, membershipsRes, profilesRes, regionsRes, funnelsRes, stageReqsRes, reqValsRes, historyRes] = await Promise.all([
+  const [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes, membershipsRes, profilesRes, funnelsRes, stageReqsRes, reqValsRes, historyRes] = await Promise.all([
     sb.from("companies").select("*").eq("organization_id", TAWPER_ORG_ID).neq("status", "merged"),
     sb.from("contacts").select("*").eq("organization_id", TAWPER_ORG_ID),
     sb.from("opportunities").select("*").eq("organization_id", TAWPER_ORG_ID),
@@ -104,7 +105,6 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
     sb.from("activities").select("*").eq("organization_id", TAWPER_ORG_ID),
     sb.from("memberships").select("profile_id, role").eq("organization_id", TAWPER_ORG_ID).eq("is_active", true),
     sb.from("profiles").select("id, full_name, short_name, title, phone_e164, avatar_color"),
-    sb.from("regions").select("id, name").eq("organization_id", TAWPER_ORG_ID),
     sb.from("funnels").select("id, key").eq("organization_id", TAWPER_ORG_ID),
     sb.from("stage_requirements").select("id, key").eq("organization_id", TAWPER_ORG_ID),
     sb.from("opportunity_requirement_values").select("opportunity_id, requirement_id, is_met").eq("organization_id", TAWPER_ORG_ID),
@@ -131,7 +131,6 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
     list.push({ key, isMet: Boolean(row.is_met) });
     requirementsByDeal.set(dealId, list);
   }
-  const regionName = new Map((regionsRes.data ?? []).map((r) => [r.id as string, r.name as string]));
   const profileById = new Map((profilesRes.data ?? []).map((p) => [p.id as string, p]));
   const memberships = membershipsRes.data ?? [];
 
@@ -167,7 +166,7 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
     cnpj: (row.cnpj as string) ?? undefined,
     status: STATUS[(row.status as string) ?? "active"] ?? "ativa",
     ownerId: (row.owner_id as string) ?? users[0]?.id,
-    regiao: row.region_id ? regionName.get(row.region_id as string) : undefined,
+    regiao: regionForUf(row.state as string) || undefined,
     cidade: (row.city as string) ?? undefined,
     uf: (row.state as string) ?? undefined,
     cep: (row.postal_code as string) ?? undefined,

@@ -31,8 +31,10 @@ import type {
   Standby,
   Strategy,
 } from "./types";
-import { formatCNPJ, storedCNPJ, storedWhatsApp } from "./br-ids";
-import { composeRouteDescription, visitRouteDescription } from "./route-text";
+import { canonicalWhatsApp, formatCNPJ, storedCNPJ, storedWhatsApp } from "./br-ids";
+import { regionForUf } from "./regions";
+import { confirmationDue, scheduleRoute } from "./route-schedule";
+import { composeRouteDescription, visitConfirmationText, visitRouteDescription } from "./route-text";
 import { money, quoteTotals, uid } from "./utils";
 import { useUI } from "./ui-store";
 
@@ -64,7 +66,6 @@ interface Session {
 interface Actions {
   login: (userId: string) => void;
   logout: () => void;
-  resetDemo: () => void;
   hydrateCrm: (snapshot: Partial<DemoData>) => void;
   adoptSaved: (saved: { company: Company; contacts: Contact[]; deal: Deal; activity: Activity }) => void;
   removeCompany: (id: string) => void;
@@ -319,18 +320,36 @@ function routeNarrative(companies: Company[], paradas: RouteStop[], km: number, 
 }
 
 function scheduleRouteVisits(get: () => AppState, route: { ownerId: string; data: string; paradas: RouteStop[]; descricao?: string }) {
+  // Rota antiga, sem horário gravado: agenda com 1h de estrada entre as paradas.
+  const fallback = scheduleRoute(new Date(route.data), route.paradas.map((stop, i) => ({ id: stop.companyId, driveMinutes: i === 0 ? 0 : 60 })));
   route.paradas.forEach((stop, index) => {
-    const company = get().companies.find((item) => item.id === stop.companyId);
-    const titulo = company?.nome ?? stop.objetivo.replace(/^Visita:\s*/i, "");
-    get().addActivity({
+    const s = get();
+    const company = s.companies.find((item) => item.id === stop.companyId);
+    const nome = company?.nome ?? stop.objetivo.replace(/^Visita:\s*/i, "");
+    const visitAt = stop.horario ? new Date(stop.horario) : fallback.stops[index].arrive;
+    s.addActivity({
       companyId: stop.companyId,
       ownerId: route.ownerId,
       tipo: "Visita",
-      titulo: `Visita: ${titulo}`,
+      titulo: `Visita: ${nome}`,
       descricao: visitRouteDescription(route.descricao ?? "", index, route.paradas.length),
-      dueAt: new Date(new Date(route.data).getTime() + index * 2.5 * 3_600_000).toISOString(),
+      dueAt: visitAt.toISOString(),
       prioridade: "Média",
       origem: "ia",
+    });
+    // Confirmação com o cliente no dia útil anterior: sem ela a viagem pode ser perdida.
+    const contato = s.contacts.find((c) => c.companyId === stop.companyId && c.ativo !== false && c.whatsapp) ?? s.contacts.find((c) => c.companyId === stop.companyId);
+    const texto = visitConfirmationText(contato?.nome, visitAt, s.users.find((u) => u.id === route.ownerId)?.short);
+    const link = contato?.whatsapp ? `\nEnviar: https://wa.me/${canonicalWhatsApp(contato.whatsapp)}?text=${encodeURIComponent(texto)}` : "";
+    s.addActivity({
+      companyId: stop.companyId,
+      ownerId: route.ownerId,
+      tipo: "WhatsApp",
+      titulo: `Confirmar visita: ${nome}`,
+      descricao: `Mensagem pronta para ${contato?.nome ?? "o contato"}:\n"${texto}"${link}`,
+      dueAt: confirmationDue(visitAt).toISOString(),
+      prioridade: "Alta",
+      origem: "regra",
     });
   });
 }
@@ -346,10 +365,6 @@ export const useStore = create<AppState>()(
         // -------------------------------------------------------------------
         login: (userId) => set({ currentUserId: actorAlias.get(userId) ?? userId }),
         logout: () => set({ currentUserId: DEFAULT_USER_ID }),
-        resetDemo: () => {
-          const keepUser = get().currentUserId ?? DEFAULT_USER_ID;
-          set({ ...(USE_SUPABASE ? emptyCrm() : buildSeed()), currentUserId: keepUser });
-        },
         hydrateCrm: (snapshot) => {
           // O banco é a única fonte: o que a tela mostra é substituído pelo que está gravado.
           set((s) => ({
@@ -408,6 +423,7 @@ export const useStore = create<AppState>()(
             codigo,
             razaoSocial: input.company.razaoSocial || input.company.nome,
             cnpj: storedCNPJ(input.company.cnpj),
+            regiao: regionForUf(input.company.uf) || undefined,
             status: "ativa",
             ownerId,
             createdAt: now,
@@ -479,6 +495,7 @@ export const useStore = create<AppState>()(
           const c = s.companies.find((x) => x.id === id);
           if (!c) return;
           if (patch.cnpj !== undefined) patch = { ...patch, cnpj: storedCNPJ(patch.cnpj) };
+          if (patch.uf !== undefined) patch = { ...patch, regiao: regionForUf(patch.uf) || undefined };
           const changed = (Object.keys(patch) as (keyof Company)[]).filter((k) => patch[k] !== c[k]);
           if (!changed.length) return;
           const entries = changed
@@ -905,7 +922,7 @@ export const useStore = create<AppState>()(
       storage: createJSONStorage(() => (USE_SUPABASE ? memoryStorage : localStorage)),
       partialize: (s) => {
         // eslint-disable-next-line @typescript-eslint/no-unused-vars
-        const { login, logout, resetDemo, ...rest } = s;
+        const { login, logout, ...rest } = s;
         const out: Record<string, unknown> = {};
         Object.entries(rest).forEach(([k, v]) => {
           if (typeof v !== "function") out[k] = v;
@@ -916,6 +933,18 @@ export const useStore = create<AppState>()(
     },
   ),
 );
+
+/** Voltar etapa não existe: só o aviso, sem abrir tela nenhuma. */
+export function warnNoBack(dealId: string) {
+  const s = useStore.getState();
+  const deal = s.deals.find((d) => d.id === dealId);
+  const company = deal && s.companies.find((c) => c.id === deal.companyId);
+  const etapa = deal ? getStage(deal.funnel, deal.stageId).nome : "esta etapa";
+  useUI.getState().toast(`Você já chegou em ${etapa} com ${company?.nome ?? "este cliente"}`, {
+    tone: "warn",
+    sub: "Não é possível voltar etapas. Só um cliente perdido e reaberto recomeça, em Qualificação.",
+  });
+}
 
 export function useCurrentUser() {
   return useStore((s) => s.users.find((u) => u.id === (s.currentUserId ?? DEFAULT_USER_ID)) ?? s.users[0]);

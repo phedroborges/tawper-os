@@ -1,85 +1,35 @@
-import { normalize } from "./utils";
+/** Regiões do Brasil. A região de um cliente nunca é digitada: sai da UF do endereço. */
+export const REGIOES = ["Norte", "Nordeste", "Centro-Oeste", "Sudeste", "Sul"];
 
-/** Cidade (normalizada) → região comercial Tawper. */
-export const CITY_REGION: Record<string, string> = {
-  "pereira barreto": "Noroeste Paulista",
-  "monte aprazivel": "Noroeste Paulista",
-  "sao jose do rio preto": "Noroeste Paulista",
-  "novo horizonte": "Noroeste Paulista",
-  catanduva: "Noroeste Paulista",
-  votuporanga: "Noroeste Paulista",
-  olimpia: "Norte Paulista",
-  bebedouro: "Norte Paulista",
-  guaraci: "Norte Paulista",
-  severinia: "Norte Paulista",
-  assis: "Paranapanema",
-  ourinhos: "Paranapanema",
-  "candido mota": "Paranapanema",
-  "paraguacu paulista": "Paranapanema",
-  frutal: "Triângulo Mineiro",
-  uberaba: "Triângulo Mineiro",
-  iturama: "Triângulo Mineiro",
-  mineiros: "Goiás",
-  jatai: "Goiás",
-  quirinopolis: "Goiás",
-  "rio verde": "Goiás",
-  goiania: "Goiás",
-  anapolis: "Goiás",
-  "rio brilhante": "Mato Grosso do Sul",
-  "nova andradina": "Mato Grosso do Sul",
-  navirai: "Mato Grosso do Sul",
-  martinopolis: "Oeste Paulista",
-  "presidente venceslau": "Oeste Paulista",
+export const UFS_POR_REGIAO: Record<string, string[]> = {
+  Norte: ["AC", "AM", "AP", "PA", "RO", "RR", "TO"],
+  Nordeste: ["AL", "BA", "CE", "MA", "PB", "PE", "PI", "RN", "SE"],
+  "Centro-Oeste": ["DF", "GO", "MS", "MT"],
+  Sudeste: ["ES", "MG", "RJ", "SP"],
+  Sul: ["PR", "RS", "SC"],
 };
 
-/** Região comercial → UF principal (para invalidar região incompatível com o CEP). */
-const REGION_UF: Record<string, string> = {
-  "Noroeste Paulista": "SP",
-  "Norte Paulista": "SP",
-  "Oeste Paulista": "SP",
-  Paranapanema: "SP",
-  "Triângulo Mineiro": "MG",
-  Goiás: "GO",
-  "Mato Grosso do Sul": "MS",
-};
+export const UFS = Object.values(UFS_POR_REGIAO).flat().sort();
 
-/** Fallback por UF quando a cidade não está no mapa comercial. */
-const UF_DEFAULT_REGION: Record<string, string> = {
-  GO: "Goiás",
-  MS: "Mato Grosso do Sul",
-  MG: "Triângulo Mineiro",
-};
+const UF_REGIAO = new Map(Object.entries(UFS_POR_REGIAO).flatMap(([regiao, ufs]) => ufs.map((uf) => [uf, regiao] as const)));
 
-export function regionForCity(cidade?: string): string {
-  if (!cidade) return "";
-  return CITY_REGION[normalize(cidade)] ?? "";
+export function regionForUf(uf?: string | null): string {
+  return UF_REGIAO.get((uf ?? "").trim().toUpperCase()) ?? "";
 }
 
-export function regionFitsUf(regiao?: string, uf?: string): boolean {
-  if (!regiao?.trim() || !uf?.trim()) return true;
-  const expected = REGION_UF[regiao];
-  if (!expected) return true;
-  return expected === uf.trim().toUpperCase();
+/** Mantém a assinatura usada no cadastro (CEP/GPS): a região é sempre a da UF. */
+export function pickRegiaoFromLocation(_cidade?: string, uf?: string, _atual?: string): string {
+  return regionForUf(uf);
 }
 
-/** Cidade mapeada, senão default da UF (GO/MS/MG). SP sem cidade no mapa fica vazio. */
-export function regionForLocation(cidade?: string, uf?: string): string {
-  const byCity = regionForCity(cidade);
-  if (byCity) return byCity;
-  const u = (uf ?? "").trim().toUpperCase();
-  return UF_DEFAULT_REGION[u] ?? "";
+/** Filtro de região das telas: "" = todas, "Sudeste" = a região inteira, "uf:SP" = um estado. */
+export function matchesRegionFilter(filter: string, uf?: string | null): boolean {
+  if (!filter) return true;
+  const state = (uf ?? "").trim().toUpperCase();
+  return filter.startsWith("uf:") ? state === filter.slice(3) : regionForUf(state) === filter;
 }
 
-/**
- * Escolhe a região ao aplicar CEP/GPS:
- * 1) mapa cidade → região
- * 2) default da UF
- * 3) mantém a atual só se ainda for compatível com a UF nova
- * (evita ficar "Goiás" com CEP de São Paulo/SP)
- */
-export function pickRegiaoFromLocation(cidade?: string, uf?: string, current?: string): string {
-  const auto = regionForLocation(cidade, uf);
-  if (auto) return auto;
-  if (current && regionFitsUf(current, uf)) return current;
-  return "";
+export function regionFilterLabel(filter: string): string {
+  if (!filter) return "Todas as regiões";
+  return filter.startsWith("uf:") ? filter.slice(3) : filter;
 }

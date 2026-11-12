@@ -57,11 +57,6 @@ export default function DashboardPage() {
         kicker="Dashboard executivo"
         title="Painel"
         subtitle="Todo número abre a lista de clientes que o formou."
-        actions={
-          <LinkButton href="/tv" variant="dark">
-            <Tv size={15} /> Modo TV
-          </LinkButton>
-        }
       />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">

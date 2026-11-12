@@ -1,4 +1,4 @@
-import { influenciaDoPapel, PAPEIS, PAPEL_GUIA, papelRotulo, PRENSAS, REGIOES } from "@/lib/constants";
+import { influenciaDoPapel, PAPEIS, PAPEL_GUIA, papelRotulo, PRENSAS } from "@/lib/constants";
 import { CARGO_TEXTO, PAPEL_TEXTO } from "./texto-pessoas";
 import { storedCNPJ, storedWhatsAppAssumindoNove } from "@/lib/br-ids";
 import type { Company, Contact, Papel } from "@/lib/types";
@@ -26,7 +26,6 @@ const CAMPOS: Record<string, { campo: keyof Company; rotulo: string }> = {
   cep: { campo: "cep", rotulo: "CEP" },
   endereco: { campo: "endereco", rotulo: "endereço" },
   ramo: { campo: "ramo", rotulo: "ramo" },
-  regiao: { campo: "regiao", rotulo: "região" },
   colhedoras: { campo: "colhedoras", rotulo: "colhedoras" },
   prensa: { campo: "prensa", rotulo: "prensa" },
   marca_atual: { campo: "marcaAtual", rotulo: "marca atual" },
@@ -52,10 +51,7 @@ export function planAtualizarCliente(args: Record<string, unknown>, base: Base, 
       value = String(value).replace(/\D/g, "");
       if (String(value).length !== 8) return { ok: false as const, erro: "CEP precisa de 8 dígitos." };
     } else if (key === "uf") value = String(value).toUpperCase().slice(0, 2);
-    else if (key === "regiao") {
-      value = pick(value, REGIOES);
-      if (!value) return { ok: false as const, erro: `Região precisa ser uma de: ${REGIOES.join(", ")}.` };
-    } else if (key === "prensa") {
+    else if (key === "prensa") {
       value = pick(value, PRENSAS);
       if (!value) return { ok: false as const, erro: `Prensa precisa ser uma de: ${PRENSAS.join(", ")}.` };
     } else if (key === "potencial") {
@@ -98,7 +94,6 @@ export const atualizarCliente: AgentTool = {
       cep: { type: "string" },
       endereco: { type: "string" },
       ramo: { type: "string" },
-      regiao: { type: "string", enum: REGIOES },
       colhedoras: { type: "number" },
       prensa: { type: "string", enum: PRENSAS },
       marca_atual: { type: "string", description: "Marca de mangueira que o cliente usa hoje." },

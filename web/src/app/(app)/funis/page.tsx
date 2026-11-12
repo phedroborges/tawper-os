@@ -12,7 +12,7 @@ import { stageKeyToUi } from "@/lib/crm-map";
 import { daysSince } from "@/lib/dates";
 import { useNow } from "@/lib/hooks";
 import { canSeeCompany, isStagnant, missingCriteria, nextStepOf } from "@/lib/selectors";
-import { useCurrentUser, useStore } from "@/lib/store";
+import { useCurrentUser, useStore, warnNoBack } from "@/lib/store";
 import type { Deal, FunnelId } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 import { cn, moneyShort } from "@/lib/utils";
@@ -67,8 +67,7 @@ function Kanban() {
     const fromIdx = stageIndex(d.funnel, d.stageId);
     const toIdx = stageIndex(d.funnel, stageId);
     if (toIdx < fromIdx) {
-      toast("Não é possível voltar o lead", { tone: "warn", sub: "O funil só avança. Confira a etapa atual." });
-      open({ kind: "viewStage", dealId: d.id });
+      warnNoBack(d.id);
       return;
     }
     if (c && toIdx > fromIdx && missingCriteria(s, d, c).length === 0) {

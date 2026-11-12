@@ -6,10 +6,10 @@ import { useEffect, useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
 import { Modal } from "@/components/ui/overlay";
 import { Badge, Button, Checkbox, Field, Input, Select, Textarea } from "@/components/ui/primitives";
-import { FUNNELS, getStage, MARCAS, MOTIVOS_ESPERA, MOTIVOS_PERDA, PAPEIS, PAPEL_GUIA, influenciaDoPapel, PRENSAS, RAMOS, REGIOES, stageIndex, type Criterion } from "@/lib/constants";
+import { FUNNELS, getStage, MARCAS, MOTIVOS_ESPERA, MOTIVOS_PERDA, PAPEIS, PAPEL_GUIA, influenciaDoPapel, PRENSAS, RAMOS, stageIndex, type Criterion } from "@/lib/constants";
 import { addDays, fmtDateShort, fmtDue, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { criterionMet, daysInStage, pendingOf } from "@/lib/selectors";
-import { runWithoutAutoAdvance, useStore, type ActivityDraft } from "@/lib/store";
+import { runWithoutAutoAdvance, useStore, warnNoBack, type ActivityDraft } from "@/lib/store";
 import type { Company, Contact, Papel, Potencial, Prensa } from "@/lib/types";
 import { formatWhatsApp, isValidWhatsApp, storedWhatsApp } from "@/lib/br-ids";
 import { useUI } from "@/lib/ui-store";
@@ -39,10 +39,10 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
     const current = useStore.getState().deals.find((d) => d.id === dealId);
     if (!current) return;
     if (stageIndex(current.funnel, toStageId) < stageIndex(current.funnel, current.stageId)) {
-      toast("Não é possível voltar o lead", { tone: "warn", sub: "O funil só avança. Confira a etapa atual." });
-      open({ kind: "viewStage", dealId: current.id });
+      warnNoBack(current.id);
+      close();
     }
-  }, [dealId, toStageId, toast, open]);
+  }, [dealId, toStageId, close]);
 
   const targetStage = deal && target ? getStage(deal.funnel, target) : undefined;
   const targetIdx = deal && target ? stageIndex(deal.funnel, target) : 0;
@@ -134,14 +134,7 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
           </div>
         );
       case "regiao":
-        return (
-          <Select value={fields.regiao ?? company.regiao ?? ""} onChange={(e) => setField("regiao", e.target.value)}>
-            <option value="">Selecione…</option>
-            {REGIOES.map((r) => (
-              <option key={r}>{r}</option>
-            ))}
-          </Select>
-        );
+        return <div className="text-[12.5px] text-muted">A região sai da UF. Preencha cidade e UF acima.</div>;
       case "ramo":
         return (
           <Select value={fields.ramo ?? ""} onChange={(e) => setField("ramo", e.target.value)}>
@@ -234,9 +227,7 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
               disabled={i === curIdx}
               onClick={() => {
                 if (i < curIdx) {
-                  toast("Não é possível voltar o lead", { tone: "warn", sub: "O funil só avança. Confira a etapa atual." });
-                  close();
-                  setTimeout(() => open({ kind: "viewStage", dealId: deal.id }), 100);
+                  warnNoBack(deal.id);
                   return;
                 }
                 setTarget(st.id);

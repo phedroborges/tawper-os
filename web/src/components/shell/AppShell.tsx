@@ -2,28 +2,23 @@
 
 import {
   Bell,
-  BookOpen,
   Building2,
   ChevronDown,
+  ClipboardCheck,
   Columns3,
   FileText,
-  History,
   LayoutDashboard,
-  ListChecks,
   Menu,
-  MessageCircle,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
-  RotateCcw,
   Route,
   Search,
+  Settings,
   ShieldCheck,
-  Smartphone,
   Sparkles,
   Sun,
-  Tv,
-  Users,
+  Target,
 } from "lucide-react";
 import dynamic from "next/dynamic";
 import Image from "next/image";
@@ -47,7 +42,6 @@ import { Toaster } from "./Toaster";
 
 const FlowHost = dynamic(() => import("@/components/flows/FlowHost").then((m) => m.FlowHost), { ssr: false });
 const AssistantPanel = dynamic(() => import("./Assistant").then((m) => m.AssistantPanel), { ssr: false });
-const DemoGuide = dynamic(() => import("./DemoGuide").then((m) => m.DemoGuide), { ssr: false });
 
 interface NavItem {
   href: string;
@@ -58,7 +52,7 @@ interface NavItem {
 }
 
 /** Telas de dados que aproveitam toda a largura do monitor. */
-const FLUID_ROUTES = ["/funis", "/carteira", "/auditoria", "/dashboard", "/propostas"];
+const FLUID_ROUTES = ["/funis", "/carteira", "/configuracoes/auditoria", "/dashboard", "/propostas", "/conversas"];
 
 function useNav(): NavItem[] {
   const user = useCurrentUser();
@@ -88,14 +82,13 @@ function useNav(): NavItem[] {
     { href: "/meu-dia", label: "Meu dia", icon: <Sun size={18} /> },
     { href: "/carteira", label: "Carteira", icon: <Building2 size={18} /> },
     { href: "/funis", label: "Funis", icon: <Columns3 size={18} /> },
-    { href: "/conversas", label: "Conversas", icon: <MessageCircle size={18} />, badge: liveUnread ?? unread },
     { href: "/propostas", label: "Propostas", icon: <FileText size={18} /> },
     { href: "/rotas", label: "Rotas", icon: <Route size={18} /> },
-    { href: "/implementacao", label: "Implementação", icon: <ListChecks size={18} /> },
+    { href: "/metas", label: "Metas", icon: <Target size={18} /> },
     { href: "/gestao", label: "Gestão", icon: <ShieldCheck size={18} />, badge: exceptions, manager: true },
     { href: "/dashboard", label: "Painel", icon: <LayoutDashboard size={18} />, manager: true },
-    { href: "/auditoria", label: "Auditoria", icon: <History size={18} />, manager: true },
-    ...(user.role === "admin" ? [{ href: "/equipe", label: "Equipe", icon: <Users size={18} />, manager: true }] : []),
+    // Registros: auditoria do que cada vendedor informou pelo WhatsApp. Só gestor.
+    { href: "/conversas", label: "Registros", icon: <ClipboardCheck size={18} />, badge: liveUnread ?? unread, manager: true },
   ];
 }
 
@@ -104,8 +97,6 @@ function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavig
   const setNavCollapsed = useUI((s) => s.setNavCollapsed);
   const user = useCurrentUser();
   const nav = useNav();
-  const { setGuide, toast } = useUI();
-  const resetDemo = useStore((s) => s.resetDemo);
   const manager = isManager(user);
 
   const item = (n: NavItem) => {
@@ -158,8 +149,9 @@ function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavig
           </>
         )}
       </nav>
-      {!onNavigate && (
-        <div className={cn("border-t border-line py-2", collapsed ? "px-2" : "px-2.5")}>
+      <div className={cn("space-y-0.5 border-t border-line py-2", collapsed ? "px-2" : "px-2.5")}>
+        {item({ href: "/configuracoes", label: "Configurações", icon: <Settings size={18} /> })}
+        {!onNavigate && (
           <button
             type="button"
             onClick={() => setNavCollapsed(!collapsed)}
@@ -170,37 +162,7 @@ function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavig
             {collapsed ? <PanelLeftOpen size={16} /> : <PanelLeftClose size={16} />}
             {!collapsed && "Recolher menu"}
           </button>
-        </div>
-      )}
-      <div className={cn("space-y-0.5 border-t border-line px-2.5 py-3", collapsed && "hidden")}>
-        <button
-          type="button"
-          onClick={() => {
-            setGuide(true);
-            onNavigate?.();
-          }}
-          className="flex w-full items-center gap-3 rounded-[6px] px-2.5 py-1.5 text-[12.5px] text-muted transition-colors hover:bg-soft hover:text-ink"
-        >
-          <BookOpen size={15} /> Roteiro da demo
-        </button>
-        <Link href="/celular" onClick={onNavigate} className="flex items-center gap-3 rounded-[6px] px-2.5 py-1.5 text-[12.5px] text-muted hover:bg-soft hover:text-ink">
-          <Smartphone size={15} /> Ver no celular
-        </Link>
-        <Link href="/tv" onClick={onNavigate} className="flex items-center gap-3 rounded-[6px] px-2.5 py-1.5 text-[12.5px] text-muted hover:bg-soft hover:text-ink">
-          <Tv size={15} /> Modo TV
-        </Link>
-        <button
-          type="button"
-          onClick={() => {
-            if (window.confirm("Reiniciar a demonstração? Todos os dados voltam ao estado inicial.")) {
-              resetDemo();
-              toast("Demo reiniciada", { tone: "info", sub: "Clientes e datas voltaram ao início" });
-            }
-          }}
-          className="flex w-full items-center gap-3 rounded-[6px] px-2.5 py-1.5 text-[12.5px] text-muted transition-colors hover:bg-soft hover:text-ink"
-        >
-          <RotateCcw size={15} /> Reiniciar demo
-        </button>
+        )}
       </div>
     </div>
   );
@@ -229,7 +191,10 @@ function UserSwitcher() {
             <div className="text-[13px] font-medium text-ink">{user.name}</div>
             <div className="text-[11.5px] text-muted">{ROLE_LABEL[user.role]}</div>
           </div>
-          <div className="mt-1 border-t border-line px-3 py-2">
+          <div className="mt-1 flex items-center justify-between border-t border-line px-3 py-2">
+            <Link href="/configuracoes" onClick={close} className="text-[12.5px] text-muted hover:text-ink">
+              Minha conta
+            </Link>
             <button
               type="button"
               className="text-[12.5px] text-muted hover:text-ink"
@@ -375,6 +340,7 @@ function GlobalSearch() {
 
 function Topbar() {
   const { open, setAssistant, setMobileNav } = useUI();
+  const manager = isManager(useCurrentUser());
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center gap-2 border-b border-line bg-paper/95 px-3 backdrop-blur md:gap-4 md:px-6">
       <button type="button" className="grid size-9 place-items-center rounded-[6px] text-muted hover:bg-soft md:hidden" onClick={() => setMobileNav(true)} aria-label="Menu">
@@ -393,7 +359,7 @@ function Topbar() {
         >
           <Sparkles size={17} /> <span className="hidden xl:inline">Pergunte à IA</span>
         </button>
-        <InboxButton />
+        {manager && <InboxButton />}
         <Notifications />
         <button type="button" onClick={() => open({ kind: "quick" })} className="inline-flex size-10 items-center justify-center gap-2 rounded-[6px] bg-navy text-[13.5px] font-medium text-white hover:bg-navy-2 sm:h-10 sm:w-auto sm:px-3.5">
           <Plus size={16} /> <span className="hidden sm:inline">Registrar</span>
@@ -409,7 +375,7 @@ function MobileTabBar({ onConversasIntent }: { onConversasIntent?: () => void })
   const pathname = usePathname();
   const open = useUI((s) => s.open);
   const nav = useNav();
-  const items = [nav[0], nav[1], null, nav[3], nav[2]];
+  const items = [nav[0], nav[1], null, nav[2], nav[4]];
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
       {items.map((n, i) =>
@@ -470,9 +436,9 @@ export function AppShell({ children }: { children: ReactNode }) {
   const flow = useUI((s) => s.flow);
   const navCollapsed = useUI((s) => s.navCollapsed);
   const assistantOpen = useUI((s) => s.assistantOpen);
-  const guideOpen = useUI((s) => s.guideOpen);
   const [extras, setExtras] = useState(false);
   const conversasLoading = useUI((s) => s.conversasLoading);
+  const manager = isManager(useCurrentUser());
   const beginConversasLoad = useUI((s) => s.beginConversasLoad);
   const endConversasLoad = useUI((s) => s.endConversasLoad);
   useEffect(() => {
@@ -526,10 +492,9 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <MobileTabBar onConversasIntent={onConversasIntent} />
           {conversasLoading && <ConversasLoading />}
-          <ChatDock />
+          {manager && <ChatDock />}
           {(extras || flow) && <FlowHost />}
           {(extras || assistantOpen) && <AssistantPanel />}
-          {(extras || guideOpen) && <DemoGuide />}
           <Toaster />
         </div>
       )}

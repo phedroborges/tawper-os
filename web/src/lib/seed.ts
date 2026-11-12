@@ -1,6 +1,7 @@
 // Dados fictícios da demonstração. Todas as datas são relativas ao momento em que a demo é
 // (re)iniciada, para que atrasos, "hoje" e estagnações façam sentido em qualquer dia.
 
+import { regionForUf } from "./regions";
 import { CATALOG, FUNNELS, USERS, stageIndex } from "./constants";
 import { rel, relMinutes } from "./dates";
 import type {
@@ -913,6 +914,7 @@ export function buildSeed(now = new Date()): DemoData {
     },
   ];
 
+  for (const c of companies) c.regiao = regionForUf(c.uf) || undefined;
   return {
     version: DATA_VERSION,
     seededAt: now.toISOString(),

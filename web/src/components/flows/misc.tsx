@@ -10,12 +10,12 @@ import { Button, Field, Input, Select, Textarea } from "@/components/ui/primitiv
 import { getCurrentPosition } from "@/lib/browser-geo";
 import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import { formatCEP, isValidCEP, lookupViaCep, normalizeCEP } from "@/lib/cep";
-import { CARGOS_SUGERIDOS, influenciaDoPapel, isMuriloLouis, MARCAS, PAPEIS, PAPEL_GUIA, papelRotulo, PRENSAS, RAMOS, REGIOES } from "@/lib/constants";
+import { CARGOS_SUGERIDOS, influenciaDoPapel, isMuriloLouis, MARCAS, PAPEIS, PAPEL_GUIA, papelRotulo, PRENSAS, RAMOS } from "@/lib/constants";
 import { currentDealOf, nextStepOf, qualityOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { Company, Papel, Potencial, Prensa, Urgencia } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
-import { pickRegiaoFromLocation } from "@/lib/regions";
+import { pickRegiaoFromLocation, regionForUf } from "@/lib/regions";
 import { cn } from "@/lib/utils";
 import { geocodeCepOrAddress, reverseGeocode } from "@/server/geo/geocode";
 
@@ -302,13 +302,8 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
             onChange={(e) => set("uf", e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2))}
           />
         </Field>
-        <Field label="Região">
-          <Select value={f.regiao ?? ""} onChange={(e) => set("regiao", e.target.value)}>
-            <option value="">—</option>
-            {REGIOES.map((u) => (
-              <option key={u}>{u}</option>
-            ))}
-          </Select>
+        <Field label="Região" hint="automática pela UF">
+          <Input value={regionForUf(f.uf) || "—"} readOnly tabIndex={-1} className="bg-soft text-muted" />
         </Field>
         <Field label="Ramo">
           <Select value={f.ramo ?? ""} onChange={(e) => set("ramo", e.target.value)}>
@@ -319,10 +314,10 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
           </Select>
         </Field>
         <Field label="Nº de colhedoras">
-          <Input type="number" value={f.colhedoras ?? ""} onChange={(e) => set("colhedoras", e.target.value ? Number(e.target.value) : undefined)} />
+          <Input type="number" placeholder="Ex.: 14" value={f.colhedoras ?? ""} onChange={(e) => set("colhedoras", e.target.value ? Number(e.target.value) : undefined)} />
         </Field>
         <Field label="Modelos">
-          <Input value={f.modelos ?? ""} onChange={(e) => set("modelos", e.target.value)} />
+          <Input placeholder="Ex.: John Deere CH570, Case A8800" value={f.modelos ?? ""} onChange={(e) => set("modelos", e.target.value)} />
         </Field>
         <Field label="Tipo de prensa">
           <Select value={f.prensa ?? ""} onChange={(e) => set("prensa", (e.target.value || undefined) as Prensa)}>
@@ -341,7 +336,7 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
           </Select>
         </Field>
         <Field label="Concorrente">
-          <Input value={f.concorrente ?? ""} onChange={(e) => set("concorrente", e.target.value)} />
+          <Input placeholder="Ex.: Hidráulica Paulista (revenda Gates)" value={f.concorrente ?? ""} onChange={(e) => set("concorrente", e.target.value)} />
         </Field>
         <Field label="Potencial">
           <Select value={f.potencial ?? ""} onChange={(e) => set("potencial", (e.target.value || undefined) as Potencial)}>

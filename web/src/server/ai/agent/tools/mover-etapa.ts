@@ -10,7 +10,7 @@ import { str } from "./shared";
 export const moverEtapa: AgentTool = {
   name: "mover_etapa",
   description:
-    "Avança o negócio de um cliente para outra etapa do funil. Confere os requisitos da etapa e pergunta o que falta; quando está tudo certo, pede ao usuário que responda CONFIRMAR. A resposta já vem pronta para o usuário. A conferência lê só o que JÁ está gravado no cliente: todo dado de requisito que o usuário deu (região comercial, ramo, colhedoras, prensa, CNPJ…), inclusive quando ele responde a uma pergunta de requisito, deve ser gravado ANTES com atualizar_cliente (campo regiao, ramo etc.), na mesma volta, e só então chame esta ferramenta.",
+    "Avança o negócio de um cliente para outra etapa do funil. Confere os requisitos da etapa e pergunta o que falta; quando está tudo certo, pede ao usuário que responda CONFIRMAR. A resposta já vem pronta para o usuário. A conferência lê só o que JÁ está gravado no cliente: todo dado de requisito que o usuário deu (cidade e UF, ramo, colhedoras, prensa, CNPJ…), inclusive quando ele responde a uma pergunta de requisito, deve ser gravado ANTES com atualizar_cliente (campo uf, ramo etc.; a região sai sozinha da UF), na mesma volta, e só então chame esta ferramenta.",
   writes: false,
   parameters: {
     type: "object",

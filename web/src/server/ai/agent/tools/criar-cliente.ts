@@ -1,4 +1,4 @@
-import { ACTIVITY_TYPES, influenciaDoPapel, ORIGENS, PAPEIS, REGIOES } from "@/lib/constants";
+import { ACTIVITY_TYPES, influenciaDoPapel, ORIGENS, PAPEIS } from "@/lib/constants";
 import { CARGO_TEXTO, PAPEL_TEXTO } from "./texto-pessoas";
 import { storedCNPJ, storedWhatsAppAssumindoNove } from "@/lib/br-ids";
 import type { ActivityType, Company, Contact, Papel, User } from "@/lib/types";
@@ -85,8 +85,6 @@ export function planNewClient(args: Record<string, unknown>, base: Base, actor: 
   if (exata && "erro" in exata) return { ok: false, erro: `proximo_passo_data: ${exata.erro}` };
   if (exata && isPastDay(exata.iso, now)) return { ok: false, erro: `proximo_passo_data: ${pastDayError(exata.iso, now)}` };
   const due = exata ? new Date(exata.iso) : new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate() + dias, 12, 0, 0));
-  const regiaoRaw = str(args.regiao, 60);
-  const regiao = REGIOES.find((item) => normalize(item) === normalize(regiaoRaw));
   const origemRaw = str(args.origem, 60);
   const origem = ORIGENS.find((item) => normalize(item) === normalize(origemRaw)) ?? "WhatsApp";
   const uf = str(args.uf, 2).toUpperCase();
@@ -114,7 +112,6 @@ export function planNewClient(args: Record<string, unknown>, base: Base, actor: 
         uf: uf || undefined,
         cnpj: cnpj || undefined,
         ramo: str(args.ramo, 80) || undefined,
-        regiao,
         origem,
         observacoes: str(args.observacoes, 500) || undefined,
         ownerId: owner.id,
@@ -139,7 +136,6 @@ export const criarCliente: AgentTool = {
       uf: { type: "string", description: "Sigla do estado. Deduza pela cidade quando ela for conhecida (Ribeirão Preto → SP, Rio Verde → GO); pergunte só se não souber." },
       cnpj: { type: "string", description: "Opcional. 14 dígitos." },
       ramo: { type: "string", description: "Opcional. Ex.: usina de cana." },
-      regiao: { type: "string", description: `Opcional. Uma de: ${REGIOES.join(", ")}.` },
       origem: { type: "string", description: `Opcional. Uma de: ${ORIGENS.join(", ")}. Padrão WhatsApp.` },
       observacoes: { type: "string", description: "Opcional. O que o usuário contou de relevante sobre o cliente." },
       contato_nome: { type: "string", description: "Opcional. Pergunte uma vez; se o usuário não souber, siga sem." },

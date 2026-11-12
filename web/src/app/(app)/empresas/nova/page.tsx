@@ -10,7 +10,7 @@ import { Badge, Button, Card, CardHeader, Field, Input, PageHeader, Select, Text
 import { extractLead } from "@/lib/ai";
 import { getCurrentPosition } from "@/lib/browser-geo";
 import { aiExtractLead } from "@/server/ai/actions";
-import { ACTIVITY_TYPES, CARGOS_SUGERIDOS, influenciaDoPapel, MARCAS, ORIGENS, PAPEIS, PAPEL_GUIA, papelRotulo, PRENSAS, RAMOS, REGIOES } from "@/lib/constants";
+import { ACTIVITY_TYPES, CARGOS_SUGERIDOS, influenciaDoPapel, MARCAS, ORIGENS, PAPEIS, PAPEL_GUIA, papelRotulo, PRENSAS, RAMOS } from "@/lib/constants";
 import { fmtDate, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, onlyDigits, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import { formatCEP, isValidCEP, lookupViaCep, normalizeCEP } from "@/lib/cep";
@@ -18,7 +18,7 @@ import { currentDealOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { ActivityType, Company, Papel, Prensa, Prioridade, Urgencia } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
-import { pickRegiaoFromLocation } from "@/lib/regions";
+import { pickRegiaoFromLocation, regionForUf } from "@/lib/regions";
 import { cn, nameSimilarity } from "@/lib/utils";
 import { geocodeCepOrAddress, reverseGeocode } from "@/server/geo/geocode";
 
@@ -247,7 +247,7 @@ function NovaEmpresa() {
       uf: f.uf,
       latitude: f.latitude,
       longitude: f.longitude,
-      regiao: f.regiao || pickRegiaoFromLocation(f.cidade, f.uf) || undefined,
+      regiao: regionForUf(f.uf) || undefined,
       ramo: f.ramo || undefined,
       origem: f.origem,
       ownerId: f.ownerId,
@@ -403,7 +403,7 @@ function NovaEmpresa() {
                 </Button>
               </div>
               <Field label="Cidade" required hint="preenchida pelo CEP" className="lg:col-span-3">
-                <Input value={f.cidade} onChange={(e) => setF({ ...f, cidade: e.target.value })} className={cn(req(f.cidade) && "border-brand")} />
+                <Input value={f.cidade} onChange={(e) => setF({ ...f, cidade: e.target.value })} className={cn(req(f.cidade) && "border-brand")} placeholder="Ex.: Rio Verde" />
               </Field>
               <Field label="UF" hint="preenchida pelo CEP" className="lg:col-span-1">
                 <Input
@@ -413,15 +413,10 @@ function NovaEmpresa() {
                   onChange={(e) => setF({ ...f, uf: e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2) })}
                 />
               </Field>
-              <Field label="Região" className="lg:col-span-2">
-                <Select value={f.regiao} onChange={(e) => setF({ ...f, regiao: e.target.value })}>
-                  <option value="">Selecione…</option>
-                  {REGIOES.map((u) => (
-                    <option key={u}>{u}</option>
-                  ))}
-                </Select>
+              <Field label="Região" hint="automática pela UF" className="lg:col-span-2">
+                <Input value={regionForUf(f.uf) || "—"} readOnly tabIndex={-1} className="bg-soft text-muted" />
               </Field>
-              <Field label="Ramo de atividade" className="lg:col-span-3">
+              <Field label="Ramo de atividade" hint="o que a empresa é" className="lg:col-span-3">
                 <Select value={f.ramo} onChange={(e) => setF({ ...f, ramo: e.target.value })}>
                   <option value="">Selecione…</option>
                   {RAMOS.map((u) => (
@@ -429,7 +424,7 @@ function NovaEmpresa() {
                   ))}
                 </Select>
               </Field>
-              <Field label="Origem" className="lg:col-span-3">
+              <Field label="Origem" hint="de onde veio o contato" className="lg:col-span-3">
                 <Select value={f.origem} onChange={(e) => setF({ ...f, origem: e.target.value })}>
                   {ORIGENS.map((u) => (
                     <option key={u}>{u}</option>
@@ -445,7 +440,7 @@ function NovaEmpresa() {
                   ))}
                 </Select>
               </Field>
-              <Field label="Urgência" className="lg:col-span-2">
+              <Field label="Urgência" hint="Alta = compra neste mês" className="lg:col-span-2">
                 <Select value={f.urgencia} onChange={(e) => setF({ ...f, urgencia: e.target.value as Urgencia })}>
                   <option>Alta</option>
                   <option>Média</option>
@@ -453,9 +448,9 @@ function NovaEmpresa() {
                 </Select>
               </Field>
               <Field label="Nº de colhedoras" hint="se já souber" className="lg:col-span-2">
-                <Input type="number" value={f.colhedoras} onChange={(e) => setF({ ...f, colhedoras: e.target.value })} />
+                <Input type="number" value={f.colhedoras} onChange={(e) => setF({ ...f, colhedoras: e.target.value })} placeholder="Ex.: 14" />
               </Field>
-              <Field label="Tipo de prensa" className="lg:col-span-3">
+              <Field label="Tipo de prensa" hint="onde ele prensa a mangueira" className="lg:col-span-3">
                 <Select value={f.prensa} onChange={(e) => setF({ ...f, prensa: e.target.value as Prensa })}>
                   <option value="">Ainda não sei</option>
                   {PRENSAS.map((u) => (
@@ -463,7 +458,7 @@ function NovaEmpresa() {
                   ))}
                 </Select>
               </Field>
-              <Field label="Marca atual" className="lg:col-span-3">
+              <Field label="Marca atual" hint="de quem ele compra hoje" className="lg:col-span-3">
                 <Select value={f.marcaAtual} onChange={(e) => setF({ ...f, marcaAtual: e.target.value })}>
                   <option value="">Ainda não sei</option>
                   {MARCAS.map((u) => (
@@ -472,7 +467,7 @@ function NovaEmpresa() {
                 </Select>
               </Field>
               <Field label="Observações" className="lg:col-span-6">
-                <Textarea value={f.observacoes} onChange={(e) => setF({ ...f, observacoes: e.target.value })} rows={2} />
+                <Textarea value={f.observacoes} onChange={(e) => setF({ ...f, observacoes: e.target.value })} rows={2} placeholder="Ex.: Safra de abril a novembro; compra concentrada na entressafra" />
               </Field>
             </div>
           </Card>
@@ -481,7 +476,7 @@ function NovaEmpresa() {
             <CardHeader title="Contato" kicker="Pelo menos um" />
             <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-5">
               <Field label="Nome" required className="lg:col-span-2">
-                <Input value={ct.nome} onChange={(e) => setCt({ ...ct, nome: e.target.value })} className={cn(req(ct.nome) && "border-brand")} />
+                <Input value={ct.nome} onChange={(e) => setCt({ ...ct, nome: e.target.value })} className={cn(req(ct.nome) && "border-brand")} placeholder="Ex.: João Pereira" />
               </Field>
               <Field label="Cargo">
                 <Input value={ct.cargo} list="cargos-sugeridos" onChange={(e) => setCt({ ...ct, cargo: e.target.value })} placeholder="Ex.: Gerente agrícola" />
@@ -505,7 +500,7 @@ function NovaEmpresa() {
             <CardHeader title="Próximo passo" kicker="A conta já nasce com uma ação agendada" />
             <div className="grid gap-3 p-4 sm:grid-cols-2 lg:grid-cols-6">
               <Field label="O que fazer" required className="lg:col-span-6">
-                <Input value={next.titulo} onChange={(e) => setNext({ ...next, titulo: e.target.value })} />
+                <Input value={next.titulo} onChange={(e) => setNext({ ...next, titulo: e.target.value })} placeholder="Ex.: Ligar para o João e marcar a apresentação" />
               </Field>
               <Field label="Tipo" className="lg:col-span-2">
                 <Select value={next.tipo} onChange={(e) => setNext({ ...next, tipo: e.target.value as ActivityType })}>
