@@ -1,4 +1,5 @@
-import { PAPEIS, PRENSAS, REGIOES } from "@/lib/constants";
+import { influenciaDoPapel, PAPEIS, PAPEL_GUIA, papelRotulo, PRENSAS, REGIOES } from "@/lib/constants";
+import { CARGO_TEXTO, PAPEL_TEXTO } from "./texto-pessoas";
 import { storedCNPJ, storedWhatsAppAssumindoNove } from "@/lib/br-ids";
 import type { Company, Contact, Papel } from "@/lib/types";
 import { normalize } from "@/lib/utils";
@@ -129,8 +130,8 @@ export const atualizarCliente: AgentTool = {
 
 const contatoCampos = {
   nome: { type: "string" },
-  cargo: { type: "string" },
-  papel: { type: "string", enum: PAPEIS },
+  cargo: { type: "string", description: CARGO_TEXTO },
+  papel: { type: "string", enum: PAPEIS, description: PAPEL_TEXTO },
   whatsapp: { type: "string", description: "Celular com DDD, exatamente como o usuário disse. Não complete nem corrija dígitos: o sistema acrescenta o 9 sozinho." },
   email: { type: "string" },
 };
@@ -150,7 +151,8 @@ export function planAdicionarContato(args: Record<string, unknown>, base: Base, 
     nome,
     cargo: str(args.cargo, 80),
     papel: (pick(args.papel, PAPEIS) ?? "Outro") as Papel,
-    influencia: 2,
+    // Peso na decisão deduzido do papel (sem campo à parte); sem papel dito fica no meio.
+    influencia: pick(args.papel, PAPEIS) ? influenciaDoPapel(pick(args.papel, PAPEIS)) : 2,
     whatsapp: phone || undefined,
     email: str(args.email, 120) || undefined,
     canal: phone ? "WhatsApp" : "Ligação",
@@ -176,7 +178,7 @@ export const adicionarContato: AgentTool = {
     if (!plan.ok) return { data: plan };
     const id = await addContactRecord(plan.contato, ctx.actor.id);
     invalidateCrmReadCache();
-    const detalhe = [plan.contato.cargo, plan.contato.papel !== "Outro" && plan.contato.papel, plan.contato.whatsapp].filter(Boolean).join(", ");
+    const detalhe = [plan.contato.cargo, plan.contato.papel !== "Outro" && papelRotulo(plan.contato.papel), plan.contato.whatsapp].filter(Boolean).join(", ");
     return {
       wrote: true,
       empresaId: plan.company.id,
@@ -212,7 +214,10 @@ export function planAtualizarContato(args: Record<string, unknown>, base: Base, 
   const cargo = str(args.cargo, 80);
   if (cargo) set("job_title", cargo, "cargo");
   const papel = pick(args.papel, PAPEIS);
-  if (papel) set("role", ROLE_TO_DB[papel], "papel", papel);
+  if (papel) {
+    set("role", ROLE_TO_DB[papel], "papel", PAPEL_GUIA[papel].rotulo);
+    row.influence = influenciaDoPapel(papel);
+  }
   const rawPhone = str(args.whatsapp, 30);
   if (rawPhone) {
     const phone = storedWhatsAppAssumindoNove(rawPhone);

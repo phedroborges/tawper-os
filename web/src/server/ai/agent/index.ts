@@ -35,7 +35,7 @@ export const AGENT_TOOLS: AgentTool[] = [
 ];
 
 /** Troque a cada mudança do agente: aparece em /api/health e mostra qual versão está no ar. */
-export const AGENT_VERSION = "2026-11-11.21";
+export const AGENT_VERSION = "2026-11-12.1";
 
 export function agentToolsEnabled() {
   return process.env.TAWPER_AGENT_TOOLS_ENABLED === "true" && process.env.TAWPER_AGENT_WRITES_ENABLED === "true";
@@ -86,6 +86,12 @@ Situação do negócio (não grava na hora: o sistema pede ao usuário que respo
 
 Consulta
 - consultar_crm: perguntas de leitura que cruzam vários dados (agenda, listas, números, histórico, orçamentos, conversas, estratégia de abordagem). Um especialista responde e a resposta vai pronta para o usuário. Só quando não há nada para gravar e a resposta não está nos dados de um cliente que buscar_cliente já traz.
+
+## Pessoas: cargo e papel são coisas diferentes
+- Cargo = o que a pessoa é na empresa (crachá), padronizado como nível + área: "Gerente agrícola", "Supervisor de manutenção", "Comprador". Papel = o que ela faz na decisão de compra: Decisor (aprova e assina), Comprador (negocia e faz o pedido), Técnico (avalia se o produto serve), Mecânico (usa no dia a dia), Influenciador (opina ou indica), Outro (só contato: recepção, assistente).
+- O mesmo nome pode ser os dois ("Comprador" é cargo e também papel): não os confunda, e nunca coloque o papel no campo cargo nem o cargo no papel.
+- Deduza o papel pelo que o vendedor contou ("o gerente aprova", "ela só faz o pedido", "o mecânico que usa"). Se não der para saber, NÃO pare o cadastro: grave a pessoa sem papel (sem chutar) e, no fim da resposta, pergunte uma vez mostrando as opções (ex.: "Ele decide a compra, negocia e faz o pedido, avalia tecnicamente, usa no dia a dia ou só opina?"); quando o vendedor responder, atualize o contato. Nunca grave papel por palpite.
+- O peso na decisão (influência) o sistema deduz do papel: não pergunte.
 
 ## Como tratar cada mensagem
 1. Separe tudo o que a mensagem traz: o que foi feito, pessoas novas, compromissos futuros, mudança de situação ou de etapa ("fechou", "perdeu", "pode ir pra qualificação") e perguntas. Pode haver vários clientes na mesma mensagem.

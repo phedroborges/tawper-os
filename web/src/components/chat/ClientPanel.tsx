@@ -24,7 +24,7 @@ import { useMemo, useState, type ReactNode } from "react";
 import { DaysInStage, DueLabel, StagePill, StageStepper, StatusBadge, Timeline, TypeIcon, userName } from "@/components/crm/crm";
 import { Badge, Button } from "@/components/ui/primitives";
 import { formatWhatsApp } from "@/lib/br-ids";
-import { getStage } from "@/lib/constants";
+import { getStage, papelRotulo } from "@/lib/constants";
 import { matchByPhone } from "@/lib/contact-match";
 import { fmtDateShort } from "@/lib/dates";
 import { canSeeCompany, currentDealOf, missingCriteria, openDealOf, pendingOf, timelineOf, visibleCompanies } from "@/lib/selectors";
@@ -193,7 +193,7 @@ function ClientCard({ company, contact, onNavigate }: { company: Company; contac
         </div>
         <div className="mt-2.5 rounded-[6px] bg-soft/60 px-2.5 py-2 text-[12px]">
           <div className="font-medium text-ink">
-            {contact.nome} <span className="font-normal text-muted">· {contact.papel}</span>
+            {contact.nome} <span className="font-normal text-muted">· {papelRotulo(contact.papel)}</span>
           </div>
           {contact.cargo && <div className="text-muted">{contact.cargo}</div>}
           {others.length > 0 && <div className="mt-0.5 text-[11px] text-muted">+ {others.length} contato(s): {others.slice(0, 2).map((o) => o.nome).join(", ")}</div>}

@@ -1,4 +1,5 @@
-import { ACTIVITY_TYPES, ORIGENS, PAPEIS, REGIOES } from "@/lib/constants";
+import { ACTIVITY_TYPES, influenciaDoPapel, ORIGENS, PAPEIS, REGIOES } from "@/lib/constants";
+import { CARGO_TEXTO, PAPEL_TEXTO } from "./texto-pessoas";
 import { storedCNPJ, storedWhatsAppAssumindoNove } from "@/lib/br-ids";
 import type { ActivityType, Company, Contact, Papel, User } from "@/lib/types";
 import { normalize } from "@/lib/utils";
@@ -94,7 +95,7 @@ export function planNewClient(args: Record<string, unknown>, base: Base, actor: 
     nome: contatoNome,
     cargo: str(args.contato_cargo, 80),
     papel: papel as Papel,
-    influencia: 2,
+    influencia: PAPEIS.find((item) => normalize(item) === normalize(papelRaw)) ? influenciaDoPapel(papel) : 2,
     whatsapp: phone || undefined,
     email: str(args.contato_email, 120) || undefined,
     canal: phone ? "WhatsApp" : "Ligação",
@@ -142,8 +143,8 @@ export const criarCliente: AgentTool = {
       origem: { type: "string", description: `Opcional. Uma de: ${ORIGENS.join(", ")}. Padrão WhatsApp.` },
       observacoes: { type: "string", description: "Opcional. O que o usuário contou de relevante sobre o cliente." },
       contato_nome: { type: "string", description: "Opcional. Pergunte uma vez; se o usuário não souber, siga sem." },
-      contato_cargo: { type: "string" },
-      contato_papel: { type: "string", description: `Opcional. Um de: ${PAPEIS.join(", ")}.` },
+      contato_cargo: { type: "string", description: CARGO_TEXTO },
+      contato_papel: { type: "string", enum: PAPEIS, description: PAPEL_TEXTO },
       contato_whatsapp: { type: "string", description: "Celular com DDD, exatamente como o usuário disse. Não complete nem corrija dígitos: o sistema acrescenta o 9 sozinho." },
       contato_email: { type: "string" },
       proximo_passo_titulo: { type: "string", description: "O que fazer primeiro com esse cliente. Ex.: Ligar para qualificar frota e prensa." },

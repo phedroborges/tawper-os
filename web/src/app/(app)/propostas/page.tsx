@@ -6,6 +6,7 @@ import { Suspense, useEffect, useMemo, useState } from "react";
 import { StagePill } from "@/components/crm/crm";
 import { Button, Card, Input, PageHeader, Select, Textarea } from "@/components/ui/primitives";
 import { DECK_PAGE_COUNT, buildProposalHtml } from "@/lib/proposal";
+import { papelRotulo } from "@/lib/constants";
 import { openDealOf, visibleCompanies } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
@@ -175,7 +176,7 @@ function PropostasInner() {
                         <option key={c.id} value={c.id}>
                           {c.nome}
                           {c.cargo ? ` · ${c.cargo}` : ""}
-                          {c.papel ? ` · ${c.papel}` : ""}
+                          {c.papel ? ` · ${papelRotulo(c.papel)}` : ""}
                           {c.whatsapp ? ` · ${c.whatsapp}` : ""}
                         </option>
                       ))}

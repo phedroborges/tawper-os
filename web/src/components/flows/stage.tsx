@@ -6,7 +6,7 @@ import { useEffect, useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
 import { Modal } from "@/components/ui/overlay";
 import { Badge, Button, Checkbox, Field, Input, Select, Textarea } from "@/components/ui/primitives";
-import { FUNNELS, getStage, MARCAS, MOTIVOS_ESPERA, MOTIVOS_PERDA, PAPEIS, PRENSAS, RAMOS, REGIOES, stageIndex, type Criterion } from "@/lib/constants";
+import { FUNNELS, getStage, MARCAS, MOTIVOS_ESPERA, MOTIVOS_PERDA, PAPEIS, PAPEL_GUIA, influenciaDoPapel, PRENSAS, RAMOS, REGIOES, stageIndex, type Criterion } from "@/lib/constants";
 import { addDays, fmtDateShort, fmtDue, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { criterionMet, daysInStage, pendingOf } from "@/lib/selectors";
 import { runWithoutAutoAdvance, useStore, type ActivityDraft } from "@/lib/store";
@@ -52,7 +52,7 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
   const effectiveCompany = company ? ({ ...company, ...fields } as Company) : undefined;
   const contactsEff =
     company && newContact.nome.trim()
-      ? [...s.contacts, { id: "tmp", companyId: company.id, nome: newContact.nome, cargo: newContact.cargo, papel: newContact.papel, influencia: 2, canal: "WhatsApp", autorizaContato: true, ativo: true } as Contact]
+      ? [...s.contacts, { id: "tmp", companyId: company.id, nome: newContact.nome, cargo: newContact.cargo, papel: newContact.papel, influencia: influenciaDoPapel(newContact.papel), canal: "WhatsApp", autorizaContato: true, ativo: true } as Contact]
       : s.contacts;
 
   if (!deal || !company || !curStage || !effectiveDeal || !effectiveCompany) return null;
@@ -78,7 +78,7 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
     runWithoutAutoAdvance(() => {
       if (Object.keys(patch).length) s.updateCompany(company.id, patch);
       if (newContact.nome.trim()) {
-        s.addContact({ companyId: company.id, nome: newContact.nome, cargo: newContact.cargo || newContact.papel, papel: newContact.papel, influencia: 2, whatsapp: storedWhatsApp(newContact.whatsapp), canal: "WhatsApp", autorizaContato: true, ativo: true });
+        s.addContact({ companyId: company.id, nome: newContact.nome, cargo: newContact.cargo, papel: newContact.papel, influencia: influenciaDoPapel(newContact.papel), whatsapp: storedWhatsApp(newContact.whatsapp), canal: "WhatsApp", autorizaContato: true, ativo: true });
       }
       s.moveDeal(deal.id, targetStage.id, { checks, tarefas, nota: nota.trim() || undefined });
     });
@@ -108,7 +108,7 @@ export function MoveStageModal({ dealId, toStageId, preChecks, nota: initialNota
           <Input placeholder="Cargo" value={newContact.cargo} onChange={(e) => setNewContact({ ...newContact, cargo: e.target.value })} />
           <Select value={newContact.papel} onChange={(e) => setNewContact({ ...newContact, papel: e.target.value as Papel })}>
             {PAPEIS.map((p) => (
-              <option key={p}>{p}</option>
+              <option key={p} value={p}>{PAPEL_GUIA[p].rotulo}</option>
             ))}
           </Select>
           <Input placeholder="(64) 99999-9999" inputMode="tel" autoComplete="off" maxLength={15} value={newContact.whatsapp} onChange={(e) => setNewContact({ ...newContact, whatsapp: formatWhatsApp(e.target.value) })} />

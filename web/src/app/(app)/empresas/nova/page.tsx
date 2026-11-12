@@ -10,7 +10,7 @@ import { Badge, Button, Card, CardHeader, Field, Input, PageHeader, Select, Text
 import { extractLead } from "@/lib/ai";
 import { getCurrentPosition } from "@/lib/browser-geo";
 import { aiExtractLead } from "@/server/ai/actions";
-import { ACTIVITY_TYPES, MARCAS, ORIGENS, PAPEIS, PRENSAS, RAMOS, REGIOES } from "@/lib/constants";
+import { ACTIVITY_TYPES, CARGOS_SUGERIDOS, influenciaDoPapel, MARCAS, ORIGENS, PAPEIS, PAPEL_GUIA, papelRotulo, PRENSAS, RAMOS, REGIOES } from "@/lib/constants";
 import { fmtDate, fromInputDate, rel, toInputDate } from "@/lib/dates";
 import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, onlyDigits, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import { formatCEP, isValidCEP, lookupViaCep, normalizeCEP } from "@/lib/cep";
@@ -259,7 +259,7 @@ function NovaEmpresa() {
     };
     const payload = {
       company,
-      contacts: [{ nome: ct.nome.trim(), cargo: ct.cargo || ct.papel, papel: ct.papel, influencia: 2 as const, whatsapp: storedWhatsApp(ct.whatsapp), email: ct.email || undefined, canal: "WhatsApp" as const, autorizaContato: true, ativo: true }],
+      contacts: [{ nome: ct.nome.trim(), cargo: ct.cargo, papel: ct.papel, influencia: influenciaDoPapel(ct.papel), whatsapp: storedWhatsApp(ct.whatsapp), email: ct.email || undefined, canal: "WhatsApp" as const, autorizaContato: true, ativo: true }],
       firstActivity: { tipo: next.tipo, titulo: next.titulo, dueAt: fromInputDate(next.due, 10), prioridade: next.prioridade, ownerId: f.ownerId },
       conversationId: convId,
     };
@@ -328,7 +328,7 @@ function NovaEmpresa() {
                     {[
                       ["Empresa", lead?.empresa],
                       ["Cidade", `${lead?.cidade}/${lead?.uf}`],
-                      ["Contato", `${lead?.contatoNome} · ${lead?.papel}`],
+                      ["Contato", `${lead?.contatoNome} · ${papelRotulo(lead?.papel)}`],
                       ["Origem", lead?.indicacao ? `indicação (${lead.indicacao})` : lead?.origem],
                       ["Interesse", lead?.interesse],
                     ].map(([k, v]) => (
@@ -484,14 +484,16 @@ function NovaEmpresa() {
                 <Input value={ct.nome} onChange={(e) => setCt({ ...ct, nome: e.target.value })} className={cn(req(ct.nome) && "border-brand")} />
               </Field>
               <Field label="Cargo">
-                <Input value={ct.cargo} onChange={(e) => setCt({ ...ct, cargo: e.target.value })} />
+                <Input value={ct.cargo} list="cargos-sugeridos" onChange={(e) => setCt({ ...ct, cargo: e.target.value })} placeholder="Ex.: Gerente agrícola" />
+                <datalist id="cargos-sugeridos">{CARGOS_SUGERIDOS.map((c) => <option key={c} value={c} />)}</datalist>
               </Field>
               <Field label="Papel">
                 <Select value={ct.papel} onChange={(e) => setCt({ ...ct, papel: e.target.value as Papel })}>
                   {PAPEIS.map((p) => (
-                    <option key={p}>{p}</option>
+                    <option key={p} value={p}>{PAPEL_GUIA[p].rotulo}</option>
                   ))}
                 </Select>
+                <p className="mt-1 text-[11.5px] text-muted">{PAPEL_GUIA[ct.papel].resumo}</p>
               </Field>
               <Field label="WhatsApp">
                 <Input value={ct.whatsapp} inputMode="tel" autoComplete="off" maxLength={15} placeholder="(64) 99999-9999" onChange={(e) => { setCt({ ...ct, whatsapp: formatWhatsApp(e.target.value) }); setDecision(null); }} />

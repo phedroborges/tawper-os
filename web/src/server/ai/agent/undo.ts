@@ -30,7 +30,7 @@ const COMPANY_COLUMNS = [
   "trade_name", "legal_name", "cnpj", "city", "state", "postal_code", "address", "industry", "region_id", "notes",
   "harvesters_count", "press_type", "current_brand", "competitor", "potential", "urgency",
 ] as const;
-const CONTACT_COLUMNS = ["name", "job_title", "role", "whatsapp_e164", "email", "preferred_channel", "is_active"] as const;
+const CONTACT_COLUMNS = ["name", "job_title", "role", "influence", "whatsapp_e164", "email", "preferred_channel", "is_active"] as const;
 
 function connect() {
   const url = process.env.DATABASE_URL;

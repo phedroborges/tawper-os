@@ -10,7 +10,7 @@ import { Button, Field, Input, Select, Textarea } from "@/components/ui/primitiv
 import { getCurrentPosition } from "@/lib/browser-geo";
 import { formatCNPJ, formatWhatsApp, isValidCNPJ, isValidWhatsApp, storedCNPJ, storedWhatsApp } from "@/lib/br-ids";
 import { formatCEP, isValidCEP, lookupViaCep, normalizeCEP } from "@/lib/cep";
-import { isMuriloLouis, MARCAS, PAPEIS, PRENSAS, RAMOS, REGIOES } from "@/lib/constants";
+import { CARGOS_SUGERIDOS, influenciaDoPapel, isMuriloLouis, MARCAS, PAPEIS, PAPEL_GUIA, papelRotulo, PRENSAS, RAMOS, REGIOES } from "@/lib/constants";
 import { currentDealOf, nextStepOf, qualityOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import type { Company, Papel, Potencial, Prensa, Urgencia } from "@/lib/types";
@@ -23,15 +23,15 @@ export function ContactModal({ companyId, preset }: { companyId: string; preset?
   const s = useStore();
   const { close, toast } = useUI();
   const company = s.companies.find((c) => c.id === companyId);
-  const [f, setF] = useState({ nome: preset?.nome ?? "", cargo: "", papel: "Técnico" as Papel, whatsapp: preset?.whatsapp ?? "", email: "", influencia: 2 as 1 | 2 | 3 });
+  const [f, setF] = useState({ nome: preset?.nome ?? "", cargo: "", papel: "Comprador" as Papel, whatsapp: preset?.whatsapp ?? "", email: "" });
   if (!company) return null;
   const save = () => {
     if (f.whatsapp.trim() && !isValidWhatsApp(f.whatsapp)) {
       toast("WhatsApp inválido", { sub: "Use um celular brasileiro com DDD, no formato (64) 99999-9999.", tone: "warn" });
       return;
     }
-    s.addContact({ companyId, nome: f.nome, cargo: f.cargo, papel: f.papel, influencia: f.influencia, whatsapp: storedWhatsApp(f.whatsapp), email: f.email || undefined, canal: f.whatsapp ? "WhatsApp" : "E-mail", autorizaContato: true, ativo: true });
-    toast("Contato adicionado", { sub: `${f.nome} · ${f.papel}` });
+    s.addContact({ companyId, nome: f.nome, cargo: f.cargo, papel: f.papel, influencia: influenciaDoPapel(f.papel), whatsapp: storedWhatsApp(f.whatsapp), email: f.email || undefined, canal: f.whatsapp ? "WhatsApp" : "E-mail", autorizaContato: true, ativo: true });
+    toast("Contato adicionado", { sub: `${f.nome} · ${papelRotulo(f.papel)}` });
     close();
   };
   return (
@@ -56,21 +56,17 @@ export function ContactModal({ companyId, preset }: { companyId: string; preset?
           <Input value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} autoFocus />
         </Field>
         <Field label="Cargo">
-          <Input value={f.cargo} onChange={(e) => setF({ ...f, cargo: e.target.value })} placeholder="Ex.: Mecânico chefe" />
+          <Input value={f.cargo} list="cargos-sugeridos" onChange={(e) => setF({ ...f, cargo: e.target.value })} placeholder="Ex.: Gerente agrícola" />
+          <datalist id="cargos-sugeridos">{CARGOS_SUGERIDOS.map((c) => <option key={c} value={c} />)}</datalist>
+          <p className="mt-1 text-[11.5px] text-muted">O que a pessoa é na empresa: nível + área.</p>
         </Field>
         <Field label="Papel na decisão">
           <Select value={f.papel} onChange={(e) => setF({ ...f, papel: e.target.value as Papel })}>
             {PAPEIS.map((p) => (
-              <option key={p}>{p}</option>
+              <option key={p} value={p}>{PAPEL_GUIA[p].rotulo}</option>
             ))}
           </Select>
-        </Field>
-        <Field label="Influência">
-          <Select value={f.influencia} onChange={(e) => setF({ ...f, influencia: Number(e.target.value) as 1 | 2 | 3 })}>
-            <option value={3}>Alta</option>
-            <option value={2}>Média</option>
-            <option value={1}>Baixa</option>
-          </Select>
+          <p className="mt-1 text-[11.5px] text-muted">{PAPEL_GUIA[f.papel].resumo} Ex.: {PAPEL_GUIA[f.papel].exemplo}.</p>
         </Field>
         <Field label="WhatsApp">
           <Input value={f.whatsapp} inputMode="tel" autoComplete="off" maxLength={15} onChange={(e) => setF({ ...f, whatsapp: formatWhatsApp(e.target.value) })} placeholder="(64) 99999-9999" />

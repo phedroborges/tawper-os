@@ -27,7 +27,7 @@ import { CopilotCard, StrategyTab } from "@/components/company/StrategyTab";
 import { CompanyLink, NextStepCard, QualityMeter, StagePill, StageStepper, StatusBadge, TaskRow, Timeline, UrgencyBadge, UserAvatar, userName } from "@/components/crm/crm";
 import { MenuItem, Popover } from "@/components/ui/overlay";
 import { Badge, Button, Card, CardHeader, Empty } from "@/components/ui/primitives";
-import { FUNNELS, getStage, isManager, isMuriloLouis } from "@/lib/constants";
+import { FUNNELS, getStage, isManager, isMuriloLouis, papelRotulo } from "@/lib/constants";
 import { fmtAgo, fmtDate, fmtDateTime } from "@/lib/dates";
 import { canSeeCompany, currentDealOf, daysInStage, lastInteractionAt, openDealOf, pendingOf, qualityOf, timelineOf } from "@/lib/selectors";
 import { reportError, useCurrentUser, useStore } from "@/lib/store";
@@ -347,7 +347,7 @@ function EmpresaView() {
                         <div className="text-[13.5px] font-semibold text-ink">{c.nome}</div>
                         <div className="text-[12px] text-muted">{c.cargo}</div>
                         <div className="mt-1.5 flex flex-wrap gap-1.5">
-                          <Badge tone={c.papel === "Decisor" ? "navy" : c.papel === "Comprador" ? "neutral" : "ai"}>{c.papel}</Badge>
+                          <Badge tone={c.papel === "Decisor" ? "navy" : c.papel === "Comprador" ? "neutral" : "ai"}>{papelRotulo(c.papel)}</Badge>
                           <Badge tone="outline">influência {c.influencia === 3 ? "alta" : c.influencia === 2 ? "média" : "baixa"}</Badge>
                           <Badge tone="outline">prefere {c.canal}</Badge>
                         </div>
@@ -459,7 +459,7 @@ function EmpresaView() {
                     <span className="block truncate font-semibold text-ink">{c.nome}</span>
                     <span className="block truncate text-[11.5px] text-muted">{c.cargo}</span>
                   </span>
-                  <Badge tone={c.papel === "Decisor" ? "navy" : "outline"}>{c.papel}</Badge>
+                  <Badge tone={c.papel === "Decisor" ? "navy" : "outline"}>{papelRotulo(c.papel)}</Badge>
                 </li>
               ))}
             </ul>

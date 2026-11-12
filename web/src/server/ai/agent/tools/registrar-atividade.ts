@@ -1,6 +1,7 @@
-import { ACTIVITY_TYPES } from "@/lib/constants";
+import { ACTIVITY_TYPES, influenciaDoPapel, PAPEIS } from "@/lib/constants";
+import { CARGO_TEXTO, PAPEL_TEXTO } from "./texto-pessoas";
 import { storedWhatsAppAssumindoNove } from "@/lib/br-ids";
-import type { Activity, ActivityType, Canal, Company, Contact, Deal, User } from "@/lib/types";
+import type { Activity, ActivityType, Canal, Company, Contact, Deal, Papel, User } from "@/lib/types";
 import { normalize } from "@/lib/utils";
 import { runCommand } from "@/server/commands";
 import { invalidateCrmReadCache } from "@/server/crm";
@@ -118,8 +119,8 @@ export function planRegistro(args: Record<string, unknown>, base: Base, visible:
             companyId: company.id,
             nome: contatoNome,
             cargo: str(args.contato_cargo, 80),
-            papel: "Outro",
-            influencia: 2,
+            papel: (PAPEIS.find((item) => normalize(item) === normalize(str(args.contato_papel, 30))) ?? "Outro") as Papel,
+            influencia: PAPEIS.find((item) => normalize(item) === normalize(str(args.contato_papel, 30))) ? influenciaDoPapel(str(args.contato_papel, 30)) : 2,
             whatsapp: phone || undefined,
             canal: phone ? "WhatsApp" : "Ligação",
             autorizaContato: true,
@@ -146,7 +147,8 @@ export const registrarAtividade: AgentTool = {
       resultado: { type: "string", description: "Título curto do que aconteceu. Ex.: Pedro liberou visita para 22/01." },
       resumo: { type: "string", description: "O que aconteceu, em 1 a 3 frases objetivas, só com o que o usuário contou." },
       contato_nome: { type: "string", description: "Com quem foi a conversa, se o usuário disse." },
-      contato_cargo: { type: "string" },
+      contato_cargo: { type: "string", description: CARGO_TEXTO },
+      contato_papel: { type: "string", enum: PAPEIS, description: PAPEL_TEXTO },
       contato_whatsapp: { type: "string", description: "Só se o usuário passou o número, exatamente como ele disse. Não complete nem corrija dígitos: o sistema acrescenta o 9 sozinho." },
       concluir_tarefa_id: {
         type: "string",

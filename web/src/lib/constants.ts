@@ -368,6 +368,32 @@ export const MARCAS = ["Parker", "Gates", "Manuli", "Continental", "Eaton", "Taw
 
 export const PAPEIS: Papel[] = ["Decisor", "Comprador", "Técnico", "Mecânico", "Influenciador", "Outro"];
 
+/**
+ * Papel = o que a pessoa faz na DECISÃO DE COMPRA. Cargo = o que ela é na empresa (crachá). São coisas diferentes:
+ * "Técnico" e "Mecânico" também são cargos, então o papel aparece com nome de função (verbo) e nunca repete o cargo.
+ * Os valores internos (chaves) não mudam: o banco e as regras de etapa continuam usando "Decisor", "Técnico" etc.
+ * `influencia` é o peso na decisão (1 baixa, 2 média, 3 alta) deduzido do papel, sem um campo à parte para preencher.
+ */
+export const PAPEL_GUIA: Record<Papel, { rotulo: string; resumo: string; exemplo: string; influencia: 1 | 2 | 3 }> = {
+  Decisor: { rotulo: "Decide a compra", resumo: "Aprova e assina a compra; a palavra final é dele(a).", exemplo: "dono, diretor, gerente industrial", influencia: 3 },
+  Comprador: { rotulo: "Negocia e compra", resumo: "Cota, negocia preço e prazo e emite o pedido, mas não decide sozinho o que comprar.", exemplo: "comprador, analista de compras", influencia: 2 },
+  Técnico: { rotulo: "Avalia tecnicamente", resumo: "Diz se o produto serve: especificação, medidas, homologação.", exemplo: "engenheiro, supervisor ou gerente de manutenção", influencia: 2 },
+  Mecânico: { rotulo: "Usa no dia a dia", resumo: "Aplica e usa o produto na oficina ou no campo; a opinião de uso pesa, mas ele não decide.", exemplo: "mecânico, encarregado de oficina, operador", influencia: 1 },
+  Influenciador: { rotulo: "Influencia", resumo: "Opina, indica ou barra, mas não aprova nem compra.", exemplo: "gerente agrícola que recomenda, consultor", influencia: 2 },
+  Outro: { rotulo: "Só contato", resumo: "Sem papel na compra: recepção, assistente, quem só repassa o recado.", exemplo: "secretária, recepcionista", influencia: 1 },
+};
+/** Texto do papel para a tela e para os relatórios. Aceita valor desconhecido sem quebrar. */
+export const papelRotulo = (papel?: string | null) => PAPEL_GUIA[papel as Papel]?.rotulo ?? papel ?? "";
+/** Peso na decisão deduzido do papel (2 quando o papel não é conhecido). */
+export const influenciaDoPapel = (papel?: string | null): 1 | 2 | 3 => PAPEL_GUIA[papel as Papel]?.influencia ?? 2;
+
+/** Cargo = nível + área, escrito do mesmo jeito sempre ("Gerente agrícola", "Supervisor de manutenção"). Sugestões, não lista fechada. */
+export const CARGOS_SUGERIDOS = [
+  "Proprietário / Sócio", "Diretor", "Gerente agrícola", "Gerente industrial", "Gerente de manutenção", "Gerente de compras", "Coordenador de manutenção",
+  "Supervisor de manutenção", "Supervisor agrícola", "Líder de oficina", "Encarregado de oficina", "Engenheiro", "Analista de compras", "Comprador",
+  "Técnico de manutenção", "Mecânico", "Operador", "Almoxarife", "Assistente administrativo",
+];
+
 export const ORIGENS = [
   "WhatsApp",
   "Indicação de cliente",

@@ -558,6 +558,30 @@ const CASOS: Caso[] = [
       r.marcas.includes("comprovante_inventado") && !named(r, "registerCompany").length && "inventou comprovante e não gravou",
     ],
   },
+  {
+    nome: "Pessoas: quem aprova a compra é Decisor e o cargo fica no cargo",
+    turnos: ["Adiciona o Carlos na Santa Helena, ele é gerente industrial e é quem aprova e assina as compras. Zap 64 99111-2200."],
+    checar: (r) => {
+      const c = named(r, "addContactRecord").map((call) => arg<{ nome: string; cargo: string; papel: string; influencia: number }>(call)).find((x) => /carlos/i.test(x.nome));
+      return [!c && "não cadastrou o Carlos", c && c.papel !== "Decisor" && `papel errado: ${c.papel}`, c && !/gerente/i.test(c.cargo) && `cargo errado: "${c.cargo}"`, c && c.influencia !== 3 && `influência não deduzida do papel: ${c.influencia}`];
+    },
+  },
+  {
+    nome: "Pessoas: quem usa na oficina é Mecânico, sem repetir o papel no cargo",
+    turnos: ["Cadastra a Paula na Santa Helena, ela é a encarregada da oficina e é quem usa as mangueiras no dia a dia"],
+    checar: (r) => {
+      const c = named(r, "addContactRecord").map((call) => arg<{ nome: string; cargo: string; papel: string }>(call)).find((x) => /paula/i.test(x.nome));
+      return [!c && "não cadastrou a Paula", c && c.papel !== "Mecânico" && `papel errado: ${c.papel}`, c && /^(mec[aâ]nic[oa]|decisor|t[eé]cnico|comprador|influenciador)$/i.test(c.cargo.trim()) && `cargo repetiu o papel: "${c.cargo}"`];
+    },
+  },
+  {
+    nome: "Pessoas: papel que não dá para saber não é chutado como Decisor",
+    turnos: ["Adiciona o Roberto na Santa Helena, ele é supervisor"],
+    checar: (r) => {
+      const c = named(r, "addContactRecord").map((call) => arg<{ nome: string; papel: string }>(call)).find((x) => /roberto/i.test(x.nome));
+      return [c && c.papel === "Decisor" && "chutou Decisor para um supervisor", !c && !/\?/.test(ultima(r)) && "nem cadastrou nem perguntou"];
+    },
+  },
   // ---------- regras do prompt 2026-11-11.2 ----------
   {
     nome: "Pessoa nova com nome parecido de contato existente (João Pedro × João Batista)",
