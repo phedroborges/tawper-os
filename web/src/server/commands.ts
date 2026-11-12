@@ -17,6 +17,8 @@ const ROLE_TO_DB: Record<string, string> = {
   Comprador: "buyer",
   Técnico: "technical",
   Mecânico: "mechanic",
+  Financeiro: "financial",
+  Almoxarifado: "warehouse",
   Influenciador: "influencer",
   Outro: "other",
 };

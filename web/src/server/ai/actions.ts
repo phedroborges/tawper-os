@@ -455,7 +455,7 @@ JSON: {
   "cidade": string,
   "uf": "SP"|"MG"|"GO"|"MS"|"PR"|"MT",
   "contatoNome": string,
-  "papel": "Decisor"|"Comprador"|"Técnico"|"Mecânico"|"Influenciador"|"Outro",
+  "papel": "Decisor"|"Comprador"|"Técnico"|"Mecânico"|"Financeiro"|"Almoxarifado"|"Influenciador"|"Outro",
   "cargo": string,
   "interesse": string,
   "origem": string,

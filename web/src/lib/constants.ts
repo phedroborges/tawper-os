@@ -366,7 +366,7 @@ export const PRENSAS: Prensa[] = ["Própria", "Comodato Tawper", "Comodato conco
 
 export const MARCAS = ["Parker", "Gates", "Manuli", "Continental", "Eaton", "Tawper", "Diversas / sem padrão"];
 
-export const PAPEIS: Papel[] = ["Decisor", "Comprador", "Técnico", "Mecânico", "Influenciador", "Outro"];
+export const PAPEIS: Papel[] = ["Decisor", "Comprador", "Técnico", "Mecânico", "Financeiro", "Almoxarifado", "Influenciador", "Outro"];
 
 /**
  * Papel = o que a pessoa faz na DECISÃO DE COMPRA. Cargo = o que ela é na empresa (crachá). São coisas diferentes:
@@ -379,6 +379,8 @@ export const PAPEL_GUIA: Record<Papel, { rotulo: string; resumo: string; exemplo
   Comprador: { rotulo: "Negocia e compra", resumo: "Cota, negocia preço e prazo e emite o pedido, mas não decide sozinho o que comprar.", exemplo: "comprador, analista de compras", influencia: 2 },
   Técnico: { rotulo: "Avalia tecnicamente", resumo: "Diz se o produto serve: especificação, medidas, homologação.", exemplo: "engenheiro, supervisor ou gerente de manutenção", influencia: 2 },
   Mecânico: { rotulo: "Usa no dia a dia", resumo: "Aplica e usa o produto na oficina ou no campo; a opinião de uso pesa, mas ele não decide.", exemplo: "mecânico, encarregado de oficina, operador", influencia: 1 },
+  Financeiro: { rotulo: "Libera o pagamento", resumo: "Aprova o pagamento, prazo e condição; pode travar a compra se o financeiro não liberar.", exemplo: "analista financeiro, contas a pagar, tesouraria", influencia: 2 },
+  Almoxarifado: { rotulo: "Recebe e controla estoque", resumo: "Recebe a mercadoria, confere e controla o estoque; não decide nem negocia.", exemplo: "almoxarife, auxiliar de almoxarifado", influencia: 1 },
   Influenciador: { rotulo: "Influencia", resumo: "Opina, indica ou barra, mas não aprova nem compra.", exemplo: "gerente agrícola que recomenda, consultor", influencia: 2 },
   Outro: { rotulo: "Só contato", resumo: "Sem papel na compra: recepção, assistente, quem só repassa o recado.", exemplo: "secretária, recepcionista", influencia: 1 },
 };

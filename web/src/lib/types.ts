@@ -70,7 +70,7 @@ export interface Company {
   motivoPerda?: string;
 }
 
-export type Papel = "Decisor" | "Comprador" | "Técnico" | "Mecânico" | "Influenciador" | "Outro";
+export type Papel = "Decisor" | "Comprador" | "Técnico" | "Mecânico" | "Financeiro" | "Almoxarifado" | "Influenciador" | "Outro";
 
 export interface Contact {
   id: string;

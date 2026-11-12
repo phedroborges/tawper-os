@@ -198,7 +198,7 @@ function contactInScope(id: unknown, base: Base & { contacts: Contact[] }, visib
   return { contact, company } as const;
 }
 
-const ROLE_TO_DB: Record<string, string> = { Decisor: "decision_maker", Comprador: "buyer", Técnico: "technical", Mecânico: "mechanic", Influenciador: "influencer", Outro: "other" };
+const ROLE_TO_DB: Record<string, string> = { Decisor: "decision_maker", Comprador: "buyer", Técnico: "technical", Mecânico: "mechanic", Financeiro: "financial", Almoxarifado: "warehouse", Influenciador: "influencer", Outro: "other" };
 
 export function planAtualizarContato(args: Record<string, unknown>, base: Base, visible: Set<string>) {
   const found = contactInScope(args.contato_id, base, visible);

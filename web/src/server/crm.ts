@@ -197,6 +197,8 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
     buyer: "Comprador",
     technical: "Técnico",
     mechanic: "Mecânico",
+    financial: "Financeiro",
+    warehouse: "Almoxarifado",
     influencer: "Influenciador",
     other: "Outro",
   };

@@ -575,6 +575,22 @@ const CASOS: Caso[] = [
     },
   },
   {
+    nome: "Pessoas: quem libera o pagamento é Financeiro",
+    turnos: ["Cadastra a Renata na Santa Helena, ela é do contas a pagar e é quem libera o pagamento dos fornecedores"],
+    checar: (r) => {
+      const c = named(r, "addContactRecord").map((call) => arg<{ nome: string; cargo: string; papel: string }>(call)).find((x) => /renata/i.test(x.nome));
+      return [!c && "não cadastrou a Renata", c && c.papel !== "Financeiro" && `papel errado: ${c.papel}`, c && /^(financeiro|almoxarifado)$/i.test(c.cargo.trim()) && `cargo repetiu o papel: "${c.cargo}"`];
+    },
+  },
+  {
+    nome: "Pessoas: quem recebe e controla o estoque é Almoxarifado",
+    turnos: ["Cadastra o Sérgio na Santa Helena, ele é o almoxarife, recebe as mangueiras e confere o estoque, não compra nem decide nada"],
+    checar: (r) => {
+      const c = named(r, "addContactRecord").map((call) => arg<{ nome: string; cargo: string; papel: string }>(call)).find((x) => /s[eé]rgio/i.test(x.nome));
+      return [!c && "não cadastrou o Sérgio", c && c.papel !== "Almoxarifado" && `papel errado: ${c.papel}`];
+    },
+  },
+  {
     nome: "Pessoas: papel que não dá para saber não é chutado como Decisor",
     turnos: ["Adiciona o Roberto na Santa Helena, ele é supervisor"],
     checar: (r) => {
