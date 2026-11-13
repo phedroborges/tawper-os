@@ -3,6 +3,7 @@
 // Store da demonstração. Toda a "persistência" é o localStorage do navegador; as ações abaixo
 // são o contrato que depois pode ser trocado por chamadas a um backend real (ex.: Supabase).
 
+import { applyStageRules, EMPTY_CONFIG, type AppConfig } from "./config";
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import { FIELD_LABELS, FUNNELS, getStage, stageIndex } from "./constants";
@@ -61,12 +62,17 @@ export interface NewCompanyInput {
 
 interface Session {
   currentUserId: string | null;
+  /** Regras de etapa e de atividade, metas e lembretes (Configurações). */
+  config: AppConfig;
 }
 
 interface Actions {
   login: (userId: string) => void;
   logout: () => void;
   hydrateCrm: (snapshot: Partial<DemoData>) => void;
+  /** Grava uma parte da configuração (no banco quando ligado) e aplica na hora. */
+  saveConfig: <K extends "stageRules" | "activityRules" | "goals">(key: K, value: AppConfig[K]) => Promise<void>;
+  setReminder: (enabled: boolean) => Promise<void>;
   adoptSaved: (saved: { company: Company; contacts: Contact[]; deal: Deal; activity: Activity }) => void;
   removeCompany: (id: string) => void;
 
@@ -223,11 +229,28 @@ export async function refreshCrm(): Promise<boolean> {
     goToLogin();
     return false;
   }
-  const body = (await res.json()) as { health?: { ok: boolean; detail?: string; reason?: string }; snapshot?: Partial<DemoData> | null; actorMap?: Record<string, string> | null };
+  const body = (await res.json()) as { health?: { ok: boolean; detail?: string; reason?: string }; snapshot?: Partial<DemoData> | null; actorMap?: Record<string, string> | null; config?: AppConfig };
   if (!body.health?.ok || !body.snapshot) throw new Error(body.health?.detail || "O banco não respondeu.");
   if (body.actorMap) setActorAliases(body.actorMap);
-  if (mine === refreshSeq && inflight === 0) useStore.getState().hydrateCrm(body.snapshot);
+  if (mine === refreshSeq && inflight === 0) {
+    useStore.getState().hydrateCrm(body.snapshot);
+    if (body.config) adoptConfig(body.config);
+  }
   return true;
+}
+
+/** Troca a configuração da tela e reaplica as regras de etapa. */
+export function adoptConfig(config: AppConfig) {
+  applyStageRules(config.stageRules);
+  useStore.setState({ config });
+}
+
+async function postConfig(body: Record<string, unknown>) {
+  if (!USE_SUPABASE) return null;
+  const res = await fetch("/api/config", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+  const data = (await res.json().catch(() => ({}))) as { error?: string; config?: AppConfig };
+  if (!res.ok || !data.config) throw new Error(data.error || "Não foi possível salvar a configuração.");
+  return data.config;
 }
 
 /** Executa uma regra de negócio no banco (transação única) e relê o que ficou gravado. */
@@ -286,11 +309,12 @@ function emptyCrm(): DemoData & Session {
     routes: [],
     seq: { codigo: 1, quote: 1 },
     currentUserId: DEFAULT_USER_ID,
+    config: EMPTY_CONFIG,
   };
 }
 
 function freshState(): DemoData & Session {
-  return USE_SUPABASE ? emptyCrm() : { ...buildSeed(), currentUserId: DEFAULT_USER_ID };
+  return USE_SUPABASE ? emptyCrm() : { ...buildSeed(), currentUserId: DEFAULT_USER_ID, config: EMPTY_CONFIG };
 }
 
 const memoryStorage: Storage = {
@@ -386,6 +410,15 @@ export const useStore = create<AppState>()(
             strategyHistory: snapshot.strategyHistory ?? s.strategyHistory,
             users: snapshot.users?.length ? snapshot.users : s.users,
           }));
+        },
+        saveConfig: async (key, value) => {
+          const saved = await postConfig({ key, value });
+          adoptConfig(saved ?? { ...get().config, [key]: value });
+        },
+        setReminder: async (enabled) => {
+          const saved = await postConfig({ key: "reminder", enabled });
+          const off = get().config.remindersOff.filter((id) => id !== me());
+          adoptConfig(saved ?? { ...get().config, remindersOff: enabled ? off : [...off, me()] });
         },
         adoptSaved: ({ company, contacts, deal, activity }) => {
           set((s) => ({
@@ -936,6 +969,9 @@ export const useStore = create<AppState>()(
         return out as unknown as AppState;
       },
       migrate: () => freshState() as unknown as AppState,
+      onRehydrateStorage: () => (state) => {
+        if (state?.config) applyStageRules(state.config.stageRules);
+      },
     },
   ),
 );

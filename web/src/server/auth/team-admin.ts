@@ -3,6 +3,7 @@ import "server-only";
 import postgres from "postgres";
 import { canonicalWhatsApp, storedWhatsApp } from "@/lib/br-ids";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
+import { getSupabaseAnon } from "@/lib/supabase/anon";
 import type { User } from "@/lib/types";
 import { invalidateCrmReadCache } from "@/server/crm";
 import { invalidateOperators } from "@/server/persist";
@@ -172,5 +173,31 @@ export async function setMemberPassword(input: Record<string, unknown>) {
   const id = text(input.id, 40);
   const member = (await loadTeam(true)).find((item) => item.id === id) ?? fail("Pessoa não encontrada.");
   const updated = await getSupabaseAdmin().auth.admin.updateUserById(member.id, { password: password(input.senha) });
+  if (updated.error) fail(updated.error.message);
+}
+
+/** Minha conta: a própria pessoa troca nome, nome curto e WhatsApp. Papel e cargo continuam com o administrador. */
+export async function updateOwnProfile(selfId: string, input: Record<string, unknown>) {
+  const team = await loadTeam(true);
+  const member = team.find((item) => item.id === selfId) ?? fail("Pessoa não encontrada.");
+  const name = text(input.nome) || fail("Informe o nome.");
+  const profile = await getSupabaseAdmin()
+    .from("profiles")
+    .update({ full_name: name, short_name: text(input.curto, 40) || name.split(" ")[0], phone_e164: whatsapp(input.whatsapp, team, member.id) })
+    .eq("id", member.id);
+  if (profile.error) fail(profile.error.message);
+  changed();
+}
+
+/** Minha conta: troca a própria senha, conferindo a atual antes. */
+export async function changeOwnPassword(selfId: string, input: Record<string, unknown>) {
+  const member = (await loadTeam(true)).find((item) => item.id === selfId) ?? fail("Pessoa não encontrada.");
+  const atual = typeof input.atual === "string" ? input.atual : "";
+  const nova = password(input.nova);
+  if (!atual) fail("Informe a senha atual.");
+  if (nova === atual) fail("A senha nova precisa ser diferente da atual.");
+  const check = await getSupabaseAnon().auth.signInWithPassword({ email: member.email, password: atual });
+  if (check.error || check.data.user?.id !== member.id) fail("A senha atual não confere.");
+  const updated = await getSupabaseAdmin().auth.admin.updateUserById(member.id, { password: nova });
   if (updated.error) fail(updated.error.message);
 }

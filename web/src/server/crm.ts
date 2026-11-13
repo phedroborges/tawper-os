@@ -1,3 +1,5 @@
+import { applyStageRules, type AppConfig } from "@/lib/config";
+import { loadConfigSafe } from "@/server/config";
 import "server-only";
 
 import { regionForUf } from "@/lib/regions";
@@ -288,6 +290,7 @@ export type CrmBootstrap = {
   health: DbHealth;
   snapshot: CrmSlice | null;
   actorMap: Record<string, string> | null;
+  config?: AppConfig;
 };
 
 const SNAPSHOT_TTL_MS = 5_000;
@@ -311,8 +314,9 @@ async function buildCrmBootstrap(): Promise<CrmBootstrap> {
     return { health, snapshot: null, actorMap: null };
   }
   try {
-    const [actorMap, snapshot] = await Promise.all([operatorsPromise, snapshotPromise]);
-    return { health, snapshot, actorMap };
+    const [actorMap, snapshot, config] = await Promise.all([operatorsPromise, snapshotPromise, loadConfigSafe()]);
+    applyStageRules(config.stageRules);
+    return { health, snapshot, actorMap, config };
   } catch (e) {
     return {
       health: { ok: false, reason: "error", detail: e instanceof Error ? e.message : String(e) },

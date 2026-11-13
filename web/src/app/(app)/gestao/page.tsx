@@ -185,7 +185,7 @@ export default function GestaoPage() {
               kicker="Auditoria"
               title="Alterações recentes"
               action={
-                <Link href="/auditoria" className="inline-flex items-center gap-1 text-[12px] font-semibold text-navy-3 hover:text-brand">
+                <Link href="/configuracoes/auditoria" className="inline-flex items-center gap-1 text-[12px] font-semibold text-navy-3 hover:text-brand">
                   Ver tudo <ArrowRight size={12} />
                 </Link>
               }

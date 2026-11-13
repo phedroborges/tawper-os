@@ -13,7 +13,8 @@ function isPublic(pathname: string) {
   if (pathname.startsWith("/api/auth/me")) return true;
   if (pathname.startsWith("/api/whatsapp/webhook")) return true;
   if (pathname.startsWith("/api/whatsapp/agent/webhook")) return true;
-  if (pathname.startsWith("/api/internal/ai/whatsapp-worker")) return true;
+  // Rotas internas: cada uma confere o próprio token.
+  if (pathname.startsWith("/api/internal/")) return true;
   if (pathname.startsWith("/_next")) return true;
   if (pathname === "/favicon.ico") return true;
   return false;

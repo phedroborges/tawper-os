@@ -1,7 +1,8 @@
 "use client";
 
 import { useEffect } from "react";
-import { goToLogin, refreshCrm, setActorAliases, useStore } from "@/lib/store";
+import type { AppConfig } from "@/lib/config";
+import { adoptConfig, goToLogin, refreshCrm, setActorAliases, useStore } from "@/lib/store";
 import type { DemoData } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 
@@ -9,6 +10,7 @@ type SnapshotBody = {
   health: { ok: boolean; organization?: string; companies?: number; stages?: number; reason?: string; detail?: string };
   snapshot: Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users" | "quotes"> | null;
   actorMap?: Record<string, string> | null;
+  config?: AppConfig;
 };
 
 let snapshotRequest: Promise<SnapshotBody> | null = null;
@@ -49,6 +51,7 @@ export function SupabaseBridge() {
           const mapped = current && body.actorMap ? body.actorMap[current] : undefined;
           if (mapped && mapped !== current) useStore.setState({ currentUserId: mapped });
           if (body.snapshot) hydrateCrm(body.snapshot);
+          if (body.config) adoptConfig(body.config);
         } else {
           const reason = body.health?.reason === "missing_schema" ? "schema ainda não aplicado no projeto" : body.health?.detail ?? "falha";
           setDbHealth({ ok: false, label: reason });
