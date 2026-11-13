@@ -351,6 +351,10 @@ export interface Quote {
   autorId: string;
   observacoes?: string;
   enviadoPara?: { contatoId?: string; via: "whatsapp" | "manual" };
+  /** Orçamento feito no sistema da empresa e anexado aqui em PDF. */
+  anexo?: boolean;
+  /** Número do orçamento no sistema da empresa. */
+  numeroExterno?: string;
 }
 
 export interface AuditEntry {

@@ -1,6 +1,6 @@
 "use client";
 
-import { Check, Circle, FileText, Plus, Send, Trophy, XCircle } from "lucide-react";
+import { Check, Circle, FileText, Trophy, XCircle, Paperclip } from "lucide-react";
 import { StagePill } from "@/components/crm/crm";
 import { Badge, Button, Card, CardHeader } from "@/components/ui/primitives";
 import { FUNNELS, getStage } from "@/lib/constants";
@@ -121,7 +121,7 @@ export function DealTab({ company }: { company: Company }) {
               </Button>
               {deal && (
                 <Button size="xs" variant="outline" onClick={() => open({ kind: "quote", dealId: deal.id })}>
-                  <Plus size={13} /> Orçamento (preço)
+                  <Paperclip size={13} /> Anexar orçamento
                 </Button>
               )}
             </div>
@@ -129,7 +129,7 @@ export function DealTab({ company }: { company: Company }) {
         />
         {quotes.length === 0 && (
           <div className="px-4 py-8 text-center text-[12.5px] text-muted">
-            Use <b>Gerar proposta</b> para o deck comercial Tawper. Orçamento com preço é opcional e separado.
+            Use <b>Gerar proposta</b> para a apresentação comercial Tawper. O orçamento com preço é feito no sistema da empresa: anexe o PDF aqui.
           </div>
         )}
         <ul>
@@ -141,34 +141,31 @@ export function DealTab({ company }: { company: Company }) {
               <li key={q.id} className="border-b border-line/70 px-4 py-3 last:border-b-0">
                 <div className="flex items-center gap-2">
                   <FileText size={15} className="text-brand" />
-                  <span className="text-[13px] font-semibold text-ink">{q.numero}</span>
+                  <span className="text-[13px] font-semibold text-ink">{q.numeroExterno ? `nº ${q.numeroExterno}` : q.numero}</span>
                   <Badge tone={QUOTE_TONE[q.status]}>{q.status}</Badge>
                   {q.status === "enviado" && <Badge tone={left < 0 ? "red" : left <= 5 ? "amber" : "outline"}>{left < 0 ? `vencido há ${-left}d` : `vence em ${left}d`}</Badge>}
                   <span className="ml-auto text-[14px] font-bold text-ink">{money(t)}</span>
                 </div>
                 <div className="mt-1 text-[11.5px] text-muted">
-                  {q.itens.length} itens · {q.condicao} · desconto {q.desconto}% · {q.enviadoEm ? `enviado em ${fmtDateShort(q.enviadoEm)}` : `criado em ${fmtDateShort(q.createdAt)}`}
+                  {[q.condicao, `validade ${q.validadeDias} dias`, q.enviadoEm ? `enviado em ${fmtDateShort(q.enviadoEm)}` : `criado em ${fmtDateShort(q.createdAt)}`].filter(Boolean).join(" · ")}
                 </div>
-                <div className="mt-1.5 truncate text-[11.5px] text-ink/70">{q.itens.map((i) => `${i.qtd}${i.unidade === "m" ? "m" : "×"} ${i.descricao.split(" — ")[0]}`).join(" · ")}</div>
-                {qDeal?.status === "aberta" && (
-                  <div className="mt-2 flex flex-wrap gap-2">
-                    {q.status === "rascunho" && (
-                      <>
-                        <Button size="xs" variant="outline" onClick={() => open({ kind: "quote", dealId: q.dealId, quoteId: q.id })}>
-                          Editar
-                        </Button>
-                        <Button size="xs" variant="primary" onClick={() => open({ kind: "quote", dealId: q.dealId, quoteId: q.id })}>
-                          <Send size={12} /> Revisar e enviar
-                        </Button>
-                      </>
-                    )}
+                {q.observacoes && <div className="mt-1 text-[11.5px] break-words text-ink/70">{q.observacoes}</div>}
+                <div className="mt-2 flex flex-wrap gap-2">
+                  {q.anexo && (
+                    <a href={`/api/quotes/${q.id}/pdf`} target="_blank" rel="noopener" className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-line bg-white px-2.5 text-[12px] font-medium text-ink hover:bg-soft">
+                      <FileText size={12} /> Abrir PDF
+                    </a>
+                  )}
+                  {qDeal?.status === "aberta" && (
+                    <>
                     {q.status === "enviado" && (
                       <Button size="xs" variant="success" onClick={() => open({ kind: "win", dealId: q.dealId })}>
                         <Trophy size={12} /> Cliente aprovou — registrar venda
                       </Button>
                     )}
-                  </div>
-                )}
+                    </>
+                  )}
+                </div>
               </li>
             );
           })}

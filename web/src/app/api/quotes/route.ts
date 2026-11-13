@@ -1,9 +1,7 @@
 import { NextResponse } from "next/server";
 import { jsonAuthError, withSession } from "@/server/auth/http";
-import { activeMember } from "@/server/auth/team";
 import { invalidateCrmReadCache } from "@/server/crm";
-import { duplicateQuoteRecord, listQuotes, saveQuoteRecord, setQuoteStatusRecord } from "@/server/quotes";
-import { sendQuote } from "@/server/quote-send";
+import { attachQuoteRecord, listQuotes, setQuoteStatusRecord } from "@/server/quotes";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -17,51 +15,37 @@ export async function GET(request: Request) {
   }
 }
 
+/** Formulário com arquivo = anexar o orçamento feito no sistema da empresa. JSON = mudar o status. */
 export async function POST(request: Request) {
   try {
     const session = await withSession(request);
-    const body = await request.json();
-    const actor = await activeMember(session.userId);
-    switch (body.action) {
-      case "save": {
-        const quote = await saveQuoteRecord(body.quote, session.userId);
-        invalidateCrmReadCache();
-        return NextResponse.json({ quote });
-      }
-      case "duplicate": {
-        const quote = await duplicateQuoteRecord(body.id, session.userId);
-        invalidateCrmReadCache();
-        return NextResponse.json({ quote });
-      }
-      case "setStatus":
-        invalidateCrmReadCache();
-        return NextResponse.json({ quote: await setQuoteStatusRecord(body.id, body.status) });
-      case "send": {
-        const send = body.send ?? {};
-        if (send.via === "whatsapp") {
-          if (!actor) throw new Error("Perfil da sessão inválido.");
-          const quote = await sendQuote({
-            quoteId: send.quoteId,
-            via: "whatsapp",
-            contactId: send.contactId,
-            message: send.message,
-            agent: { id: session.userId, name: actor.name, role: session.role },
-          });
-          invalidateCrmReadCache();
-          return NextResponse.json({ quote });
-        }
-        const quote = await sendQuote({
-          quoteId: send.quoteId,
-          via: "manual",
-          contactId: send.contactId,
-          actorId: session.userId,
-        });
-        invalidateCrmReadCache();
-        return NextResponse.json({ quote });
-      }
-      default:
-        return NextResponse.json({ error: "Ação desconhecida." }, { status: 400 });
+    if (request.headers.get("content-type")?.includes("multipart/form-data")) {
+      const form = await request.formData();
+      const file = form.get("arquivo");
+      if (!(file instanceof File)) throw new Error("Anexe o PDF do orçamento.");
+      const text = (key: string) => String(form.get(key) ?? "");
+      const quote = await attachQuoteRecord(
+        {
+          companyId: text("companyId"),
+          dealId: text("dealId"),
+          numeroExterno: text("numero"),
+          valor: Number(text("valor")),
+          condicao: text("condicao"),
+          validadeDias: Number(text("validade")),
+          observacoes: text("observacoes"),
+          contactId: text("contactId") || undefined,
+          file: { bytes: new Uint8Array(await file.arrayBuffer()), name: file.name },
+        },
+        session.userId,
+      );
+      invalidateCrmReadCache();
+      return NextResponse.json({ quote });
     }
+    const body = await request.json();
+    if (body.action !== "setStatus") return NextResponse.json({ error: "Ação desconhecida." }, { status: 400 });
+    const quote = await setQuoteStatusRecord(body.id, body.status);
+    invalidateCrmReadCache();
+    return NextResponse.json({ quote });
   } catch (e) {
     return jsonAuthError(e) ?? NextResponse.json({ error: e instanceof Error ? e.message : "Falha ao gravar o orçamento." }, { status: 400 });
   }

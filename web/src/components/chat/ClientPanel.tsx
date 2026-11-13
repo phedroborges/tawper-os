@@ -329,7 +329,7 @@ function ClientCard({ company, contact, onNavigate }: { company: Company; contac
         action={
           deal && (
             <button type="button" onClick={() => open({ kind: "quote", dealId: deal.id })} className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-navy-3 hover:underline">
-              <Plus size={11} /> Novo
+              <Plus size={11} /> Anexar
             </button>
           )
         }
@@ -343,13 +343,13 @@ function ClientCard({ company, contact, onNavigate }: { company: Company; contac
               return (
                 <li key={q.id} className="rounded-[6px] border border-line/80 px-2.5 py-2">
                   <div className="flex items-center gap-1.5">
-                    <button type="button" onClick={() => open({ kind: "quote", dealId: q.dealId, quoteId: q.id })} className="text-[12.5px] font-semibold text-ink hover:underline">
-                      {q.numero}
-                    </button>
+                    <span className="text-[12.5px] font-semibold text-ink">{q.numeroExterno ? `nº ${q.numeroExterno}` : q.numero}</span>
                     <Badge tone={QUOTE_TONE[q.status]}>{q.status}</Badge>
-                    <a href={`/api/quotes/${q.id}/pdf`} target="_blank" rel="noopener" className="ml-auto text-[11px] font-semibold text-navy-3 hover:underline">
-                      PDF
-                    </a>
+                    {q.anexo && (
+                      <a href={`/api/quotes/${q.id}/pdf`} target="_blank" rel="noopener" className="ml-auto text-[11px] font-semibold text-navy-3 hover:underline">
+                        PDF
+                      </a>
+                    )}
                   </div>
                   <div className="mt-0.5 text-[11.5px] text-muted">
                     {t.total > 0 && <span className="font-medium text-ink">{money(t.total)}</span>}
