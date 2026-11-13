@@ -1,3 +1,4 @@
+import { loadRoutes } from "@/server/routes";
 import { applyStageRules, type AppConfig } from "@/lib/config";
 import { loadConfigSafe } from "@/server/config";
 import "server-only";
@@ -11,7 +12,7 @@ import { ensureOperators } from "@/server/persist";
 import { listQuotes } from "@/server/quotes";
 
 /** Tudo que a tela precisa do banco; vem sempre inteiro, nunca guardado no navegador. */
-export type CrmSlice = Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users" | "quotes" | "interactions" | "audit" | "strategies" | "strategyHistory">;
+export type CrmSlice = Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users" | "quotes" | "interactions" | "audit" | "strategies" | "strategyHistory" | "routes">;
 
 const CHANNEL_FROM_DB: Record<string, Canal> = { whatsapp: "WhatsApp", phone: "Ligação", email: "E-mail", visit: "Visita", meeting: "Reunião", note: "Nota", system: "Sistema", ai: "IA" };
 const KIND_FROM_DB: Record<string, InteractionKind> = { nudge: "cobranca", message: "note" };
@@ -281,9 +282,9 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
   }));
 
   void ownerToDemo;
-  const quotes = await listQuotes();
+  const [quotes, routes] = await Promise.all([listQuotes(), loadRoutes()]);
   const extra = await loadDealDetails({ companies, deals, users, stageKey, stagesRows: stagesRes.data ?? [] });
-  return { companies: extra.companies, contacts, deals: extra.deals, activities, users, quotes, interactions: extra.interactions, audit: extra.audit, strategies: extra.strategies, strategyHistory: extra.strategyHistory };
+  return { companies: extra.companies, contacts, deals: extra.deals, activities, users, quotes, routes, interactions: extra.interactions, audit: extra.audit, strategies: extra.strategies, strategyHistory: extra.strategyHistory };
 }
 
 export type CrmBootstrap = {

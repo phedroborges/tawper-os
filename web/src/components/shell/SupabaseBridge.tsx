@@ -8,7 +8,7 @@ import { useUI } from "@/lib/ui-store";
 
 type SnapshotBody = {
   health: { ok: boolean; organization?: string; companies?: number; stages?: number; reason?: string; detail?: string };
-  snapshot: Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users" | "quotes"> | null;
+  snapshot: Pick<DemoData, "companies" | "contacts" | "deals" | "activities" | "users" | "quotes" | "routes"> | null;
   actorMap?: Record<string, string> | null;
   config?: AppConfig;
 };

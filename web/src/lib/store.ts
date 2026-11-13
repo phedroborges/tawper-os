@@ -404,6 +404,7 @@ export const useStore = create<AppState>()(
               : s.deals,
             activities: snapshot.activities ?? s.activities,
             quotes: snapshot.quotes ?? s.quotes,
+            routes: snapshot.routes ?? s.routes,
             interactions: snapshot.interactions ?? s.interactions,
             audit: snapshot.audit ?? s.audit,
             strategies: snapshot.strategies ?? s.strategies,
@@ -926,6 +927,11 @@ export const useStore = create<AppState>()(
               ...s.audit,
             ],
           });
+          void pushMutation({
+            action: "saveRoute",
+            ownerId,
+            route: { regiao: input.regiao, data: input.data, paradas: input.paradas, kmEstimado: input.kmEstimado, descricao, confirm: Boolean(input.confirm) },
+          });
           if (input.confirm) scheduleRouteVisits(get, route);
           return id;
         },
@@ -951,6 +957,7 @@ export const useStore = create<AppState>()(
               ...s.audit,
             ],
           });
+          void pushMutation({ action: "confirmRoute", id: routeId });
           scheduleRouteVisits(get, route);
         },
       };

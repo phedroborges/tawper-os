@@ -1,3 +1,4 @@
+import { confirmRouteRecord, saveRouteRecord } from "@/server/routes";
 import { NextResponse } from "next/server";
 import { jsonAuthError, withSession } from "@/server/auth/http";
 import { invalidateCrmReadCache } from "@/server/crm";
@@ -38,6 +39,16 @@ export async function POST(request: Request) {
       }
       case "deleteCompany": {
         await deleteCompanyRecord(body.id, session.userId, body.reason);
+        response = NextResponse.json({ ok: true });
+        break;
+      }
+      case "saveRoute": {
+        const id = await saveRouteRecord(body.route, body.ownerId, session.userId);
+        response = NextResponse.json({ id });
+        break;
+      }
+      case "confirmRoute": {
+        await confirmRouteRecord(body.id);
         response = NextResponse.json({ ok: true });
         break;
       }
