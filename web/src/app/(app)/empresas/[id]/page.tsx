@@ -36,7 +36,7 @@ import { reportError, useCurrentUser, useStore } from "@/lib/store";
 import { peerOf } from "@/lib/contact-match";
 import { useUI } from "@/lib/ui-store";
 import { useAdvanceDeal } from "@/lib/use-advance";
-import { formatCNPJ, formatWhatsApp } from "@/lib/br-ids";
+import { canonicalWhatsApp, formatCNPJ, formatWhatsApp } from "@/lib/br-ids";
 import { cn, money } from "@/lib/utils";
 
 type Tab = "timeline" | "atividades" | "negocio" | "estrategia" | "contatos" | "auditoria";
@@ -93,7 +93,8 @@ function EmpresaView() {
       open({ kind: "contact", companyId: company.id });
       return;
     }
-    openInbox(peer);
+    if (isManager(user)) openInbox(peer);
+    else window.open(`https://wa.me/${canonicalWhatsApp(contact?.whatsapp)}`, "_blank", "noopener");
   };
 
   const addNote = () => {

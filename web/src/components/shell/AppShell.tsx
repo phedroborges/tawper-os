@@ -52,12 +52,10 @@ interface NavItem {
 }
 
 /** Telas de dados que aproveitam toda a largura do monitor. */
-const FLUID_ROUTES = ["/funis", "/carteira", "/configuracoes/auditoria", "/dashboard", "/propostas", "/conversas"];
+const FLUID_ROUTES = ["/funis", "/carteira", "/configuracoes/auditoria", "/dashboard", "/propostas", "/registros"];
 
 function useNav(): NavItem[] {
-  const user = useCurrentUser();
   const conversations = useStore((s) => s.conversations);
-  const liveUnread = useUI((s) => s.liveUnread);
   const companies = useStore((s) => s.companies);
   const contacts = useStore((s) => s.contacts);
   const deals = useStore((s) => s.deals);
@@ -67,13 +65,6 @@ function useNav(): NavItem[] {
   const suggestions = useStore((s) => s.suggestions);
   const strategies = useStore((s) => s.strategies);
   const users = useStore((s) => s.users);
-  const unread = useMemo(() => conversations.filter((c) => {
-    if (!c.unread) return false;
-    if (isManager(user)) return true;
-    if (c.ownerId === user.id) return true;
-    const co = companies.find((x) => x.id === c.companyId);
-    return co ? canSeeCompany(user, co) : false;
-  }).length, [conversations, companies, user]);
   const exceptions = useMemo(
     () => alertsOf({ companies, contacts, deals, activities, interactions, quotes, suggestions, strategies, users, conversations }).filter((a) => a.severidade === "alta").length,
     [companies, contacts, deals, activities, interactions, quotes, suggestions, strategies, users, conversations],
@@ -88,7 +79,7 @@ function useNav(): NavItem[] {
     { href: "/gestao", label: "Gestão", icon: <ShieldCheck size={18} />, badge: exceptions, manager: true },
     { href: "/dashboard", label: "Painel", icon: <LayoutDashboard size={18} />, manager: true },
     // Registros: auditoria do que cada vendedor informou pelo WhatsApp. Só gestor.
-    { href: "/conversas", label: "Registros", icon: <ClipboardCheck size={18} />, badge: liveUnread ?? unread, manager: true },
+    { href: "/registros", label: "Registros", icon: <ClipboardCheck size={18} />, manager: true },
   ];
 }
 
@@ -100,7 +91,7 @@ function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavig
   const manager = isManager(user);
 
   const item = (n: NavItem) => {
-    const active = pathname === n.href || pathname.startsWith(`${n.href}/`) || (n.href === "/carteira" && pathname.startsWith("/empresas"));
+    const active = pathname === n.href || pathname.startsWith(`${n.href}/`) || (n.href === "/carteira" && pathname.startsWith("/empresas")) || (n.href === "/registros" && pathname.startsWith("/conversas"));
     return (
       <Link
         key={n.href}
