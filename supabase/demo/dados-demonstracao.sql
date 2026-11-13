@@ -3,7 +3,7 @@
 -- =============================================================================
 -- O QUE FAZ: apaga TODAS as empresas da organização Tawper (com contatos, negócios, tarefas, orçamentos,
 -- vendas e histórico) e recria uma carteira fictícia completa de 26 clientes. Equipe, logins, configurações
--- e o agente do WhatsApp NÃO são tocados.
+-- e o agente do WhatsApp NÃO são tocados (conversas e atendimentos ficam, só sem vínculo com as empresas apagadas).
 --
 -- O QUE FICA DEPOIS:
 --   - novembro fechando bem: quase tudo concluído no prazo, 4 tarefas atrasadas espalhadas em duas pessoas
@@ -30,7 +30,8 @@ declare
 begin
   foreach t in array array[
     'companies', 'company_relationships', 'contacts', 'opportunities', 'opportunity_stage_history', 'opportunity_requirement_values',
-    'activities', 'interactions', 'standby_periods', 'sales', 'quotes', 'quote_items', 'strategies', 'strategy_versions', 'ai_suggestions', 'route_plans', 'route_stops'
+    'activities', 'interactions', 'standby_periods', 'sales', 'quotes', 'quote_items', 'strategies', 'strategy_versions', 'ai_suggestions', 'route_plans', 'route_stops',
+    'conversations', 'messages', 'ai_agent_sessions', 'ai_agent_runs'
   ] loop
     execute format('create table if not exists backup_pre_demo.%I as table public.%I', t, t);
   end loop;
@@ -110,6 +111,12 @@ begin
   perform set_config('app.bypass_stage_rules', 'on', true);
 
   -- 1. Limpa a carteira atual (a cópia de segurança já foi feita acima).
+  -- Conversas e atendimentos do agente NÃO são apagados: só deixam de apontar para empresa e contato que vão sumir.
+  -- (Sem isto o banco recusa a exclusão: o vínculo "ao apagar, zerar" tenta zerar também o organization_id.)
+  update public.ai_agent_runs set company_id = null where organization_id = v_org and company_id is not null;
+  update public.ai_agent_sessions set company_id = null where organization_id = v_org and company_id is not null;
+  update public.messages set contact_id = null where organization_id = v_org and contact_id is not null;
+  update public.conversations set company_id = null, contact_id = null where organization_id = v_org and (company_id is not null or contact_id is not null);
   perform set_config('app.admin_correction', 'on', true);
   delete from public.route_plans where organization_id = v_org;
   delete from public.companies where organization_id = v_org;
