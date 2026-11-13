@@ -1,6 +1,6 @@
 // Painel: recorte dos dados pelos filtros e os números de detalhe (quem atua, quem atrasa, quem registra).
 
-import { inPeriod, type Period } from "./dates";
+import { dayDiff, inPeriod, type Period } from "./dates";
 import { dealValue, type Data } from "./selectors";
 import type { Activity, Deal, User } from "./types";
 
@@ -107,7 +107,8 @@ export function sellerDetail(d: Data, users: User[], period: Period, now: Date):
   const rows = users.map((user) => {
     const mine = d.activities.filter((a) => a.ownerId === user.id);
     const done = mine.filter((a) => a.status === "concluida" && inPeriod(a.completedAt, period));
-    const late = done.filter((a) => new Date(a.completedAt!) > new Date(a.dueAt));
+    // No prazo = concluída até o fim do dia marcado (mesma régua do indicador de Execução).
+    const late = done.filter((a) => dayDiff(a.completedAt!, a.dueAt) > 0);
     const overdue = mine.filter((a) => a.status === "pendente" && lateDays(a, now) >= 1).map((a) => lateDays(a, now));
     const notes = d.interactions.filter((i) => i.autorId === user.id && inPeriod(i.at, period));
     const lastAction = [...mine.filter((a) => a.completedAt).map((a) => a.completedAt!), ...d.interactions.filter((i) => i.autorId === user.id).map((i) => i.at)].sort().pop();
@@ -117,7 +118,7 @@ export function sellerDetail(d: Data, users: User[], period: Period, now: Date):
       concluidas: done.length,
       noPrazo: done.length ? Math.round(((done.length - late.length) / done.length) * 100) : null,
       atrasadas: [overdue.filter((n) => n <= 3).length, overdue.filter((n) => n > 3 && n <= 7).length, overdue.filter((n) => n > 7).length] as [number, number, number],
-      atrasoMedio: late.length ? Math.round((late.reduce((sum, a) => sum + (new Date(a.completedAt!).getTime() - new Date(a.dueAt).getTime()) / DAY, 0) / late.length) * 10) / 10 : 0,
+      atrasoMedio: late.length ? Math.round((late.reduce((sum, a) => sum + dayDiff(a.completedAt!, a.dueAt), 0) / late.length) * 10) / 10 : 0,
       registros: notes.length,
       diasParado: lastAction ? Math.max(0, Math.floor((now.getTime() - new Date(lastAction).getTime()) / DAY)) : null,
       participacao: 0,
