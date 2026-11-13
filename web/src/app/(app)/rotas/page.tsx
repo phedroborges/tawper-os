@@ -1,8 +1,8 @@
 "use client";
 
-import { AlertTriangle, CalendarDays, Car, Check, Clock, ExternalLink, MapPin, Navigation, Route, Sparkles, X } from "lucide-react";
+import { AlertTriangle, CalendarDays, Car, Check, Clock, ExternalLink, MapPin, Navigation, Route, X } from "lucide-react";
 import { useMemo, useState } from "react";
-import { AIBadge, AIThinking } from "@/components/ai/ai";
+import { AIBadge } from "@/components/ai/ai";
 import { CompanyLink, RegionSelect, StagePill, UserAvatar } from "@/components/crm/crm";
 import { RouteMap, type DrivingRouteSummary } from "@/components/maps/RouteMap";
 import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader } from "@/components/ui/primitives";
@@ -17,7 +17,6 @@ import { alertsOf, daysInStage, lastInteractionAt, openDealOf, stageOf } from "@
 import { useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
 import { cn } from "@/lib/utils";
-import { aiRoute } from "@/server/ai/actions";
 
 function toDateInputValue(d: Date) {
   const x = startOfDay(d);
@@ -51,11 +50,9 @@ export default function RotasPage() {
   const toast = useUI((u) => u.toast);
   const [regiao, setRegiao] = useState("");
   const [dataVisita, setDataVisita] = useState(() => toDateInputValue(toBusinessDay(addDays(now, 2))));
-  const [thinking, setThinking] = useState(false);
   const [picked, setPicked] = useState<string[] | null>(null);
   const [driving, setDriving] = useState<DrivingRouteSummary | null>(null);
   const [optimizeWaypoints, setOptimizeWaypoints] = useState(true);
-  const [aiRouteText, setAiRouteText] = useState("");
   /** Rota salva que está desenhada no mapa. */
   const [viewing, setViewing] = useState<string | null>(null);
   const data = useMemo(
@@ -134,16 +131,15 @@ export default function RotasPage() {
       return { nome: row?.c.nome ?? "Conta", cidade: row?.c.cidade, uf: row?.c.uf, motivo: row?.motivos[0] };
     });
   const routeDescricao = useMemo(
-    () => composeRouteDescription(aiRouteText, stopsInfo(stopOrder), kmEstimado),
+    () => composeRouteDescription(undefined, stopsInfo(stopOrder), kmEstimado),
     // eslint-disable-next-line react-hooks/exhaustive-deps -- stopsInfo só lê candidates
-    [stopOrder, candidates, aiRouteText, kmEstimado],
+    [stopOrder, candidates, kmEstimado],
   );
 
   const resetSelection = () => {
     setPicked(null);
     setDriving(null);
     setOptimizeWaypoints(true);
-    setAiRouteText("");
   };
 
   const changeDate = (value: string) => {
@@ -181,37 +177,6 @@ export default function RotasPage() {
     if (summary.orderedIds.join("|") === picked.join("|")) return;
     setPicked(summary.orderedIds);
     setOptimizeWaypoints(false);
-  };
-
-  const suggest = () => {
-    const selected = candidates.filter((x) => (picked ?? []).includes(x.c.id));
-    if (selected.length < 2) return toast("Selecione as contas", { tone: "warn", sub: "Marque pelo menos 2 contas na lista para a IA montar a rota só com elas." });
-    setThinking(true);
-    setDriving(null);
-    setOptimizeWaypoints(true);
-    const fallbackIds = selected.map((x) => x.c.id);
-    void (async () => {
-      let ids = fallbackIds;
-      let descricao = "";
-      try {
-        const planned = await aiRoute({
-          regiao: regionFilterLabel(regiao),
-          candidates: selected.map((x) => ({ id: x.c.id, nome: x.c.nome, cidade: x.c.cidade, score: x.score, motivos: x.motivos, etapa: x.deal ? stageOf(x.deal).nome : undefined })),
-          fallbackIds,
-        });
-        ids = planned.ids;
-        descricao = planned.descricao;
-      } catch {
-        ids = fallbackIds;
-      }
-      // A IA só reordena o que foi marcado.
-      const allowed = new Set(fallbackIds);
-      ids = ids.filter((id) => allowed.has(id));
-      for (const id of fallbackIds) if (!ids.includes(id)) ids.push(id);
-      setAiRouteText(descricao);
-      setPicked(ids);
-      setThinking(false);
-    })();
   };
 
   const save = (confirm: boolean) => {
@@ -380,13 +345,7 @@ export default function RotasPage() {
           <CardHeader
             kicker={`${candidates.length} conta(s) · ${regionFilterLabel(regiao)}${picked?.length ? ` · ${picked.length} selecionada(s)` : ""}`}
             title="Contas com visita necessária ou recomendada"
-            action={
-              <Button size="sm" variant="ai" onClick={suggest} disabled={thinking || (picked?.length ?? 0) < 2} title={(picked?.length ?? 0) < 2 ? "Marque ao menos 2 contas" : "Ordenar a seleção com IA"}>
-                <Sparkles size={14} /> Montar rota com IA
-              </Button>
-            }
           />
-          {thinking && <AIThinking steps={[`Usando só as ${picked?.length ?? 0} contas selecionadas`, "Ordenando por prioridade comercial", "O mapa mede a distância de carro"]} className="m-4" />}
           {candidates.length === 0 ? (
             <Empty icon={<MapPin size={22} />} title={regiao ? "Nenhuma conta nesta região" : "Nenhuma conta disponível"} text={regiao ? "Troque para “Todas as regiões” ou revise a carteira." : "Cadastre empresas ativas ou revise a carteira."} />
           ) : (
