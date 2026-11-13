@@ -2,7 +2,25 @@
 
 > Pedido do Phedro Borges em 12/11/2026. Cobre os 39 itens da lista, do lembrete por WhatsApp ao painel de configurações.
 > Base lida: `origin/main` em `8ac032a` (+ `98927d0` no branch `fix/whatsapp-central`, ainda sem push).
-> Estado: **PLANO, nada implementado.**
+> Estado em 13/11/2026: **IMPLEMENTADO e no `main`** (commits de 10e255c a e1c40c7), exceto o que está em "O que falta" abaixo.
+
+## Resultado da execução
+
+Todas as 13 fases foram feitas, nesta ordem: 1, 3 e 4, 5, 2 e 7, 9 e 10, 6, 8, 11, 12, 13 e a gravação das rotas no banco. Verificação: `tsc` limpo, 208 testes, `npm run build` ok, telas conferidas no navegador. O SQL da demo foi testado em banco local com as migrations reais.
+
+**Para colocar no ar, nesta ordem:**
+1. Aplicar `supabase/migrations/20261113100000_0023_rotas_horario_e_regiao.sql` (duas colunas opcionais). Antes dela, a rota salva mostra erro; o resto funciona. A 0022 (papéis Financeiro e Almoxarifado) também precisa estar aplicada.
+2. Deploy normal (push no main já dispara).
+3. Lembretes: agendar `POST /api/internal/lembretes` com `Authorization: Bearer <TAWPER_AI_WORKER_TOKEN>`, segunda a sexta às 07:30. Enquanto `TAWPER_REMINDERS_ONLY` (telefones separados por vírgula) existir, só esses números recebem; remova para liberar a equipe.
+4. Dados da demo: rodar `supabase/demo/dados-demonstracao.sql` no SQL Editor (faz cópia em `backup_pre_demo` e apaga a carteira atual). Rodar de novo na véspera da apresentação.
+
+**O que falta (não feito):**
+- Google Maps: sem `NEXT_PUBLIC_GOOGLE_MAPS_API_KEY` no ambiente local o mapa não abre, então o traçado do caminho e a linha pontilhada de reserva não foram vistos na tela. Conferir no app publicado.
+- Exemplos nos campos: feitos em Estratégia, cadastro e edição de cliente, anexo de orçamento, conta e metas. Faltam Nova atividade e Mudança de etapa.
+- Bug da Estratégia (Bioenergia): corrigido pela causa provável (colunas sem `min-w-0`, objetivo inteiro no título do cartão), mas sem reproduzir o defeito original.
+- Reabrir cliente, rotas no banco, lembretes e anexo de orçamento rodam contra o Supabase real; foram revisados e compilam, mas não foram exercitados em produção.
+- Registro da mudança no controle de mudanças (`docs/changes`) e ADR: não criados.
+
 
 ## 1. Regras de execução
 
