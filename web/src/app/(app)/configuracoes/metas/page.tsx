@@ -3,7 +3,7 @@
 import { Plus, Save, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { UserAvatar } from "@/components/crm/crm";
-import { Button, Card, CardHeader, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
+import { Button, Card, CardHeader, Checkbox, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import type { ActivityTarget, Goals } from "@/lib/config";
 import { ACTIVITY_TYPES } from "@/lib/constants";
 import { annualGoalOf, periodGoal, salesOf, sellersOf, TARGET_UNIT } from "@/lib/goals";
@@ -31,8 +31,9 @@ export default function MetasConfigPage() {
   const saveConfig = useStore((s) => s.saveConfig);
   const toast = useUI((s) => s.toast);
   const action = useAction();
-  const sellers = useMemo(() => sellersOf(users), [users]);
-  const [g, setG] = useState<Goals>(saved ?? { ano: now.getFullYear(), anual: 0, porVendedor: {}, atividades: SUGESTAO });
+  const [g, setG] = useState<Goals>(saved ?? { ano: now.getFullYear(), anual: 0, porVendedor: {}, participantes: [], atividades: SUGESTAO });
+  const sellers = useMemo(() => sellersOf(users, g.participantes), [users, g.participantes]);
+  const gestores = useMemo(() => users.filter((u) => u.role === "admin" || u.role === "gestor"), [users]);
   const sales = useMemo(() => salesOf(deals), [deals]);
   const somaVendedores = sellers.reduce((sum, u) => sum + annualGoalOf(g, sellers, u.id), 0);
   const setTarget = (i: number, patch: Partial<ActivityTarget>) => setG({ ...g, atividades: g.atividades.map((t, j) => (j === i ? { ...t, ...patch } : t)) });
@@ -78,6 +79,23 @@ export default function MetasConfigPage() {
           </div>
         )}
       </Card>
+
+      {gestores.length > 0 && (
+        <Card className="mb-5">
+          <CardHeader title="Quem também vende" kicker="Administradores e gestores que têm carteira e entram nas metas e no pódio" />
+          <div className="flex flex-wrap gap-x-6 gap-y-2 px-4 pb-4">
+            {gestores.map((u) => (
+              <Checkbox
+                key={u.id}
+                checked={(g.participantes ?? []).includes(u.id)}
+                onChange={(on) => setG({ ...g, participantes: on ? [...(g.participantes ?? []), u.id] : (g.participantes ?? []).filter((id) => id !== u.id) })}
+                label={u.name}
+                sub={u.title}
+              />
+            ))}
+          </div>
+        </Card>
+      )}
 
       <Card className="mb-5">
         <CardHeader

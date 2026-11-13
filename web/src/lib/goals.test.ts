@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { Goals } from "./config";
-import { annualGoalOf, elapsed, periodGoal, periodRange, ranking, salesPath, sold, targetDone, type Sale } from "./goals";
+import { annualGoalOf, elapsed, periodGoal, periodRange, ranking, salesPath, sellersOf, sold, targetDone, type Sale } from "./goals";
 import type { Activity, Deal, User } from "./types";
 
 const user = (id: string, role: User["role"] = "vendedor"): User => ({ id, name: id, short: id, role, title: "", initials: "X", color: "#000", phone: "", regions: [] });
@@ -15,6 +15,15 @@ describe("metas", () => {
     expect(annualGoalOf(goals, sellers, "a")).toBe(600_000);
     expect(annualGoalOf(goals, sellers, "b")).toBe(300_000);
     expect(annualGoalOf(goals, sellers, "chefe")).toBe(0);
+  });
+
+  it("o diretor (admin) entra nas metas quando marcado como participante", () => {
+    expect(sellersOf(users).map((u) => u.id)).toEqual(["a", "b", "c"]);
+    expect(sellersOf(users, ["chefe"]).map((u) => u.id)).toEqual(["a", "b", "c", "chefe"]);
+    const comChefe = { ...goals, participantes: ["chefe"] };
+    // 1.200.000 − 600.000 (de "a") = 600.000 para b, c e chefe: 200.000 cada
+    expect(annualGoalOf(comChefe, sellersOf(users, ["chefe"]), "chefe")).toBe(200_000);
+    expect(ranking(comChefe, users, [sale("chefe", 10_000, "2026-11-04")], "mes", now).find((r) => r.user.id === "chefe")?.meta).toBeGreaterThan(0);
   });
 
   it("meta regressiva: o que falta antes do período, dividido pelos períodos que restam", () => {

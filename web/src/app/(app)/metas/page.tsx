@@ -39,7 +39,7 @@ export default function MetasPage() {
   const activities = useStore((s) => s.activities);
   const [period, setPeriod] = useState<GoalPeriod>("mes");
   const manager = isManager(user);
-  const sellers = useMemo(() => sellersOf(users), [users]);
+  const sellers = useMemo(() => sellersOf(users, goals?.participantes), [users, goals?.participantes]);
   const [who, setWho] = useState("");
   const sales = useMemo(() => salesOf(deals), [deals]);
 

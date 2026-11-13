@@ -32,6 +32,8 @@ export interface Goals {
   anual: number;
   /** Meta anual de cada vendedor (id → reais). Sem valor, divide o que sobra por igual. */
   porVendedor: Record<string, number>;
+  /** Administradores e gestores que também vendem (ex.: o diretor): entram nas metas e no pódio. */
+  participantes?: string[];
   atividades: ActivityTarget[];
 }
 
@@ -91,7 +93,7 @@ export function parseConfig(raw: Partial<Record<keyof AppConfig, unknown>>): App
     activityRules: obj(raw.activityRules) as AppConfig["activityRules"],
     goals:
       typeof goals.anual === "number" && typeof goals.ano === "number"
-        ? { ano: goals.ano, anual: goals.anual, porVendedor: obj(goals.porVendedor) as Record<string, number>, atividades: Array.isArray(goals.atividades) ? (goals.atividades as ActivityTarget[]) : [] }
+        ? { ano: goals.ano, anual: goals.anual, porVendedor: obj(goals.porVendedor) as Record<string, number>, participantes: Array.isArray(goals.participantes) ? goals.participantes.filter((x): x is string => typeof x === "string") : [], atividades: Array.isArray(goals.atividades) ? (goals.atividades as ActivityTarget[]) : [] }
         : null,
     remindersOff: Array.isArray(raw.remindersOff) ? raw.remindersOff.filter((x): x is string => typeof x === "string") : [],
   };

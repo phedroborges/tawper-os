@@ -96,7 +96,7 @@ export default function DashboardPage() {
 
   // Meta do ano no mesmo recorte de vendedor (a meta não se divide por cliente nem por faixa de valor).
   const goals = s.config.goals;
-  const metaAnual = goals && !companyId && faixa === 0 ? (ownerId ? annualGoalOf(goals, sellersOf(s.users), ownerId) : goals.anual) : 0;
+  const metaAnual = goals && !companyId && faixa === 0 ? (ownerId ? annualGoalOf(goals, sellersOf(s.users, goals.participantes), ownerId) : goals.anual) : 0;
 
   const drill = (mt: Metric) => open({ kind: "drill", title: mt.label, subtitle: `${mt.value}${mt.sub ? ` · ${mt.sub}` : ""}`, companyIds: mt.companyIds });
   const ICONS: Record<string, React.ReactNode> = {

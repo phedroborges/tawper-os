@@ -159,7 +159,7 @@ export default function MeuDiaPage() {
     if (!goals || goals.anual <= 0) return null;
     const sales = salesOf(s.deals);
     const mes = periodRange("mes", now);
-    const own = annualGoalOf(goals, sellersOf(s.users), user.id);
+    const own = annualGoalOf(goals, sellersOf(s.users, goals.participantes), user.id);
     const personal = own > 0;
     if (!personal && !isManager(user)) return null;
     const alvo = periodGoal(personal ? own : goals.anual, sales, "mes", now, personal ? user.id : undefined);

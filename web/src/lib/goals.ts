@@ -29,9 +29,9 @@ export function sold(sales: Sale[], range: { from: Date; to: Date }, ownerId?: s
   return sales.filter((s) => s.at >= range.from && s.at < range.to && (!ownerId || s.ownerId === ownerId)).reduce((sum, s) => sum + s.valor, 0);
 }
 
-/** Quem tem meta de venda: vendedores e representantes ativos. */
-export function sellersOf(users: User[]) {
-  return users.filter((u) => u.role === "vendedor" || u.role === "representante");
+/** Quem tem meta de venda: vendedores, representantes e os gestores marcados como "também vendem" (ex.: o diretor). */
+export function sellersOf(users: User[], participantes: string[] = []) {
+  return users.filter((u) => u.role === "vendedor" || u.role === "representante" || participantes.includes(u.id));
 }
 
 /** Meta anual de uma pessoa: a que o administrador digitou; sem ela, o que sobra da meta da empresa dividido por igual. */
@@ -72,7 +72,7 @@ export interface RankRow {
 
 /** Ranking por valor vendido no período; empate fica com quem está mais perto da própria meta. */
 export function ranking(goals: Goals, users: User[], sales: Sale[], period: GoalPeriod, now: Date): RankRow[] {
-  const sellers = sellersOf(users);
+  const sellers = sellersOf(users, goals.participantes);
   const range = periodRange(period, now);
   return users
     .map((user) => {
