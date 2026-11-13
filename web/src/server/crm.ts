@@ -101,16 +101,16 @@ export async function getDbHealth(): Promise<DbHealth> {
 export async function loadCrmSnapshot(): Promise<CrmSlice> {
   const sb = getSupabaseAdmin();
   const [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes, membershipsRes, profilesRes, funnelsRes, stageReqsRes, reqValsRes, historyRes] = await Promise.all([
-    sb.from("companies").select("*").eq("organization_id", TAWPER_ORG_ID).neq("status", "merged"),
-    sb.from("contacts").select("*").eq("organization_id", TAWPER_ORG_ID),
-    sb.from("opportunities").select("*").eq("organization_id", TAWPER_ORG_ID),
+    pagedRes("companies", "*", { order: "created_at", notStatus: "merged" }),
+    pagedRes("contacts", "*", { order: "created_at" }),
+    pagedRes("opportunities", "*", { order: "created_at" }),
     sb.from("stages").select("id, key, funnel_id").eq("organization_id", TAWPER_ORG_ID),
-    sb.from("activities").select("*").eq("organization_id", TAWPER_ORG_ID),
+    pagedRes("activities", "*", { order: "due_at", desc: true, max: 6000 }),
     sb.from("memberships").select("profile_id, role").eq("organization_id", TAWPER_ORG_ID).eq("is_active", true),
     sb.from("profiles").select("id, full_name, short_name, title, phone_e164, avatar_color"),
     sb.from("funnels").select("id, key").eq("organization_id", TAWPER_ORG_ID),
     sb.from("stage_requirements").select("id, key").eq("organization_id", TAWPER_ORG_ID),
-    sb.from("opportunity_requirement_values").select("opportunity_id, requirement_id, is_met").eq("organization_id", TAWPER_ORG_ID),
+    pagedRes("opportunity_requirement_values", "opportunity_id, requirement_id, is_met", { order: "updated_at" }),
     sb.from("opportunity_stage_history").select("opportunity_id, note").is("left_at", null),
   ]);
 
@@ -349,19 +349,27 @@ export function readCrmBootstrap(): Promise<CrmBootstrap> {
 
 type Row = Record<string, unknown>;
 
-/** O banco devolve no máximo 1000 linhas por consulta: lê em páginas até acabar. */
-async function selectPaged(table: string, columns: string, opts: { order: string }): Promise<Row[]> {
+/** O banco devolve no máximo 1000 linhas por consulta: lê em páginas até acabar (ou até o teto `max`). */
+async function selectPaged(table: string, columns: string, opts: { order: string; desc?: boolean; max?: number; notStatus?: string }): Promise<Row[]> {
   const sb = getSupabaseAdmin();
   const out: Row[] = [];
-  for (let from = 0; from < 20_000; from += 1000) {
-    const q = sb.from(table).select(columns).eq("organization_id", TAWPER_ORG_ID);
-    const res = await q.order(opts.order).range(from, from + 999);
+  const max = opts.max ?? 20_000;
+  for (let from = 0; from < max; from += 1000) {
+    let q = sb.from(table).select(columns).eq("organization_id", TAWPER_ORG_ID);
+    if (opts.notStatus) q = q.neq("status", opts.notStatus);
+    // O desempate por id mantém as páginas estáveis quando há muitas linhas com a mesma data.
+    const res = await q.order(opts.order, { ascending: !opts.desc }).order("id").range(from, Math.min(from + 999, max - 1));
     if (res.error) throw new Error(res.error.message);
     const rows = (res.data ?? []) as unknown as Row[];
     out.push(...rows);
     if (rows.length < 1000) break;
   }
   return out;
+}
+
+/** Mesmo formato de uma consulta direta ({ data, error }), para o restante do código não mudar. */
+async function pagedRes(table: string, columns: string, opts: Parameters<typeof selectPaged>[2]) {
+  return { data: await selectPaged(table, columns, opts), error: null as { message: string } | null };
 }
 
 /** Histórico de etapas, critérios cumpridos, espera, estratégia, linha do tempo e auditoria: tudo vem do banco. */
@@ -373,7 +381,7 @@ async function loadDealDetails(input: { companies: Company[]; deals: Deal[]; use
     getSupabaseAdmin().from("standby_periods").select("*").eq("organization_id", org).is("ended_at", null),
     getSupabaseAdmin().from("strategies").select("id, company_id, current_version_id").eq("organization_id", org),
     getSupabaseAdmin().from("strategy_versions").select("*").eq("organization_id", org).order("version", { ascending: false }),
-    getSupabaseAdmin().from("interactions").select("*").eq("organization_id", org).order("occurred_at", { ascending: false }).limit(1500),
+    pagedRes("interactions", "*", { order: "occurred_at", desc: true, max: 4000 }),
     getSupabaseAdmin().from("audit_events").select("*").eq("organization_id", org).order("occurred_at", { ascending: false }).limit(800),
   ]);
   for (const r of [standbys, strategies, versions, interactions, audit]) if (r.error) throw new Error(r.error.message);
