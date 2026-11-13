@@ -1,6 +1,7 @@
 "use client";
 
-import { Check, Pause, Sparkles, Trophy, XCircle } from "lucide-react";
+import { activityRuleFor } from "@/lib/config";
+import { Check, Pause, Sparkles, Trophy, XCircle, Minus } from "lucide-react";
 import { useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
 import { TypeIcon } from "@/components/crm/crm";
@@ -20,7 +21,7 @@ import { aiNextStep } from "@/server/ai/actions";
 
 const RESULT_CHIPS = ["Contato realizado", "Sem resposta — tentar novamente", "Cliente pediu retorno", "Material enviado", "Visita realizada"];
 
-type After = "next" | "standby" | "win" | "lose";
+type After = "next" | "none" | "standby" | "win" | "lose";
 
 /** Concluir atividade exige decidir a continuidade (RN-02). */
 export function CompleteActivityModal({ activityId }: { activityId: string }) {
@@ -30,12 +31,14 @@ export function CompleteActivityModal({ activityId }: { activityId: string }) {
   const company = s.companies.find((c) => c.id === a?.companyId);
   const deal = company ? openDealOf(s, company.id) : undefined;
   const suggested = deal ? stageOf(deal).tarefas[0] : undefined;
+  // Regra do tipo de atividade (Configurações › Requisitos das atividades).
+  const rule = activityRuleFor(s.config, a?.tipo ?? "Outro");
 
   const [resultado, setResultado] = useState("");
   const [after, setAfter] = useState<After>("next");
   const [titulo, setTitulo] = useState(suggested?.titulo ?? "Follow-up com o cliente");
-  const [tipo, setTipo] = useState<ActivityType>(suggested?.tipo ?? "WhatsApp");
-  const [due, setDue] = useState(toInputDate(rel(suggested?.prazoDias ?? 3)));
+  const [tipo, setTipo] = useState<ActivityType>(rule.proximoTipo ?? suggested?.tipo ?? "WhatsApp");
+  const [due, setDue] = useState(toInputDate(rel(rule.proximoPrazoDias ?? suggested?.prazoDias ?? 3)));
   const [prio, setPrio] = useState<Prioridade>("Média");
   const [fromAI, setFromAI] = useState(false);
   const [suggesting, setSuggesting] = useState(false);
@@ -80,6 +83,7 @@ export function CompleteActivityModal({ activityId }: { activityId: string }) {
     }
     s.completeActivity(a.id, { resultado: res });
     close();
+    if (after === "none") return toast("Atividade concluída", { sub: "Sem próximo passo" });
     setTimeout(() => {
       if (after === "standby") open({ kind: "standby", companyId: company.id });
       if (after === "win" && deal) open({ kind: "win", dealId: deal.id });
@@ -89,6 +93,7 @@ export function CompleteActivityModal({ activityId }: { activityId: string }) {
 
   const opts: { v: After; label: string; icon: React.ReactNode; sub: string }[] = [
     { v: "next", label: "próximo passo", icon: <Check size={13} />, sub: "" },
+    ...(rule.exigeProximo ? [] : [{ v: "none" as const, label: "sem próximo passo", icon: <Minus size={13} />, sub: "" }]),
     { v: "standby", label: "espera", icon: <Pause size={13} />, sub: "" },
     { v: "win", label: "venda", icon: <Trophy size={13} />, sub: "" },
     { v: "lose", label: "perda", icon: <XCircle size={13} />, sub: "" },
@@ -106,8 +111,8 @@ export function CompleteActivityModal({ activityId }: { activityId: string }) {
           <Button variant="ghost" onClick={close}>
             Cancelar
           </Button>
-          <Button variant="primary" onClick={confirm} disabled={after === "next" && !titulo.trim()}>
-            <Check size={15} /> Concluir {after === "next" ? "e agendar" : "e continuar"}
+          <Button variant="primary" onClick={confirm} disabled={(after === "next" && !titulo.trim()) || (rule.exigeResultado && !resultado.trim())} title={rule.exigeResultado && !resultado.trim() ? "Escreva o resultado para concluir" : undefined}>
+            <Check size={15} /> Concluir {after === "next" ? "e agendar" : after === "none" ? "" : "e continuar"}
           </Button>
         </>
       }
@@ -116,7 +121,7 @@ export function CompleteActivityModal({ activityId }: { activityId: string }) {
         <div className="text-[12.5px] text-muted">
           {company.nome} · {a.tipo} · vencimento {fmtDue(a.dueAt)}
         </div>
-        <Field label="Resultado" hint="o que aconteceu?">
+        <Field label="Resultado" hint={rule.exigeResultado ? `obrigatório para ${a.tipo}` : "o que aconteceu?"} required={rule.exigeResultado}>
           <Textarea value={resultado} onChange={(e) => setResultado(e.target.value)} rows={3} placeholder="Ex.: Falei com João, ele manda as medidas até sexta." />
         </Field>
         <div className="-mt-2 flex flex-wrap gap-1.5">
