@@ -14,6 +14,17 @@ describe("agenda da rota", () => {
     }
   });
 
+  it("trecho de 10 horas de estrada atravessa a noite e a visita continua dentro da jornada", () => {
+    const plan = scheduleRoute(new Date(2026, 10, 16), [{ id: "a", driveMinutes: 0 }, { id: "b", driveMinutes: 600 }, { id: "c", driveMinutes: 700 }]);
+    for (const s of plan.stops) {
+      expect(hm(s.arrive)).toBeGreaterThanOrEqual(WORK_START * 60);
+      expect(hm(s.leave)).toBeLessThanOrEqual(WORK_END * 60);
+      expect(s.leave.getTime()).toBeGreaterThan(s.arrive.getTime());
+    }
+    expect(plan.stops[1].day).toBeGreaterThan(1);
+    expect(plan.days).toBe(plan.stops[2].day);
+  });
+
   it("seis paradas com 1h30 de estrada não cabem num dia", () => {
     const plan = scheduleRoute(new Date(2026, 10, 16), legs(6, 90));
     expect(plan.days).toBeGreaterThan(1);

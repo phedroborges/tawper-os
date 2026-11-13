@@ -268,7 +268,7 @@ export default function RotasPage() {
             className="w-full"
           />
         </Field>
-        <Field label="Data da viagem" hint="dia da primeira visita" className="w-full sm:w-56">
+        <Field label="Data da viagem" hint="dia da 1ª visita" className="w-full sm:w-64">
           <Input type="date" value={dataVisita} min={toDateInputValue(now)} onChange={(e) => changeDate(e.target.value)} />
         </Field>
       </div>

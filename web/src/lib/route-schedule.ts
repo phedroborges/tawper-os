@@ -76,32 +76,42 @@ export interface RouteSchedule {
   end: Date | null;
 }
 
+/** Anda `minutes` de estrada só dentro da jornada: o que não cabe até as 18h continua às 8h do próximo dia útil. */
+function drive(from: Date, minutes: number): Date {
+  let cursor = from;
+  let left = minutes;
+  for (;;) {
+    const room = (at(cursor, WORK_END).getTime() - cursor.getTime()) / 60_000;
+    if (left <= room) return addMinutes(cursor, left);
+    left -= Math.max(0, room);
+    cursor = at(nextBusinessDay(cursor), WORK_START);
+  }
+}
+
+const sameDay = (a: Date, b: Date) => a.toDateString() === b.toDateString();
+
 /**
- * Distribui as visitas a partir das 8h do primeiro dia útil. Visita que não termina até as 18h
- * vai para as 8h do dia útil seguinte (o trecho de estrada conta no dia em que é feito).
+ * Distribui as visitas a partir das 8h do primeiro dia útil. Estrada e visita só acontecem na jornada:
+ * trecho longo atravessa a noite (pernoite) e visita que não termina até as 18h vai para as 8h do dia útil seguinte.
  */
 export function scheduleRoute(startDay: Date, legs: RouteLeg[]): RouteSchedule {
-  let day = toBusinessDay(startDay);
+  let cursor = at(toBusinessDay(startDay), WORK_START);
   let dayNumber = 1;
-  let cursor = at(day, WORK_START);
+  let lastDay = cursor;
   const stops: ScheduledStop[] = [];
   for (const leg of legs) {
     const visit = leg.visitMinutes ?? VISIT_MINUTES;
-    const drive = Math.round(leg.driveMinutes * (1 + ROAD_MARGIN));
-    const place = (from: Date) => {
-      const arrive = addMinutes(from, drive);
-      const start = afterLunch(addMinutes(arrive, GATE_MINUTES + WAIT_MINUTES), visit);
-      return { arrive, start, leave: addMinutes(start, visit) };
-    };
-    let slot = place(cursor);
-    if (slot.leave > at(day, WORK_END)) {
-      day = nextBusinessDay(day);
-      dayNumber += 1;
-      // Dorme perto da parada anterior e sai às 8h; uma visita sozinha maior que o dia fica onde der.
-      slot = place(at(day, WORK_START));
+    const arrive = drive(cursor, Math.round(leg.driveMinutes * (1 + ROAD_MARGIN)));
+    let start = afterLunch(addMinutes(arrive, GATE_MINUTES + WAIT_MINUTES), visit);
+    if (addMinutes(start, visit) > at(start, WORK_END)) {
+      // Chegou tarde demais para atender hoje: dorme perto e entra na primeira hora.
+      start = addMinutes(at(nextBusinessDay(start), WORK_START), GATE_MINUTES + WAIT_MINUTES);
     }
-    stops.push({ id: leg.id, arrive: slot.start, leave: slot.leave, day: dayNumber });
-    cursor = slot.leave;
+    const leave = addMinutes(start, visit);
+    for (let d = lastDay; !sameDay(d, start); d = nextBusinessDay(d)) dayNumber += 1;
+    lastDay = start;
+    stops.push({ id: leg.id, arrive: start, leave, day: dayNumber });
+    cursor = leave;
   }
   return { stops, days: dayNumber, end: stops.length ? stops[stops.length - 1].leave : null };
 }

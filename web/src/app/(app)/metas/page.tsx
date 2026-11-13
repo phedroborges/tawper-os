@@ -225,7 +225,7 @@ export default function MetasPage() {
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center justify-between gap-2 text-[13px]">
                           <span className="font-medium text-ink">
-                            {t.quantidade} {t.tipo.toLowerCase()} {TARGET_UNIT[t.por]}
+                            {t.tipo}: {t.quantidade} {TARGET_UNIT[t.por]}
                           </span>
                           <span className="shrink-0 text-muted">
                             <b className="text-ink">{done}</b> de {t.quantidade} {TARGET_WINDOW[t.por]}
