@@ -45,6 +45,12 @@ export function annualGoalOf(goals: Goals, sellers: User[], userId: string): num
   return rest > 0 ? Math.max(0, goals.anual - taken) / rest : 0;
 }
 
+/** Meta proporcional do período (anual dividida pelo número de períodos no ano). */
+export function basePeriodGoal(annual: number, period: GoalPeriod): number {
+  const size = MONTHS_IN[period];
+  return (annual * size) / 12;
+}
+
 /**
  * Meta regressiva do período atual: o que falta no ano (descontado o que já foi vendido ANTES deste período)
  * dividido pelos períodos que restam, contando o atual. Vendeu pouco num mês, os próximos sobem sozinhos.
@@ -71,12 +77,13 @@ export interface RankRow {
 }
 
 /** Ranking por valor vendido no período; empate fica com quem está mais perto da própria meta. */
-export function ranking(goals: Goals, users: User[], sales: Sale[], period: GoalPeriod, now: Date): RankRow[] {
+export function ranking(goals: Goals, users: User[], sales: Sale[], period: GoalPeriod, now: Date, useBase = false): RankRow[] {
   const sellers = sellersOf(users, goals.participantes);
   const range = periodRange(period, now);
   return users
     .map((user) => {
-      const meta = periodGoal(annualGoalOf(goals, sellers, user.id), sales, period, now, user.id);
+      const annual = annualGoalOf(goals, sellers, user.id);
+      const meta = useBase ? basePeriodGoal(annual, period) : periodGoal(annual, sales, period, now, user.id);
       const vendido = sold(sales, range, user.id);
       return { user, vendido, meta, pct: meta > 0 ? (vendido / meta) * 100 : 0 };
     })
@@ -99,15 +106,18 @@ const DEFAULT_TICKET = 25_000;
 const DEFAULT_CONVERSION = 0.4;
 
 /** Caminho da meta do mês em vendas e orçamentos, pelo histórico de negócios fechados. */
-export function salesPath(monthlyGoal: number, deals: Deal[]): SalesPath {
-  const won = deals.filter((d) => d.status === "ganha");
-  const lost = deals.filter((d) => d.status === "perdida");
+export function salesPath(monthlyGoal: number, deals: Deal[], ownerId?: string): SalesPath {
+  const scoped = ownerId ? deals.filter((d) => d.ownerId === ownerId) : deals;
+  const scopedWon = scoped.filter((d) => d.status === "ganha");
+  const pool = ownerId && scopedWon.length < 3 ? deals : scoped;
+  const won = pool.filter((d) => d.status === "ganha");
+  const lost = pool.filter((d) => d.status === "perdida");
   const values = won.map((d) => d.valorRealizado ?? d.valor ?? 0).filter((v) => v > 0);
   const enough = values.length >= 3;
   const ticketMedio = enough ? values.reduce((a, b) => a + b, 0) / values.length : DEFAULT_TICKET;
-  const conversao = won.length + lost.length >= 5 ? won.length / (won.length + lost.length) : DEFAULT_CONVERSION;
+  const conversao = won.length + lost.length >= 5 && lost.length > 0 ? won.length / (won.length + lost.length) : DEFAULT_CONVERSION;
   const vendas = monthlyGoal > 0 ? Math.ceil(monthlyGoal / ticketMedio) : 0;
-  return { ticketMedio, vendas, orcamentos: Math.ceil(vendas / Math.max(conversao, 0.05)), conversao, estimado: !enough };
+  return { ticketMedio, vendas, orcamentos: Math.ceil(vendas / Math.max(conversao, 0.05)), conversao, estimado: !enough || lost.length === 0 };
 }
 
 /** Início do dia, da semana (segunda) ou do mês de `now`. */

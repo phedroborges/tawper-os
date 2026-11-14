@@ -1,11 +1,11 @@
 "use client";
 
-import { ArrowRight, Check, Medal, Target, TrendingDown, TrendingUp } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, Flame, Medal, Target, TrendingDown, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 import { TypeIcon, UserAvatar } from "@/components/crm/crm";
 import { Card, CardHeader, Empty, LinkButton, PageHeader, Progress, Segmented, Select } from "@/components/ui/primitives";
 import { isManager } from "@/lib/constants";
-import { annualGoalOf, elapsed, PERIOD_LABEL, periodGoal, periodRange, ranking, salesOf, salesPath, sellersOf, sold, TARGET_UNIT, TARGET_WINDOW, targetDone, type GoalPeriod } from "@/lib/goals";
+import { annualGoalOf, basePeriodGoal, elapsed, PERIOD_LABEL, periodGoal, periodRange, ranking, salesOf, salesPath, sellersOf, sold, TARGET_UNIT, TARGET_WINDOW, targetDone, type GoalPeriod } from "@/lib/goals";
 import { useNow } from "@/lib/hooks";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { cn, money, moneyShort } from "@/lib/utils";
@@ -19,12 +19,19 @@ const MEDALS = [
 /** Ritmo: vendido comparado com o que já deveria estar vendido hoje, no período. */
 function Pace({ vendido, meta, fracao }: { vendido: number; meta: number; fracao: number }) {
   if (meta <= 0) return null;
+  if (vendido >= meta) {
+    return (
+      <span className="inline-flex items-center gap-1 rounded-[4px] bg-ok-soft px-2 py-0.5 text-[11.5px] font-semibold text-ok">
+        <Flame size={12} /> Meta batida!
+      </span>
+    );
+  }
   const esperado = meta * fracao;
   const acima = vendido >= esperado;
   return (
     <span className={cn("inline-flex items-center gap-1 rounded-[4px] px-1.5 py-0.5 text-[11.5px] font-medium", acima ? "bg-ok-soft text-ok" : "bg-brand-soft text-brand")}>
       {acima ? <TrendingUp size={12} /> : <TrendingDown size={12} />}
-      {acima ? "acima do ritmo" : `${moneyShort(esperado - vendido)} abaixo do ritmo`}
+      {acima ? "no ritmo para bater" : `${moneyShort(esperado - vendido)} abaixo do ritmo hoje`}
     </span>
   );
 }
@@ -60,26 +67,33 @@ export default function MetasPage() {
 
   const range = periodRange(period, now);
   const fracao = elapsed(range, now);
-  const metaEmpresa = periodGoal(goals.anual, sales, period, now);
+  const metaEmpresa = basePeriodGoal(goals.anual, period);
+  const metaEmpresaCobranca = periodGoal(goals.anual, sales, period, now);
   const vendidoEmpresa = sold(sales, range);
-  const rows = ranking(goals, users, sales, period, now);
+  const vendidoAnoEmpresa = sold(sales, periodRange("ano", now));
+  const rows = ranking(goals, users, sales, period, now, true);
   const podium = rows.filter((r) => r.vendido > 0).slice(0, 3);
 
-  // "Minha meta": a do próprio vendedor; o gestor escolhe de quem quer ver.
+  // "Minha meta": a do próprio vendedor; o gestor escolhe de quem quer ver (ou clica no ranking).
   const focoId = manager ? who || sellers[0]?.id || user.id : user.id;
   const foco = users.find((u) => u.id === focoId) ?? user;
   const metaAnualFoco = annualGoalOf(goals, sellers, foco.id);
   const mes = periodRange("mes", now);
-  const metaMes = periodGoal(metaAnualFoco, sales, "mes", now, foco.id);
+  const fracaoMes = elapsed(mes, now);
+  const metaMes = basePeriodGoal(metaAnualFoco, "mes");
+  const metaMesCobranca = periodGoal(metaAnualFoco, sales, "mes", now, foco.id);
   const vendidoMes = sold(sales, mes, foco.id);
-  const path = salesPath(metaMes, deals);
+  const faltaMes = Math.max(0, metaMes - vendidoMes);
+  const openDealsFoco = deals.filter((d) => d.status === "aberta" && d.ownerId === foco.id);
+  const pipelineFoco = openDealsFoco.reduce((sum, d) => sum + (d.valor ?? 0), 0);
+  const path = salesPath(faltaMes, deals, foco.id);
   const vendasMes = sales.filter((s) => s.ownerId === foco.id && s.at >= mes.from && s.at < mes.to).length;
 
   return (
     <div>
       <PageHeader
         title="Metas"
-        subtitle={`Meta de ${goals.ano}: ${money(goals.anual)}. O que não é vendido num mês é redistribuído nos meses que restam.`}
+        subtitle={`Meta de ${goals.ano}: ${money(goals.anual)}. Acompanhamento justo do período com visão do saldo anual.`}
         actions={<Segmented value={period} onChange={setPeriod} options={(Object.keys(PERIOD_LABEL) as GoalPeriod[]).map((p) => ({ value: p, label: PERIOD_LABEL[p] }))} />}
       />
 
@@ -88,11 +102,19 @@ export default function MetasPage() {
           <Card>
             <CardHeader kicker={`Empresa · ${PERIOD_LABEL[period].toLowerCase()} atual`} title={`${moneyShort(vendidoEmpresa)} de ${moneyShort(metaEmpresa)}`} action={<Pace vendido={vendidoEmpresa} meta={metaEmpresa} fracao={fracao} />} />
             <div className="px-4 pb-4">
-              <Progress value={metaEmpresa > 0 ? (vendidoEmpresa / metaEmpresa) * 100 : 0} tone={vendidoEmpresa >= metaEmpresa * fracao ? "green" : "amber"} className="h-2.5" />
+              <Progress value={metaEmpresa > 0 ? Math.min(100, (vendidoEmpresa / metaEmpresa) * 100) : 0} tone={vendidoEmpresa >= metaEmpresa * fracao ? "green" : "amber"} className="h-2.5" />
               <div className="mt-2 flex justify-between text-[12px] text-muted">
-                <span>{metaEmpresa > 0 ? `${Math.round((vendidoEmpresa / metaEmpresa) * 100)}% da meta` : "sem meta no período"}</span>
-                <span>{vendidoEmpresa >= metaEmpresa ? "meta batida" : `faltam ${money(metaEmpresa - vendidoEmpresa)}`}</span>
+                <span>{metaEmpresa > 0 ? `${Math.round((vendidoEmpresa / metaEmpresa) * 100)}% da meta do ${PERIOD_LABEL[period].toLowerCase()}` : "sem meta no período"}</span>
+                <span>{vendidoEmpresa >= metaEmpresa ? "meta do período batida!" : `faltam ${money(metaEmpresa - vendidoEmpresa)}`}</span>
               </div>
+              {period !== "ano" && metaEmpresaCobranca > metaEmpresa * 1.05 && (
+                <div className="mt-3 flex items-start gap-2 rounded-[6px] bg-amber-50/80 px-3 py-2 text-[12px] text-amber-950">
+                  <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-700" />
+                  <span>
+                    <b>Consciência do ano:</b> acumulado {moneyShort(vendidoAnoEmpresa)} de {moneyShort(goals.anual)}. Para fechar {goals.ano} no alvo, o ritmo exigido é <b>{moneyShort(metaEmpresaCobranca)}/{PERIOD_LABEL[period].toLowerCase()}</b>.
+                  </span>
+                </div>
+              )}
             </div>
           </Card>
 
@@ -108,7 +130,13 @@ export default function MetasPage() {
                   const m = MEDALS[pos];
                   if (!r) return <div key={pos} className="w-24 sm:w-32" />;
                   return (
-                    <div key={r.user.id} className="flex w-24 flex-col items-center text-center sm:w-32">
+                    <button
+                      key={r.user.id}
+                      type="button"
+                      disabled={!manager}
+                      onClick={() => manager && setWho(r.user.id)}
+                      className={cn("flex w-24 flex-col items-center text-center sm:w-32 transition", manager && "cursor-pointer hover:opacity-85")}
+                    >
                       <UserAvatar userId={r.user.id} size={pos === 0 ? 52 : 42} />
                       <div className="mt-1.5 w-full truncate text-[13px] font-semibold text-ink">{r.user.short}</div>
                       <div className="text-[12.5px] font-bold text-ink">{moneyShort(r.vendido)}</div>
@@ -121,27 +149,41 @@ export default function MetasPage() {
                           {m.nome}
                         </span>
                       </div>
-                    </div>
+                    </button>
                   );
                 })}
               </div>
             )}
             <ul className="border-t border-line">
-              {rows.map((r, i) => (
-                <li key={r.user.id} className={cn("flex items-center gap-3 border-b border-line/70 px-4 py-2.5 last:border-b-0", r.user.id === user.id && "bg-soft/60")}>
-                  <span className="w-5 text-center text-[12.5px] font-semibold text-muted">{i + 1}</span>
-                  <UserAvatar userId={r.user.id} size={26} />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex items-center justify-between gap-2 text-[13px]">
-                      <span className="truncate font-medium text-ink">{r.user.name}</span>
-                      <span className="shrink-0 text-ink">
-                        <b>{moneyShort(r.vendido)}</b> <span className="text-muted">/ {r.meta > 0 ? moneyShort(r.meta) : "—"}</span>
-                      </span>
+              {rows.map((r, i) => {
+                const selected = r.user.id === focoId;
+                return (
+                  <li
+                    key={r.user.id}
+                    onClick={() => manager && setWho(r.user.id)}
+                    className={cn(
+                      "flex items-center gap-3 border-b border-line/70 px-4 py-2.5 last:border-b-0 transition",
+                      manager && "cursor-pointer hover:bg-soft/50",
+                      selected && "bg-navy/[0.04] ring-1 ring-inset ring-navy/20",
+                    )}
+                  >
+                    <span className="w-5 text-center text-[12.5px] font-semibold text-muted">{i + 1}</span>
+                    <UserAvatar userId={r.user.id} size={26} />
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center justify-between gap-2 text-[13px]">
+                        <span className="truncate font-medium text-ink">
+                          {r.user.name}
+                          {r.meta > 0 && <span className="ml-1.5 text-[11px] font-semibold text-muted">({Math.round(r.pct)}%)</span>}
+                        </span>
+                        <span className="shrink-0 text-ink">
+                          <b>{moneyShort(r.vendido)}</b> <span className="text-muted">/ {r.meta > 0 ? moneyShort(r.meta) : "—"}</span>
+                        </span>
+                      </div>
+                      <Progress value={Math.min(100, r.pct)} tone={r.vendido >= r.meta * fracao ? "green" : "amber"} className="mt-1.5" />
                     </div>
-                    <Progress value={r.pct} tone={r.vendido >= r.meta * fracao ? "green" : "amber"} className="mt-1.5" />
-                  </div>
-                </li>
-              ))}
+                  </li>
+                );
+              })}
             </ul>
           </Card>
         </div>
@@ -170,14 +212,49 @@ export default function MetasPage() {
                 <div className="flex items-end justify-between gap-3">
                   <div>
                     <div className="text-[26px] leading-none font-semibold text-ink">{money(vendidoMes)}</div>
-                    <div className="mt-1 text-[12.5px] text-muted">de {money(metaMes)} neste mês</div>
+                    <div className="mt-1 text-[12.5px] text-muted">
+                      de {money(metaMes)} neste mês ({metaMes > 0 ? `${Math.round((vendidoMes / metaMes) * 100)}%` : "0%"})
+                    </div>
                   </div>
-                  <Pace vendido={vendidoMes} meta={metaMes} fracao={elapsed(mes, now)} />
+                  <Pace vendido={vendidoMes} meta={metaMes} fracao={fracaoMes} />
                 </div>
-                <Progress value={metaMes > 0 ? (vendidoMes / metaMes) * 100 : 0} tone={vendidoMes >= metaMes * elapsed(mes, now) ? "green" : "amber"} className="mt-3 h-2.5" />
+                <Progress value={metaMes > 0 ? Math.min(100, (vendidoMes / metaMes) * 100) : 0} tone={vendidoMes >= metaMes * fracaoMes ? "green" : "amber"} className="mt-3 h-2.5" />
+
+                {/* Incentivo + Cobrança: quanto falta vs o que já está na mesa */}
+                <div className="mt-3 grid grid-cols-2 gap-2">
+                  <div className={cn("rounded-[6px] border px-3 py-2", faltaMes === 0 ? "border-ok/30 bg-ok-soft/40" : "border-line bg-soft/40")}>
+                    <div className="text-[11px] font-medium text-muted">{faltaMes === 0 ? "Meta do mês" : "Falta neste mês"}</div>
+                    <div className={cn("text-[15px] font-bold", faltaMes === 0 ? "text-ok" : "text-ink")}>
+                      {faltaMes === 0 ? "Batida!" : moneyShort(faltaMes)}
+                    </div>
+                  </div>
+                  <div className="rounded-[6px] border border-line bg-soft/40 px-3 py-2">
+                    <div className="text-[11px] font-medium text-muted">Na mesa (funil aberto)</div>
+                    <div className="text-[15px] font-bold text-ink">
+                      {moneyShort(pipelineFoco)} <span className="text-[11px] font-normal text-muted">({openDealsFoco.length})</span>
+                    </div>
+                  </div>
+                </div>
+                {faltaMes > 0 && (
+                  <p className={cn("mt-2 text-[12px] font-medium", pipelineFoco >= faltaMes ? "text-ok" : "text-amber-800")}>
+                    {pipelineFoco >= faltaMes
+                      ? `Você já tem ${moneyShort(pipelineFoco)} em aberto na mesa — foco total em fechar!`
+                      : `Seu funil aberto cobre ${Math.round((pipelineFoco / faltaMes) * 100)}% do que falta — precisa gerar novos orçamentos agora!`}
+                  </p>
+                )}
+
+                {metaMesCobranca > metaMes * 1.05 && (
+                  <div className="mt-2.5 flex items-start gap-2 rounded-[6px] bg-amber-50/80 px-3 py-2 text-[11.5px] text-amber-950">
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-700" />
+                    <span>
+                      Para recuperar o saldo de {goals.ano}, o ritmo anual exigido é <b>{moneyShort(metaMesCobranca)}/mês</b>.
+                    </span>
+                  </div>
+                )}
+
                 <div className="mt-3 grid grid-cols-3 gap-2 text-center">
                   {(["trimestre", "semestre", "ano"] as GoalPeriod[]).map((p) => {
-                    const meta = periodGoal(metaAnualFoco, sales, p, now, foco.id);
+                    const meta = basePeriodGoal(metaAnualFoco, p);
                     const v = sold(sales, periodRange(p, now), foco.id);
                     return (
                       <div key={p} className="rounded-[6px] bg-soft/60 px-2 py-2">
@@ -195,25 +272,35 @@ export default function MetasPage() {
           {metaAnualFoco > 0 && (
             <Card>
               <CardHeader kicker="O que fazer para chegar lá" title="Caminho até a meta do mês" />
-              <ol className="space-y-2 px-4 pb-3 text-[13px]">
-                <li className="flex items-start gap-2.5">
-                  <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-navy text-[11px] font-bold text-white">1</span>
-                  <span>
-                    Vender <b>{money(metaMes)}</b> no mês: cerca de <b>{path.vendas} {path.vendas === 1 ? "venda" : "vendas"}</b> com ticket médio de {money(path.ticketMedio)}. Feitas até agora: {vendasMes}.
-                  </span>
-                </li>
-                <li className="flex items-start gap-2.5">
-                  <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-navy text-[11px] font-bold text-white">2</span>
-                  <span>
-                    Para isso, enviar perto de <b>{path.orcamentos} orçamentos</b>: hoje {Math.round(path.conversao * 100)}% dos negócios fechados viram venda.
-                  </span>
-                </li>
-                <li className="flex items-start gap-2.5">
-                  <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-navy text-[11px] font-bold text-white">3</span>
-                  <span>Manter o ritmo de atividades abaixo, que é o que gera os orçamentos.</span>
-                </li>
-              </ol>
-              {path.estimado && <p className="mx-4 mb-3 rounded-[6px] bg-amber-50 px-3 py-2 text-[12px] text-amber-950">Ainda há poucas vendas registradas: ticket médio e conversão são estimativas e se ajustam sozinhos com o histórico.</p>}
+              {faltaMes === 0 ? (
+                <div className="mx-4 mb-3 rounded-[6px] bg-ok-soft/60 px-3 py-2.5 text-[13px] font-medium text-ok">
+                  Parabéns! A meta de {money(metaMes)} deste mês já foi batida ({vendasMes} {vendasMes === 1 ? "venda" : "vendas"}). Continue o ritmo de atividades para abater o saldo do ano!
+                </div>
+              ) : (
+                <ol className="space-y-2 px-4 pb-3 text-[13px]">
+                  <li className="flex items-start gap-2.5">
+                    <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-navy text-[11px] font-bold text-white">1</span>
+                    <span>
+                      Faltam <b>{money(faltaMes)}</b> neste mês: cerca de <b>{path.vendas} {path.vendas === 1 ? "venda" : "vendas"}</b> com ticket médio de {money(path.ticketMedio)} (já fez {vendasMes}).
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-navy text-[11px] font-bold text-white">2</span>
+                    <span>
+                      Para isso, gerar/trabalhar perto de <b>{path.orcamentos} orçamentos</b>: taxa de conversão usada de {Math.round(path.conversao * 100)}%.
+                    </span>
+                  </li>
+                  <li className="flex items-start gap-2.5">
+                    <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-navy text-[11px] font-bold text-white">3</span>
+                    <span>Manter o ritmo diário e mensal de atividades abaixo — é isso que coloca orçamento na mesa.</span>
+                  </li>
+                </ol>
+              )}
+              {faltaMes > 0 && path.estimado && (
+                <p className="mx-4 mb-3 rounded-[6px] bg-amber-50 px-3 py-2 text-[12px] text-amber-950">
+                  Poucos negócios perdidos/fechados no histórico: usando referência conservadora de {Math.round(path.conversao * 100)}% de conversão.
+                </p>
+              )}
               <ul className="border-t border-line">
                 {goals.atividades.length === 0 && <li className="px-4 py-4 text-[12.5px] text-muted">Nenhuma meta de atividade definida.</li>}
                 {goals.atividades.map((t, i) => {
