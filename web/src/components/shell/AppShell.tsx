@@ -9,6 +9,7 @@ import {
   FileText,
   LayoutDashboard,
   Menu,
+  Moon,
   PanelLeftClose,
   PanelLeftOpen,
   Plus,
@@ -21,15 +22,16 @@ import {
   Target,
 } from "lucide-react";
 import dynamic from "next/dynamic";
-import Image from "next/image";
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import { Avatar } from "@/components/ui/primitives";
 import { MenuItem, Popover } from "@/components/ui/overlay";
 import { ROLE_LABEL, isManager } from "@/lib/constants";
 import { fmtAgo } from "@/lib/dates";
 import { useMounted } from "@/lib/hooks";
+import { useTheme } from "@/lib/theme";
 import { alertsOf, canSeeCompany } from "@/lib/selectors";
 import { STORAGE_KEY, useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
@@ -128,7 +130,7 @@ function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavig
           {collapsed ? (
             <span className="grid size-9 place-items-center rounded-[9px] bg-brand text-[18px] font-black text-white">T</span>
           ) : (
-            <Image src="/brand/tawper-logo.png" alt="Tawper" width={293} height={83} className="h-auto w-[112px]" priority />
+            <BrandLogo width={293} height={83} className="h-auto w-[112px]" priority />
           )}
         </Link>
       </div>
@@ -183,6 +185,7 @@ function UserSwitcher() {
             <div className="text-[13px] font-medium text-ink">{user.name}</div>
             <div className="text-[11.5px] text-muted">{ROLE_LABEL[user.role]}</div>
           </div>
+          <UserThemeItem />
           <div className="mt-1 flex items-center justify-between border-t border-line px-3 py-2">
             <Link href="/configuracoes" onClick={close} className="text-[12.5px] text-muted hover:text-ink">
               Minha conta
@@ -330,6 +333,34 @@ function GlobalSearch() {
   );
 }
 
+function ThemeToggleButton() {
+  const mounted = useMounted();
+  const { isDark, toggleTheme } = useTheme();
+  const dark = mounted && isDark;
+  return (
+    <button
+      type="button"
+      onClick={toggleTheme}
+      className="grid size-10 place-items-center rounded-[6px] text-muted transition-colors hover:bg-soft hover:text-ink"
+      aria-label={dark ? "Ativar modo claro" : "Ativar modo escuro"}
+      title={dark ? "Modo claro" : "Modo escuro"}
+    >
+      {dark ? <Sun size={18} /> : <Moon size={18} />}
+    </button>
+  );
+}
+
+function UserThemeItem() {
+  const mounted = useMounted();
+  const { isDark, toggleTheme } = useTheme();
+  const dark = mounted && isDark;
+  return (
+    <MenuItem onClick={toggleTheme} icon={dark ? <Sun size={14} /> : <Moon size={14} />}>
+      {dark ? "Modo claro" : "Modo escuro"}
+    </MenuItem>
+  );
+}
+
 function Topbar() {
   const { open, setAssistant, setMobileNav } = useUI();
   const manager = isManager(useCurrentUser());
@@ -339,7 +370,7 @@ function Topbar() {
         <Menu size={20} />
       </button>
       <Link href="/meu-dia" className="md:hidden">
-        <Image src="/brand/tawper-logo.png" alt="Tawper" width={293} height={83} className="h-auto w-[92px]" />
+        <BrandLogo width={293} height={83} className="h-auto w-[92px]" />
       </Link>
       <GlobalSearch />
       <div className="ml-auto flex items-center gap-1.5 md:gap-2">
@@ -352,6 +383,7 @@ function Topbar() {
           <Sparkles size={17} /> <span className="hidden xl:inline">Pergunte à IA</span>
         </button>
         {manager && <InboxButton />}
+        <ThemeToggleButton />
         <Notifications />
         <button type="button" onClick={() => open({ kind: "quick" })} className="inline-flex size-10 items-center justify-center gap-2 rounded-[6px] bg-navy text-[13.5px] font-medium text-white hover:bg-navy-2 sm:h-10 sm:w-auto sm:px-3.5">
           <Plus size={16} /> <span className="hidden sm:inline">Registrar</span>
@@ -411,7 +443,7 @@ function Splash() {
   return (
     <div className="fixed inset-0 grid place-items-center bg-paper">
       <div className="flex flex-col items-center gap-4">
-        <Image src="/brand/tawper-logo.png" alt="Tawper" width={293} height={83} className="h-auto w-[150px]" priority />
+        <BrandLogo width={293} height={83} className="h-auto w-[150px]" priority />
         <div className="h-0.5 w-32 overflow-hidden rounded bg-soft-2">
           <div className="h-full w-1/2 animate-pulse bg-navy" />
         </div>

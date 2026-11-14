@@ -16,10 +16,10 @@ import {
   Trophy,
   X,
 } from "lucide-react";
-import Image from "next/image";
 import { useEffect, useState } from "react";
 import { ColumnChart } from "@/components/charts/Charts";
 import { UserAvatar } from "@/components/crm/crm";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import { Badge, Button, Card, CardHeader, Empty, Progress, Segmented, Stat } from "@/components/ui/primitives";
 import { saleLabel } from "@/lib/constants";
 import type { salesByMonth, SellerDetail } from "@/lib/dashboard";
@@ -134,7 +134,7 @@ export function TvModeOverlay({
       {/* Topbar idêntica ao Design System da Tawper */}
       <header className="flex h-16 shrink-0 items-center justify-between border-b border-line bg-white px-6">
         <div className="flex items-center gap-4">
-          <Image src="/brand/tawper-logo.png" alt="Tawper" width={293} height={83} className="h-auto w-[116px]" priority />
+          <BrandLogo width={293} height={83} className="h-auto w-[116px]" priority />
           <span className="h-6 w-px bg-line" />
           <div>
             <div className="flex items-center gap-2">

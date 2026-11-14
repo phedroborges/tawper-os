@@ -1,8 +1,8 @@
 "use client";
 
-import Image from "next/image";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useMemo, useState } from "react";
+import { BrandLogo } from "@/components/ui/BrandLogo";
 import { useStore } from "@/lib/store";
 
 function EnterForm() {
@@ -43,10 +43,10 @@ function EnterForm() {
   }
 
   return (
-    <main className="min-h-dvh bg-[radial-gradient(circle_at_top,#f7ebe9,transparent_40%),linear-gradient(#f4f6f8,#eef1f4)] px-4 py-10">
+    <main className="min-h-dvh bg-[radial-gradient(circle_at_top,#f7ebe9,transparent_40%),linear-gradient(#f4f6f8,#eef1f4)] px-4 py-10 dark:bg-[radial-gradient(circle_at_top,#2a1620,transparent_45%),linear-gradient(#0b101b,#090d16)]">
       <form onSubmit={onSubmit} className="mx-auto flex w-full max-w-md flex-col gap-5 rounded-[10px] border border-line bg-white p-6 shadow-sm">
         <div className="flex items-center gap-3">
-          <Image src="/brand/tawper-logo.png" alt="Tawper" width={112} height={32} className="h-8 w-auto" />
+          <BrandLogo width={112} height={32} className="h-8 w-auto" />
           <div>
             <h1 className="text-[18px] font-semibold text-ink">Entrar no Tawper OS</h1>
             <p className="text-[12.5px] text-muted">Entre com seu e-mail e senha.</p>

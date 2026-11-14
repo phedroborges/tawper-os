@@ -46,7 +46,7 @@ export function HBarChart({ rows, max, color = "#123a7b", dark, labelWidth = 128
           >
             <span className={cn("truncate text-[12px] font-medium", dark ? "text-white/75" : "text-ink/80")}>{r.label}</span>
             <span className="relative flex h-5 items-center">
-              <span className={cn("absolute inset-y-[9px] left-0 right-0", dark ? "bg-white/[0.07]" : "bg-[#eef1f5]")} />
+              <span className={cn("absolute inset-y-[9px] left-0 right-0", dark ? "bg-white/[0.07]" : "bg-soft-2")} />
               <span
                 className="relative h-3.5 rounded-r-[4px] transition-[width,filter] duration-500 group-hover:brightness-110"
                 style={{ width: `${Math.max(pct, r.value > 0 ? 1.5 : 0)}%`, background: r.color ?? color }}

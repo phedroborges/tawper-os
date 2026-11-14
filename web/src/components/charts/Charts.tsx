@@ -37,7 +37,7 @@ export function ColumnChart({ rows, target, targetLabel, color = CATEGORY_COLORS
       <div className="relative flex items-end gap-[2px] border-b border-line" style={{ height }} role="list">
         {target !== undefined && target > 0 && (
           <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[#657087]" style={{ bottom: `${(target / top) * 100}%` }}>
-            <span className="absolute -top-4 right-0 bg-white pl-1 text-[10.5px] text-muted">{targetLabel}</span>
+            <span className="absolute -top-4 right-0 bg-surface pl-1 text-[10.5px] text-muted">{targetLabel}</span>
           </div>
         )}
         {rows.map((r) => {
@@ -182,7 +182,7 @@ export function LineChart({ labels, series, format = String }: { labels: string[
         <svg viewBox={`0 0 ${W} ${H}`} className="h-auto w-full" role="img" aria-label={series.map((s) => s.name).join(" e ")}>
           {[0, 0.5, 1].map((f) => (
             <g key={f}>
-              <line x1={PAD.l} x2={W - PAD.r} y1={y(top * f)} y2={y(top * f)} stroke="#e6e9ee" strokeWidth="1" />
+              <line x1={PAD.l} x2={W - PAD.r} y1={y(top * f)} y2={y(top * f)} stroke="var(--color-line)" strokeWidth="1" />
               <text x={PAD.l - 6} y={y(top * f) + 3.5} textAnchor="end" className="fill-muted text-[10.5px]">
                 {format(top * f)}
               </text>
@@ -200,7 +200,7 @@ export function LineChart({ labels, series, format = String }: { labels: string[
             return (
               <g key={s.name}>
                 <polyline points={pts.map((p) => p.join(",")).join(" ")} fill="none" stroke={s.color} strokeWidth="2" strokeLinejoin="round" strokeLinecap="round" strokeDasharray={s.dashed ? "5 4" : undefined} />
-                {last && !s.dashed && <circle cx={last[0]} cy={last[1]} r="4.5" fill={s.color} stroke="#fff" strokeWidth="2" />}
+                {last && !s.dashed && <circle cx={last[0]} cy={last[1]} r="4.5" fill={s.color} stroke="var(--color-surface)" strokeWidth="2" />}
               </g>
             );
           })}

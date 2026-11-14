@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /*
  * Tawper OS — interface sóbria.
@@ -68,6 +69,124 @@ html,
 body {
   background: var(--color-paper);
   color: var(--color-ink);
+}
+
+html.dark {
+  color-scheme: dark;
+
+  --color-navy: #224a8a;
+  --color-navy-2: #2b59a3;
+  --color-navy-3: #7da7ea;
+  --color-brand: #ef4444;
+  --color-brand-dark: #dc2626;
+  --color-brand-soft: #3a1720;
+
+  --color-paper: #0b101b;
+  --color-surface: #121a29;
+  --color-soft: #1a2436;
+  --color-soft-2: #243148;
+  --color-ink: #e8edf5;
+  --color-ink-2: #a8b4c880;
+  --color-muted: #93a1b8;
+  --color-line: #233046;
+
+  --color-ok: #22b588;
+  --color-ok-soft: #113129;
+  --color-warn: #f5b041;
+  --color-warn-soft: #332611;
+  --color-ai: #7ca3e6;
+  --color-ai-soft: #18253d;
+
+  --shadow-card: 0 1px 2px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(255, 255, 255, 0.03);
+  --shadow-pop: 0 12px 32px rgba(0, 0, 0, 0.55), 0 2px 6px rgba(0, 0, 0, 0.4);
+}
+
+/* Mantém text-white legível sobre navy/brand/ok e mapeia superfícies bg-white para surface escura */
+html.dark .bg-white {
+  background-color: var(--color-surface);
+}
+html.dark .bg-white\/95 {
+  background-color: rgba(18, 26, 41, 0.95);
+}
+html.dark .bg-white\/90 {
+  background-color: rgba(18, 26, 41, 0.9);
+}
+html.dark .bg-white\/80 {
+  background-color: rgba(18, 26, 41, 0.8);
+}
+html.dark .bg-white\/70 {
+  background-color: rgba(18, 26, 41, 0.7);
+}
+html.dark .hover\:bg-white:hover {
+  background-color: var(--color-soft);
+}
+html.dark .hover\:bg-white\/80:hover {
+  background-color: var(--color-soft);
+}
+html.dark .bg-amber-50 {
+  background-color: rgba(180, 120, 20, 0.16);
+}
+html.dark .bg-amber-100 {
+  background-color: rgba(180, 120, 20, 0.24);
+}
+html.dark .border-amber-200,
+html.dark .border-amber-300 {
+  border-color: rgba(245, 176, 65, 0.35);
+}
+html.dark .text-amber-800,
+html.dark .text-amber-900,
+html.dark .text-amber-950 {
+  color: #f8d486;
+}
+html.dark .bg-slate-100 {
+  background-color: var(--color-soft);
+}
+html.dark .text-slate-700 {
+  color: #cbd5e1;
+}
+html.dark .bg-orange-50 {
+  background-color: rgba(234, 88, 12, 0.16);
+}
+html.dark .border-orange-200 {
+  border-color: rgba(251, 146, 60, 0.35);
+}
+html.dark .text-orange-800 {
+  color: #fdba74;
+}
+html.dark .bg-emerald-50,
+html.dark .bg-emerald-50\/60 {
+  background-color: rgba(34, 181, 136, 0.14);
+}
+html.dark .bg-emerald-50\/30 {
+  background-color: rgba(34, 181, 136, 0.08);
+}
+html.dark .hover\:bg-emerald-100:hover {
+  background-color: rgba(34, 181, 136, 0.22);
+}
+html.dark .border-emerald-200,
+html.dark .border-emerald-300 {
+  border-color: rgba(34, 181, 136, 0.35);
+}
+html.dark .text-emerald-800 {
+  color: #6ee7b7;
+}
+html.dark .navy-flat {
+  background: linear-gradient(135deg, #132544 0%, #0d182d 100%);
+  border: 1px solid var(--color-line);
+}
+html.dark ::selection {
+  background: rgba(125, 167, 234, 0.28);
+  color: #ffffff;
+}
+html.dark mark.ai-mark {
+  background: rgba(245, 176, 65, 0.24);
+  color: #fde68a;
+}
+html.dark .scrollbar-thin::-webkit-scrollbar-thumb {
+  background: rgba(147, 161, 184, 0.25);
+}
+html.dark .scrollbar-thin::-webkit-scrollbar-thumb:hover {
+  background: rgba(147, 161, 184, 0.42);
 }
 
 body {

@@ -12,7 +12,7 @@ const VARIANTS: Record<Variant, string> = {
   dark: "bg-navy text-white hover:bg-navy-2",
   outline: "border border-line bg-white text-ink hover:bg-soft",
   ghost: "text-muted hover:bg-soft hover:text-ink",
-  ai: "border border-ai/25 bg-ai-soft text-ai hover:bg-[#e5ebf5]",
+  ai: "border border-ai/25 bg-ai-soft text-ai hover:bg-ai/15",
   subtle: "bg-soft text-ink hover:bg-soft-2",
   danger: "border border-brand/25 bg-white text-brand hover:bg-brand-soft",
   success: "bg-ok text-white hover:bg-[#106b50]",
