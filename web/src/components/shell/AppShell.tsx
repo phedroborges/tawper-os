@@ -52,7 +52,8 @@ interface NavItem {
 }
 
 /** Telas de dados que aproveitam toda a largura do monitor. */
-const FLUID_ROUTES = ["/funis", "/carteira", "/configuracoes/auditoria", "/dashboard", "/propostas", "/registros"];
+const FLUID_ROUTES = ["/funis", "/carteira", "/configuracoes/auditoria", "/dashboard", "/propostas", "/registros", "/gestao"];
+const COCKPIT_ROUTES = ["/gestao", "/funis"];
 
 function useNav(): NavItem[] {
   const conversations = useStore((s) => s.conversations);
@@ -465,7 +466,13 @@ export function AppShell({ children }: { children: ReactNode }) {
               </aside>
             </div>
           )}
-          <div className={cn("transition-[padding] duration-200", navCollapsed ? "md:pl-[68px]" : "md:pl-[224px]")}>
+          <div
+            className={cn(
+              "transition-[padding] duration-200",
+              navCollapsed ? "md:pl-[68px]" : "md:pl-[224px]",
+              COCKPIT_ROUTES.some((r) => pathname.startsWith(r)) && "lg:flex lg:h-dvh lg:flex-col lg:overflow-hidden",
+            )}
+          >
             <Topbar />
             <DbStatus />
             <main
@@ -475,7 +482,9 @@ export function AppShell({ children }: { children: ReactNode }) {
                 // as de leitura crescem até 1680px para a linha não ficar longa demais.
                 pathname.startsWith("/conversas")
                   ? "px-3 pt-3 pb-20 md:px-4 md:pb-3"
-                  : cn("px-4 pt-6 pb-28 md:px-6 md:pt-7 md:pb-14 2xl:px-8", !FLUID_ROUTES.some((r) => pathname.startsWith(r)) && "max-w-[1680px]"),
+                  : COCKPIT_ROUTES.some((r) => pathname.startsWith(r))
+                    ? "px-4 pt-3 pb-24 md:px-6 md:pt-4 md:pb-4 2xl:px-8 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden"
+                    : cn("px-4 pt-6 pb-28 md:px-6 md:pt-7 md:pb-14 2xl:px-8", !FLUID_ROUTES.some((r) => pathname.startsWith(r)) && "max-w-[1680px]"),
               )}
             >
               {children}

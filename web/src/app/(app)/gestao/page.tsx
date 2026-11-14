@@ -1,21 +1,19 @@
 "use client";
 
-import { ArrowRight, History, Megaphone, Search, ShieldCheck, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ArrowRight, CheckCircle2, History, Megaphone, Search, ShieldCheck, TrendingUp, Trophy, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import { AlertRow, UserAvatar, userName } from "@/components/crm/crm";
 import { Modal } from "@/components/ui/overlay";
 import { Button, Card, CardHeader, Empty, Input, Progress } from "@/components/ui/primitives";
-import { managerDigest, type ManagerDigest } from "@/lib/ai";
 import { isManager } from "@/lib/constants";
 import { fmtAgo, fmtDateTime } from "@/lib/dates";
 import { useNow } from "@/lib/hooks";
 import { ALERT_LABEL, alertsOf, computeMetrics, sellerStats, type Alert, type AlertType } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
-import { cn, money, normalize } from "@/lib/utils";
-import { aiDigest } from "@/server/ai/actions";
+import { cn, money, moneyShort, normalize } from "@/lib/utils";
 
 const ORDER: AlertType[] = [
   "atraso",
@@ -57,48 +55,6 @@ export default function GestaoPage() {
     [stats],
   );
 
-  const localDigest = useMemo(() => managerDigest(s, now), [s, now]);
-  const digestKey = localDigest.linhas.join("|");
-  const [aiDigestState, setAiDigestState] = useState<{ key: string; data: ManagerDigest } | null>(null);
-  const digest = aiDigestState?.key === digestKey ? aiDigestState.data : localDigest;
-
-  useEffect(() => {
-    const cacheKey = `tawper-ai-digest-v2:${digestKey}`;
-    const fallback = managerDigest(useStore.getState(), new Date());
-    let alive = true;
-    try {
-      const cached = sessionStorage.getItem(cacheKey);
-      if (cached) {
-        const data = JSON.parse(cached) as ManagerDigest;
-        queueMicrotask(() => {
-          if (alive) setAiDigestState({ key: digestKey, data });
-        });
-        return () => {
-          alive = false;
-        };
-      }
-    } catch {
-      /* sessionStorage indisponível */
-    }
-    void (async () => {
-      try {
-        const data = await aiDigest({ fallback });
-        if (!alive) return;
-        setAiDigestState({ key: digestKey, data });
-        try {
-          sessionStorage.setItem(cacheKey, JSON.stringify(data));
-        } catch {
-          /* ignore quota */
-        }
-      } catch {
-        /* mantém o resumo local */
-      }
-    })();
-    return () => {
-      alive = false;
-    };
-  }, [digestKey]);
-
   const cobrancas = useMemo(
     () =>
       s.interactions
@@ -107,6 +63,30 @@ export default function GestaoPage() {
         .slice(0, 12),
     [s.interactions],
   );
+
+  // Dados visuais para o Pulso da equipe (zero texto corrido)
+  const pulse = useMemo(() => {
+    const byExec = [...activeStats].sort((a, b) => b.execucao.rate - a.execucao.rate);
+    const leader = byExec[0] ?? null;
+    const laggard = byExec.length > 1 ? byExec[byExec.length - 1] : null;
+
+    const bottlenecks = activeStats
+      .map((st) => {
+        const sellerAlerts = alerts.filter((a) => a.ownerId === st.user.id);
+        const atrasos = sellerAlerts.filter((a) => a.tipo === "atraso").length;
+        return { st, total: sellerAlerts.length, atrasos };
+      })
+      .filter((x) => x.total > 0)
+      .sort((a, b) => b.atrasos - a.atrasos || b.total - a.total);
+
+    const focus = bottlenecks[0] ?? null;
+    const totalFeitas = activeStats.reduce((sum, st) => sum + st.feitas, 0);
+    const totalAvancos = activeStats.reduce((sum, st) => sum + st.avancos, 0);
+    const totalGanhos = activeStats.reduce((sum, st) => sum + st.ganhos, 0);
+    const totalValor = activeStats.reduce((sum, st) => sum + st.valorGanho, 0);
+
+    return { leader, laggard, focus, totalFeitas, totalAvancos, totalGanhos, totalValor };
+  }, [activeStats, alerts]);
 
   if (!isManager(user)) {
     return (
@@ -150,9 +130,9 @@ export default function GestaoPage() {
   };
 
   return (
-    <div className="flex flex-col gap-3 lg:h-[calc(100vh-100px)] lg:overflow-hidden">
+    <div className="flex flex-col gap-3 lg:min-h-0 lg:flex-1 lg:overflow-hidden">
       {/* Cabeçalho compacto com indicadores inline e botão sutil de Histórico */}
-      <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex shrink-0 flex-wrap items-center justify-between gap-3">
         <div>
           <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
             Comando gerencial · cobrança e execução
@@ -160,7 +140,7 @@ export default function GestaoPage() {
           <h1 className="text-[20px] font-bold leading-tight text-ink">Gestão</h1>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2 sm:gap-4">
+        <div className="flex flex-wrap items-center gap-2 sm:gap-3">
           <div className="flex flex-wrap items-center gap-3 rounded-lg border border-line bg-white px-3 py-1.5 text-[12px]">
             <div>
               <span className="text-muted">Pendências:</span>{" "}
@@ -197,22 +177,143 @@ export default function GestaoPage() {
         </div>
       </div>
 
-      {/* Resumo de pessoas da IA (compacto) */}
-      <Card className="shrink-0">
-        <div className="flex items-center gap-2 border-b border-line/70 px-3.5 py-2">
-          <Sparkles size={14} className="text-ai" />
-          <span className="text-[12.5px] font-semibold text-ink">Pulso da equipe</span>
-          <span className="label ml-auto">IA · pessoas e execução</span>
-        </div>
-        <div className="grid gap-2 px-3.5 py-2.5 md:grid-cols-3 md:gap-4">
-          {digest.linhas.map((l) => (
-            <div key={l} className="flex items-start gap-2 text-[12.5px] leading-snug text-ink">
-              <span className="mt-1.5 size-1.5 shrink-0 rounded-full bg-ai/70" />
-              <span>{l}</span>
+      {/* Pulso da equipe 100% visual (bater o olho e entender quem cobrar, quem lidera e produtividade) */}
+      <div className="grid shrink-0 gap-3 lg:grid-cols-3">
+        {/* 1. Gargalo / Quem cobrar hoje */}
+        <Card className="flex items-center justify-between gap-3 px-3.5 py-2.5">
+          {pulse.focus ? (
+            <>
+              <div className="flex min-w-0 items-center gap-2.5">
+                <UserAvatar userId={pulse.focus.st.user.id} size={34} />
+                <div className="min-w-0">
+                  <div className="flex items-center gap-1.5 text-[10.5px] font-bold uppercase tracking-wider text-brand">
+                    <AlertTriangle size={12} />
+                    Foco de cobrança
+                  </div>
+                  <div className="truncate text-[14px] font-bold text-ink">{pulse.focus.st.user.name}</div>
+                  <div className="mt-0.5 flex items-center gap-1.5 text-[11.5px]">
+                    <span className="rounded bg-brand-soft px-1.5 py-0.5 font-bold text-brand">
+                      {pulse.focus.atrasos} atrasos
+                    </span>
+                    <span className="text-muted">{pulse.focus.total} pendências</span>
+                  </div>
+                </div>
+              </div>
+              <Button
+                size="sm"
+                variant={ownerFilter === pulse.focus.st.user.id ? "primary" : "outline"}
+                onClick={() =>
+                  setOwnerFilter((prev) => (prev === pulse.focus!.st.user.id ? null : pulse.focus!.st.user.id))
+                }
+                className="shrink-0"
+              >
+                {ownerFilter === pulse.focus.st.user.id ? "Limpar" : "Ver fila"}
+              </Button>
+            </>
+          ) : (
+            <div className="flex items-center gap-2.5 py-1">
+              <span className="grid size-8 place-items-center rounded-full bg-ok/15 text-ok">
+                <CheckCircle2 size={16} />
+              </span>
+              <div>
+                <div className="text-[11px] font-bold uppercase tracking-wider text-ok">Sem gargalo crítico</div>
+                <div className="text-[13px] font-semibold text-ink">Nenhuma pendência urgente</div>
+              </div>
             </div>
-          ))}
-        </div>
-      </Card>
+          )}
+        </Card>
+
+        {/* 2. Comprometimento visual (líder vs quem precisa de apoio) */}
+        <Card className="flex flex-col justify-center px-3.5 py-2.5">
+          <div className="mb-1.5 flex items-center justify-between text-[10.5px] font-bold uppercase tracking-wider text-muted">
+            <span>Comprometimento · no prazo</span>
+            <span className={cn("text-[12px]", avgExec >= 80 ? "text-ok" : avgExec >= 60 ? "text-warn" : "text-brand")}>
+              Média {avgExec}%
+            </span>
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            {pulse.leader && (
+              <button
+                type="button"
+                onClick={() => setOwnerFilter((prev) => (prev === pulse.leader!.user.id ? null : pulse.leader!.user.id))}
+                className="flex items-center gap-2 rounded-md border border-line/80 bg-soft/30 px-2 py-1.5 text-left transition hover:border-ok/50"
+              >
+                <UserAvatar userId={pulse.leader.user.id} size={24} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-1">
+                    <span className="truncate text-[12px] font-semibold text-ink">{pulse.leader.user.short}</span>
+                    <span className="text-[12px] font-bold text-ok">{Math.round(pulse.leader.execucao.rate * 100)}%</span>
+                  </div>
+                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-soft">
+                    <div
+                      className="h-full rounded-full bg-ok"
+                      style={{ width: `${Math.round(pulse.leader.execucao.rate * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </button>
+            )}
+            {pulse.laggard && pulse.laggard.user.id !== pulse.leader?.user.id && (
+              <button
+                type="button"
+                onClick={() => setOwnerFilter((prev) => (prev === pulse.laggard!.user.id ? null : pulse.laggard!.user.id))}
+                className="flex items-center gap-2 rounded-md border border-line/80 bg-soft/30 px-2 py-1.5 text-left transition hover:border-brand/50"
+              >
+                <UserAvatar userId={pulse.laggard.user.id} size={24} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-baseline justify-between gap-1">
+                    <span className="truncate text-[12px] font-semibold text-ink">{pulse.laggard.user.short}</span>
+                    <span
+                      className={cn(
+                        "text-[12px] font-bold",
+                        pulse.laggard.execucao.rate >= 0.8 ? "text-ok" : pulse.laggard.execucao.rate >= 0.6 ? "text-warn" : "text-brand",
+                      )}
+                    >
+                      {Math.round(pulse.laggard.execucao.rate * 100)}%
+                    </span>
+                  </div>
+                  <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-soft">
+                    <div
+                      className={cn(
+                        "h-full rounded-full",
+                        pulse.laggard.execucao.rate >= 0.8 ? "bg-ok" : pulse.laggard.execucao.rate >= 0.6 ? "bg-amber-500" : "bg-brand",
+                      )}
+                      style={{ width: `${Math.round(pulse.laggard.execucao.rate * 100)}%` }}
+                    />
+                  </div>
+                </div>
+              </button>
+            )}
+          </div>
+        </Card>
+
+        {/* 3. Produtividade 30d em números visuais */}
+        <Card className="grid grid-cols-3 divide-x divide-line/80 px-2 py-2.5">
+          <div className="flex flex-col justify-center px-2">
+            <div className="flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wider text-muted">
+              <CheckCircle2 size={11} className="text-navy-3" /> Feitas
+            </div>
+            <div className="mt-0.5 text-[20px] font-bold leading-tight tabular-nums text-ink">{pulse.totalFeitas}</div>
+            <div className="text-[10.5px] text-muted">atividades 30d</div>
+          </div>
+          <div className="flex flex-col justify-center px-2.5">
+            <div className="flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wider text-muted">
+              <TrendingUp size={11} className="text-navy-3" /> Avanços
+            </div>
+            <div className="mt-0.5 text-[20px] font-bold leading-tight tabular-nums text-ink">{pulse.totalAvancos}</div>
+            <div className="text-[10.5px] text-muted">de etapa</div>
+          </div>
+          <div className="flex flex-col justify-center px-2.5">
+            <div className="flex items-center gap-1 text-[10.5px] font-bold uppercase tracking-wider text-ok">
+              <Trophy size={11} /> Ganhos
+            </div>
+            <div className="mt-0.5 text-[20px] font-bold leading-tight tabular-nums text-ok">{pulse.totalGanhos}</div>
+            <div className="truncate text-[10.5px] font-semibold text-ink">
+              {pulse.totalValor > 0 ? moneyShort(pulse.totalValor) : "no período"}
+            </div>
+          </div>
+        </Card>
+      </div>
 
       {/* Cockpit principal sem rolagem de página */}
       <div className="grid min-h-0 flex-1 gap-4 xl:grid-cols-[minmax(0,1fr)_clamp(360px,31vw,500px)]">

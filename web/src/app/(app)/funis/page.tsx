@@ -208,7 +208,7 @@ function Kanban() {
   };
 
   return (
-    <div>
+    <div className="flex flex-col lg:min-h-0 lg:flex-1">
       <PageHeader
         kicker="Kanban · movimentação validada"
         title="Funis comerciais"
@@ -300,9 +300,9 @@ function Kanban() {
         <span className="ml-auto hidden xl:inline text-[12px] text-muted">{FUNNELS[funnel].subtitulo}</span>
       </div>
 
-      <div ref={boardRef} className={cn("scrollbar-thin -mx-4 overflow-x-auto px-4 pb-4 md:-mx-6 md:px-6 2xl:-mx-8 2xl:px-8", drag?.active && "select-none cursor-grabbing")}>
+      <div ref={boardRef} className={cn("scrollbar-thin -mx-4 overflow-x-auto px-4 pb-1 md:-mx-6 md:px-6 2xl:-mx-8 2xl:px-8 lg:min-h-0 lg:flex-1 lg:overflow-y-hidden", drag?.active && "select-none cursor-grabbing")}>
         {/* Cada etapa ganha uma fatia igual da largura, nunca menos que 240px: telas largas mostram todas. */}
-        <div className="grid auto-cols-[minmax(240px,1fr)] grid-flow-col gap-3">
+        <div className="grid h-full auto-cols-[minmax(240px,1fr)] grid-flow-col gap-3">
           {stages.map((st, stIdx) => {
             const col = deals
               .filter((d) => stageKeyToUi(d.stageId) === st.id && (!onlyRisk || (d.status === "aberta" && risky(d))))
@@ -322,7 +322,7 @@ function Kanban() {
                 key={st.id}
                 data-stage-id={st.id}
                 className={cn(
-                  "flex min-w-0 flex-col rounded-[8px] border transition-all duration-150",
+                  "flex min-h-0 min-w-0 flex-col rounded-[8px] border transition-all duration-150 lg:h-full",
                   st.terminal ? "border-line bg-ok-soft/30" : "border-line bg-soft/50",
                   isValidDrop && "border-navy/50 bg-navy/[0.04] ring-2 ring-navy/15",
                   isInvalidDrop && "border-brand/40 bg-brand-soft/20",
@@ -341,7 +341,7 @@ function Kanban() {
                     <span>{st.terminal ? (hasPeriod ? "no período" : "últimos 90 dias") : `limite ${st.limiteDias}d`}</span>
                   </div>
                 </header>
-                <div className="scrollbar-thin flex max-h-[calc(100vh-370px)] min-h-[220px] flex-col gap-2 overflow-y-auto p-2">
+                <div className="scrollbar-thin flex min-h-[220px] flex-1 flex-col gap-2 overflow-y-auto p-2 lg:min-h-0">
                   {isValidDrop && (
                     <div className="rounded-[8px] border-2 border-dashed border-navy/40 bg-navy/[0.05] px-3 py-2.5 text-center text-[11.5px] font-semibold text-navy transition-all">
                       Soltar para mover para {st.nome}
