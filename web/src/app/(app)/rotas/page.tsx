@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowDown, ArrowUp, CalendarDays, Car, Check, Clock, ExternalLink, MapPin, Navigation, Route, Search, Trash2, X } from "lucide-react";
+import { AlertTriangle, ArrowDown, ArrowUp, CalendarDays, Car, Check, Clock, ExternalLink, LocateFixed, MapPin, Navigation, Route, Search, Sparkles, Trash2, X } from "lucide-react";
 import { useCallback, useMemo, useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
 import { CompanyLink, RegionSelect, StagePill, UserAvatar } from "@/components/crm/crm";
@@ -9,7 +9,7 @@ import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader, Selec
 import { isManager } from "@/lib/constants";
 import { addDays, dayDiff, fmtDateShort, fmtTime, longToday, startOfDay } from "@/lib/dates";
 import { useNow } from "@/lib/hooks";
-import { companyLatLng, estimateRoadKm, openGoogleMapsNavigation, openGoogleMapsRoute } from "@/lib/geo";
+import { companyLatLng, coordsForCity, estimateRoadKm, openGoogleMapsNavigation, openGoogleMapsRoute, optimizeRouteOrder, type LatLng, type RouteStrategy } from "@/lib/geo";
 import { matchesRegionFilter, regionFilterLabel } from "@/lib/regions";
 import { fallbackDriveMinutes, isBusinessDay, scheduleRoute, toBusinessDay, WORK_END, WORK_START } from "@/lib/route-schedule";
 import { composeRouteDescription } from "@/lib/route-text";
@@ -56,7 +56,11 @@ export default function RotasPage() {
   const [dataVisita, setDataVisita] = useState(() => toDateInputValue(toBusinessDay(addDays(now, 2))));
   const [picked, setPicked] = useState<string[] | null>(null);
   const [driving, setDriving] = useState<DrivingRouteSummary | null>(null);
-  const [optimizeWaypoints, setOptimizeWaypoints] = useState(true);
+  const [startKey, setStartKey] = useState<string>("");
+  const [gpsOrigin, setGpsOrigin] = useState<LatLng | null>(null);
+  const [gpsLoading, setGpsLoading] = useState(false);
+  const [strategy, setStrategy] = useState<RouteStrategy>("balanced");
+  const [manualOrder, setManualOrder] = useState(false);
   /** Rota salva que está desenhada no mapa. */
   const [viewing, setViewing] = useState<string | null>(null);
   const data = useMemo(
@@ -119,8 +123,41 @@ export default function RotasPage() {
     return [...candidates.map((x) => x.c), ...extra].map((c) => ({ id: c!.id, nome: c!.nome, cidade: c!.cidade, uf: c!.uf, latitude: c!.latitude, longitude: c!.longitude }));
   }, [candidates, viewed, companyMap]);
 
-  const stopOrder = useMemo(() => driving?.orderedIds ?? picked ?? [], [driving, picked]);
   const posOf = useCallback((id: string) => posMap.get(id), [posMap]);
+
+  const originCities = useMemo(() => {
+    const seen = new Map<string, { key: string; label: string; pos: LatLng }>();
+    for (const c of mine) {
+      if (!c.cidade) continue;
+      const key = `${c.cidade}|${c.uf ?? ""}`;
+      if (seen.has(key)) continue;
+      const pos = coordsForCity(c.cidade, c.uf);
+      if (pos) seen.set(key, { key, label: c.uf ? `${c.cidade}/${c.uf}` : c.cidade, pos });
+    }
+    return [...seen.values()].sort((a, b) => a.label.localeCompare(b.label, "pt-BR"));
+  }, [mine]);
+
+  const startPoint = useMemo(() => {
+    if (startKey === "gps" && gpsOrigin) return { label: "Sua localização atual", pos: gpsOrigin };
+    const found = originCities.find((x) => x.key === startKey);
+    return found ? { label: found.label, pos: found.pos } : null;
+  }, [startKey, gpsOrigin, originCities]);
+
+  const optimization = useMemo(() => {
+    if (!picked?.length || manualOrder) return null;
+    const stops = picked.map((id) => {
+      const cand = candidateMap.get(id);
+      return {
+        id,
+        pos: posOf(id),
+        score: cand?.score ?? 0,
+        urgent: cand?.c.urgencia === "Alta" || (cand?.motivos.includes("atividade atrasada") ?? false),
+      };
+    });
+    return optimizeRouteOrder(stops, startPoint?.pos, strategy);
+  }, [picked, manualOrder, candidateMap, posOf, startPoint, strategy]);
+
+  const stopOrder = useMemo(() => (manualOrder ? picked ?? [] : optimization?.orderedIds ?? picked ?? []), [manualOrder, optimization, picked]);
 
   /** Sem o Google: distância em linha reta × 1,35 entre as cidades da ordem. */
   const kmFallback = useMemo(() => {
@@ -160,7 +197,7 @@ export default function RotasPage() {
   const resetSelection = () => {
     setPicked(null);
     setDriving(null);
-    setOptimizeWaypoints(true);
+    setManualOrder(false);
   };
 
   const changeDate = (value: string) => {
@@ -181,13 +218,36 @@ export default function RotasPage() {
   const navigateFullRoute = (ids: string[]) => {
     const pts = ids.map(posOf).filter((p): p is NonNullable<typeof p> => !!p);
     if (pts.length === 0) return toast("Sem coordenadas", { tone: "warn", sub: "As contas da rota precisam de cidade ou GPS." });
-    openGoogleMapsRoute(pts);
+    openGoogleMapsRoute(pts, startPoint?.pos);
+  };
+
+  const useMyLocation = () => {
+    if (!navigator.geolocation) {
+      toast("GPS indisponível neste navegador", { tone: "warn" });
+      return;
+    }
+    setGpsLoading(true);
+    navigator.geolocation.getCurrentPosition(
+      (pos) => {
+        setGpsOrigin({ lat: pos.coords.latitude, lng: pos.coords.longitude });
+        setStartKey("gps");
+        setManualOrder(false);
+        setDriving(null);
+        setGpsLoading(false);
+        toast("Ponto de partida definido pela sua localização", { tone: "ok" });
+      },
+      () => {
+        setGpsLoading(false);
+        toast("Não foi possível obter sua localização", { tone: "warn", sub: "Escolha uma cidade de partida ao lado." });
+      },
+      { enableHighAccuracy: false, timeout: 8000 },
+    );
   };
 
   const togglePick = (id: string) => {
     setViewing(null);
     setDriving(null);
-    setOptimizeWaypoints(true);
+    setManualOrder(false);
     setPicked((p) => {
       const next = (p ?? []).includes(id) ? (p ?? []).filter((x) => x !== id) : [...(p ?? []), id];
       return next.length ? next : null;
@@ -199,7 +259,7 @@ export default function RotasPage() {
     const target = index + dir;
     if (target < 0 || target >= base.length) return;
     [base[index], base[target]] = [base[target], base[index]];
-    setOptimizeWaypoints(false);
+    setManualOrder(true);
     setDriving(null);
     setPicked(base);
   };
@@ -207,10 +267,6 @@ export default function RotasPage() {
   const onRouteComputed = (summary: DrivingRouteSummary | null) => {
     if (viewing) return;
     setDriving(summary);
-    if (!summary || !optimizeWaypoints || !picked?.length) return;
-    if (summary.orderedIds.join("|") === picked.join("|")) return;
-    setPicked(summary.orderedIds);
-    setOptimizeWaypoints(false);
   };
 
   const save = (confirm: boolean) => {
@@ -250,7 +306,7 @@ export default function RotasPage() {
     toast("Rota planejada excluída", { tone: "info" });
   };
 
-  const orderedForMap = viewed ? viewed.paradas.map((p) => p.companyId) : picked && picked.length >= 2 ? picked : null;
+  const orderedForMap = viewed ? viewed.paradas.map((p) => p.companyId) : stopOrder.length >= 2 ? stopOrder : null;
   const lastDay = agenda.stops.length ? agenda.stops[agenda.stops.length - 1].arrive : null;
 
   return (
@@ -291,8 +347,55 @@ export default function RotasPage() {
             className="w-full"
           />
         </Field>
-        <Field label="Data da viagem" hint="dia da 1ª visita" className="w-full sm:w-48">
+        <Field label="Data da viagem" hint="dia da 1ª visita" className="w-full sm:w-44">
           <Input type="date" value={dataVisita} min={toDateInputValue(now)} onChange={(e) => changeDate(e.target.value)} />
+        </Field>
+        <Field label="Ponto de partida" hint="onde você está" className="w-full sm:w-60">
+          <div className="flex gap-1.5">
+            <Select
+              value={startKey}
+              onChange={(e) => {
+                setStartKey(e.target.value);
+                setManualOrder(false);
+                setDriving(null);
+              }}
+              className="min-w-0 flex-1"
+            >
+              <option value="">Automático (corredor)</option>
+              {gpsOrigin && <option value="gps">Minha localização atual (GPS)</option>}
+              {originCities.map((c) => (
+                <option key={c.key} value={c.key}>
+                  {c.label}
+                </option>
+              ))}
+            </Select>
+            <Button
+              type="button"
+              size="sm"
+              variant={startKey === "gps" ? "primary" : "outline"}
+              onClick={useMyLocation}
+              disabled={gpsLoading}
+              title="Usar minha localização atual (GPS)"
+              className="h-10 px-2.5"
+            >
+              <LocateFixed size={15} className={gpsLoading ? "animate-pulse" : ""} />
+            </Button>
+          </div>
+        </Field>
+        <Field label="Inteligência da ordem" className="w-full sm:w-48">
+          <Select
+            value={strategy}
+            onChange={(e) => {
+              setStrategy(e.target.value as RouteStrategy);
+              setManualOrder(false);
+              setDriving(null);
+            }}
+            className="w-full"
+          >
+            <option value="balanced">Caminho + Urgência</option>
+            <option value="shortest">Menor km possível</option>
+            <option value="urgent_first">Urgentes primeiro</option>
+          </Select>
         </Field>
       </div>
 
@@ -300,10 +403,41 @@ export default function RotasPage() {
       {picked && picked.length > 0 && !viewed && (
         <Card className="mb-4 border-ai/40 shadow-card">
           <CardHeader
-            kicker={`Rota em montagem · ${regionFilterLabel(regiao)}`}
+            kicker={`Rota em montagem · ${regionFilterLabel(regiao)}${startPoint ? ` · saindo de ${startPoint.label}` : ""}`}
             title={`${stopOrder.length} ${stopOrder.length === 1 ? "visita" : "visitas"} · começa ${weekday(agenda.stops[0]?.arrive ?? fromDateInputValue(dataVisita))}`}
-            action={<AIBadge label="IA + Maps" />}
+            action={
+              <div className="flex items-center gap-2">
+                {manualOrder && (
+                  <Button
+                    size="xs"
+                    variant="outline"
+                    onClick={() => {
+                      setManualOrder(false);
+                      setDriving(null);
+                    }}
+                  >
+                    <Sparkles size={12} /> Reotimizar
+                  </Button>
+                )}
+                <AIBadge label="IA + Maps" />
+              </div>
+            }
           />
+          {optimization && stopOrder.length >= 2 && (
+            <div className="mx-4 mb-1 flex flex-wrap items-center gap-2 rounded-[6px] bg-ai-soft/70 px-3 py-2 text-[12.5px] text-ink">
+              <Sparkles size={14} className="shrink-0 text-ai" />
+              <span>
+                Comece por <b>{candidateMap.get(stopOrder[0]!)?.c.nome}</b> ({optimization.firstReason})
+                {optimization.savedKm >= 3 && (
+                  <>
+                    {" "}
+                    · economia estimada de <b className="text-ok">~{optimization.savedKm} km</b> sem zigue-zague
+                  </>
+                )}
+                .
+              </span>
+            </div>
+          )}
           {agenda.days > 1 && lastDay && (
             <div className="mx-4 flex items-start gap-2 rounded-[6px] bg-amber-50 px-3 py-2 text-[12.5px] text-amber-950">
               <AlertTriangle size={14} className="mt-0.5 shrink-0" />
@@ -322,11 +456,19 @@ export default function RotasPage() {
                 <li key={id} className="flex items-start gap-2.5 py-1.5">
                   <span className="grid size-6 shrink-0 place-items-center rounded-full bg-ai text-[11px] font-bold text-white">{i + 1}</span>
                   <div className="min-w-0 flex-1 text-[12.5px]">
-                    <div className="truncate font-semibold text-ink">{x.c.nome}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="truncate font-semibold text-ink">{x.c.nome}</span>
+                      {x.c.urgencia === "Alta" && (
+                        <span className="shrink-0 rounded bg-brand-soft px-1.5 py-0.5 text-[10px] font-bold text-brand">
+                          Urgente
+                        </span>
+                      )}
+                    </div>
                     <div className="text-muted">
                       {(agenda.days > 1 || novoDia) && <span className="font-medium text-ink">{weekday(slot.arrive)} · </span>}
                       {fmtTime(slot.arrive.toISOString())} às {fmtTime(slot.leave.toISOString())} · {x.c.cidade}/{x.c.uf}
                     </div>
+                    {x.motivos[0] && <div className="truncate text-[11px] text-navy-3">{x.motivos[0]}</div>}
                   </div>
                   <div className="flex shrink-0 items-center gap-0.5">
                     <button
@@ -428,7 +570,7 @@ export default function RotasPage() {
           orderedIds={orderedForMap}
           pickedIds={picked ?? undefined}
           onToggleStop={!viewed ? togglePick : undefined}
-          optimizeWaypoints={!viewed && optimizeWaypoints}
+          optimizeWaypoints={false}
           onRouteComputed={onRouteComputed}
           height={360}
         />

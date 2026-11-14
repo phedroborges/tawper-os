@@ -164,10 +164,10 @@ export function googleMapsNavigateUrl(destination: LatLng): string {
  * Rota multi-parada no Google Maps.
  * Origem = localização atual; destino = última parada; intermediárias = waypoints.
  */
-export function googleMapsRouteUrl(stops: LatLng[]): string | null {
+export function googleMapsRouteUrl(stops: LatLng[], origin?: LatLng): string | null {
   const pts = stops.filter(isValidLatLng);
   if (pts.length === 0) return null;
-  if (pts.length === 1) return googleMapsNavigateUrl(pts[0]!);
+  if (pts.length === 1 && !isValidLatLng(origin)) return googleMapsNavigateUrl(pts[0]!);
 
   const destination = pts[pts.length - 1]!;
   const waypoints = pts.slice(0, -1);
@@ -176,6 +176,9 @@ export function googleMapsRouteUrl(stops: LatLng[]): string | null {
     destination: mapsCoord(destination),
     travelmode: "driving",
   });
+  if (isValidLatLng(origin)) {
+    params.set("origin", mapsCoord(origin));
+  }
   if (waypoints.length > 0) {
     // Google aceita no máx. ~10 waypoints nesta URL; mantemos todos e o app corta se precisar.
     params.set("waypoints", waypoints.map(mapsCoord).join("|"));
@@ -187,9 +190,173 @@ export function openGoogleMapsNavigation(destination: LatLng) {
   window.open(googleMapsNavigateUrl(destination), "_blank", "noopener,noreferrer");
 }
 
-export function openGoogleMapsRoute(stops: LatLng[]) {
-  const url = googleMapsRouteUrl(stops);
+export function openGoogleMapsRoute(stops: LatLng[], origin?: LatLng) {
+  const url = googleMapsRouteUrl(stops, origin);
   if (!url) return false;
   window.open(url, "_blank", "noopener,noreferrer");
   return true;
+}
+
+export type RouteStrategy = "balanced" | "shortest" | "urgent_first";
+
+export interface RouteStopInput {
+  id: string;
+  pos?: LatLng;
+  score: number;
+  urgent?: boolean;
+}
+
+export interface OptimizedRouteResult {
+  orderedIds: string[];
+  originalKm: number;
+  optimizedKm: number;
+  savedKm: number;
+  firstReason: string;
+}
+
+function pathKm(items: RouteStopInput[], origin?: LatLng): number {
+  const pts = items.map((x) => x.pos).filter((p): p is LatLng => isValidLatLng(p));
+  if (origin && isValidLatLng(origin) && pts.length > 0) {
+    return estimateRoadKm([origin, ...pts]);
+  }
+  return estimateRoadKm(pts);
+}
+
+/**
+ * Ordena paradas evitando zigue-zague (vizinho mais próximo + 2-opt)
+ * a partir do ponto de partida (quando informado) e combinando com urgência.
+ */
+export function optimizeRouteOrder(
+  stops: RouteStopInput[],
+  origin?: LatLng,
+  strategy: RouteStrategy = "balanced",
+): OptimizedRouteResult {
+  if (stops.length <= 1) {
+    return {
+      orderedIds: stops.map((s) => s.id),
+      originalKm: 0,
+      optimizedKm: 0,
+      savedKm: 0,
+      firstReason: stops[0]?.urgent ? "única parada (urgência alta)" : "única parada",
+    };
+  }
+
+  const originalKm = pathKm(stops, origin);
+  const withPos = stops.filter((s) => isValidLatLng(s.pos));
+  const withoutPos = stops.filter((s) => !isValidLatLng(s.pos));
+
+  if (withPos.length <= 1) {
+    const ordered = [...withPos, ...withoutPos].sort((a, b) => b.score - a.score);
+    return {
+      orderedIds: ordered.map((s) => s.id),
+      originalKm,
+      optimizedKm: originalKm,
+      savedKm: 0,
+      firstReason: ordered[0]?.urgent ? "maior urgência" : "ordem de prioridade",
+    };
+  }
+
+  // Escolhe o melhor ponto de entrada do corredor
+  let startIdx = 0;
+  if (origin && isValidLatLng(origin)) {
+    let bestCost = Number.POSITIVE_INFINITY;
+    withPos.forEach((s, i) => {
+      const distKm = haversineMeters(origin, s.pos!) / 1000;
+      const urgencyBonus =
+        strategy === "shortest"
+          ? 0
+          : strategy === "urgent_first"
+            ? (s.urgent ? 180 : 0) + s.score * 25
+            : (s.urgent ? 60 : 0) + s.score * 8;
+      const cost = distKm - urgencyBonus;
+      if (cost < bestCost) {
+        bestCost = cost;
+        startIdx = i;
+      }
+    });
+  } else {
+    // Sem origem: escolhe uma extremidade do corredor (priorizando urgência se empatar/próximo)
+    let bestScore = Number.NEGATIVE_INFINITY;
+    withPos.forEach((s, i) => {
+      const avgDist =
+        withPos.reduce((acc, other) => acc + haversineMeters(s.pos!, other.pos!) / 1000, 0) /
+        Math.max(1, withPos.length - 1);
+      const uWeight = strategy === "shortest" ? 0 : strategy === "urgent_first" ? 400 : 120;
+      const val = avgDist + (s.urgent ? uWeight : 0) + (strategy === "shortest" ? 0 : s.score * 15);
+      if (val > bestScore) {
+        bestScore = val;
+        startIdx = i;
+      }
+    });
+  }
+
+  // Nearest Neighbor a partir do ponto de entrada
+  const remaining = [...withPos];
+  const ordered: RouteStopInput[] = [remaining.splice(startIdx, 1)[0]!];
+
+  while (remaining.length > 0) {
+    const last = ordered[ordered.length - 1]!;
+    let bestNext = 0;
+    let bestCost = Number.POSITIVE_INFINITY;
+    remaining.forEach((cand, i) => {
+      const distKm = haversineMeters(last.pos!, cand.pos!) / 1000;
+      const urgencyPull =
+        strategy === "urgent_first"
+          ? (cand.urgent ? 120 : 0) + cand.score * 15
+          : strategy === "balanced"
+            ? (cand.urgent ? 25 : 0) + cand.score * 4
+            : 0;
+      const cost = distKm - urgencyPull;
+      if (cost < bestCost) {
+        bestCost = distKm - urgencyPull;
+        bestNext = i;
+      }
+    });
+    ordered.push(remaining.splice(bestNext, 1)[0]!);
+  }
+
+  // 2-opt mantendo o primeiro item fixo (respeita entrada pelo ponto de partida / urgência inicial)
+  if (ordered.length >= 4 && strategy !== "urgent_first") {
+    let improved = true;
+    while (improved) {
+      improved = false;
+      for (let i = 1; i < ordered.length - 2; i++) {
+        for (let j = i + 1; j < ordered.length - 1; j++) {
+          const a = ordered[i - 1]!.pos!;
+          const b = ordered[i]!.pos!;
+          const c = ordered[j]!.pos!;
+          const d = ordered[j + 1]!.pos!;
+          const before = haversineMeters(a, b) + haversineMeters(c, d);
+          const after = haversineMeters(a, c) + haversineMeters(b, d);
+          if (after + 500 < before) {
+            const reversed = ordered.slice(i, j + 1).reverse();
+            ordered.splice(i, j - i + 1, ...reversed);
+            improved = true;
+          }
+        }
+      }
+    }
+  }
+
+  // Anexa eventuais paradas sem coordenada ordenadas por urgência/score
+  const tail = [...withoutPos].sort((a, b) => b.score - a.score);
+  const finalList = [...ordered, ...tail];
+  const optimizedKm = pathKm(finalList, origin);
+  const savedKm = Math.max(0, originalKm - optimizedKm);
+  const first = finalList[0]!;
+  const firstReason = first.urgent
+    ? origin
+      ? "urgência alta e perto do seu ponto de partida"
+      : "urgência alta na entrada do corredor"
+    : origin
+      ? "mais próxima do seu ponto de partida"
+      : "melhor ponto de entrada para evitar zigue-zague";
+
+  return {
+    orderedIds: finalList.map((s) => s.id),
+    originalKm,
+    optimizedKm,
+    savedKm,
+    firstReason,
+  };
 }
