@@ -141,7 +141,15 @@ export function DueLabel({ iso, className }: { iso: string; className?: string }
 }
 
 /** Etapas do funil: só a atual em destaque. */
-export function StageStepper({ deal, compact }: { deal: Deal; compact?: boolean }) {
+export function StageStepper({
+  deal,
+  compact,
+  onSelectStage,
+}: {
+  deal: Deal;
+  compact?: boolean;
+  onSelectStage?: (stageId: string) => void;
+}) {
   const stages = FUNNELS[deal.funnel].stages;
   const cur = stages.findIndex((s) => s.id === deal.stageId);
   const passed = new Set(deal.history.map((h) => h.stageId));
@@ -152,21 +160,31 @@ export function StageStepper({ deal, compact }: { deal: Deal; compact?: boolean 
           const done = i < cur || (deal.status === "ganha" && i <= cur);
           const current = i === cur && deal.status === "aberta";
           const skipped = i < cur && !passed.has(s.id);
+          const content = (
+            <>
+              {done && !skipped && <Check size={12} className="text-ok" />}
+              {compact || (!current && !done) ? s.curto : s.nome}
+              {current && <span className="text-[11px] text-white/60">{daysInStage(deal)}d</span>}
+            </>
+          );
+          const cls = cn(
+            "flex items-center gap-1.5 rounded-[6px] px-2 py-1 text-[12.5px] whitespace-nowrap",
+            current && "bg-navy font-medium text-white",
+            done && !skipped && "text-ink",
+            (skipped || (!current && !done)) && "text-muted/70",
+            onSelectStage && !current && "hover:bg-white/80 hover:text-ink transition-colors",
+          );
           return (
             <li key={s.id} className="flex items-center gap-1">
-              <span
-                title={s.objetivo}
-                className={cn(
-                  "flex items-center gap-1.5 rounded-[6px] px-2 py-1 text-[12.5px] whitespace-nowrap",
-                  current && "bg-navy font-medium text-white",
-                  done && !skipped && "text-ink",
-                  (skipped || (!current && !done)) && "text-muted/70",
-                )}
-              >
-                {done && !skipped && <Check size={12} className="text-ok" />}
-                {compact || (!current && !done) ? s.curto : s.nome}
-                {current && <span className="text-[11px] text-white/60">{daysInStage(deal)}d</span>}
-              </span>
+              {onSelectStage ? (
+                <button type="button" title={`${s.nome} — ${s.objetivo}`} onClick={() => onSelectStage(s.id)} className={cls}>
+                  {content}
+                </button>
+              ) : (
+                <span title={s.objetivo} className={cls}>
+                  {content}
+                </span>
+              )}
               {i < stages.length - 1 && <ChevronRight size={13} className="shrink-0 text-line" />}
             </li>
           );

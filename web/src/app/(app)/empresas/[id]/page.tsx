@@ -3,18 +3,22 @@
 import {
   ArrowRight,
   Building2,
+  Check,
   ChevronRight,
+  Circle,
   Ellipsis,
   GitMerge,
   Headset,
   Megaphone,
   MessageCircle,
+  Mic,
   Pause,
   Pencil,
   Play,
   Plus,
   RotateCcw,
   Sparkles,
+  Square,
   StickyNote,
   Trash2,
   Trophy,
@@ -23,7 +27,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { useParams, useSearchParams } from "next/navigation";
-import { Suspense, useState } from "react";
+import { Suspense, useEffect, useRef, useState } from "react";
 import { DealTab } from "@/components/company/DealTab";
 import { CopilotCard, StrategyTab } from "@/components/company/StrategyTab";
 import { CompanyLink, NextStepCard, QualityMeter, StagePill, StageStepper, StatusBadge, TaskRow, Timeline, UrgencyBadge, UserAvatar, userName } from "@/components/crm/crm";
@@ -31,15 +35,17 @@ import { MenuItem, Popover } from "@/components/ui/overlay";
 import { Badge, Button, Card, CardHeader, Empty } from "@/components/ui/primitives";
 import { FUNNELS, getStage, isManager, isMuriloLouis, papelRotulo } from "@/lib/constants";
 import { fmtAgo, fmtDate, fmtDateTime } from "@/lib/dates";
-import { canSeeCompany, currentDealOf, daysInStage, inSupport, lastInteractionAt, openDealOf, pendingOf, qualityOf, timelineOf } from "@/lib/selectors";
+import { canSeeCompany, criterionMet, currentDealOf, daysInStage, inSupport, lastInteractionAt, openDealOf, pendingOf, qualityOf, timelineOf } from "@/lib/selectors";
 import { reportError, useCurrentUser, useStore } from "@/lib/store";
 import { peerOf } from "@/lib/contact-match";
 import { useUI } from "@/lib/ui-store";
 import { useAdvanceDeal } from "@/lib/use-advance";
 import { canonicalWhatsApp, formatCNPJ, formatWhatsApp } from "@/lib/br-ids";
 import { cn, money } from "@/lib/utils";
+import { aiTranscribe } from "@/server/ai/actions";
 
 type Tab = "timeline" | "atividades" | "negocio" | "estrategia" | "contatos" | "auditoria";
+type TimelineFilter = "todos" | "notas" | "atividades" | "cobrancas";
 
 function EmpresaView() {
   const { id } = useParams<{ id: string }>();
@@ -50,7 +56,21 @@ function EmpresaView() {
   const { advance } = useAdvanceDeal();
   const initialTab = params.get("tab") as Tab | null;
   const [tab, setTab] = useState<Tab>(initialTab && initialTab !== ("conversa" as Tab) ? initialTab : "timeline");
+  const [timelineFilter, setTimelineFilter] = useState<TimelineFilter>("todos");
   const [note, setNote] = useState("");
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const tape = useRef<{ rec: MediaRecorder; stream: MediaStream; chunks: Blob[] } | null>(null);
+  const alive = useRef(true);
+
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      const cur = tape.current;
+      if (cur && cur.rec.state !== "inactive") cur.rec.stop();
+    };
+  }, []);
 
   const company = s.companies.find((c) => c.id === id);
   const deal = company ? openDealOf(s, company.id) : undefined;
@@ -106,6 +126,64 @@ function EmpresaView() {
       })
       .catch((e) => reportError(e, "Não foi possível salvar a nota"));
   };
+
+  const toggleNoteAudio = async () => {
+    if (recording) {
+      const cur = tape.current;
+      if (cur && cur.rec.state !== "inactive") cur.rec.stop();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      toast("Áudio indisponível neste navegador", { tone: "warn" });
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      tape.current = { rec, stream, chunks };
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        tape.current = null;
+        if (alive.current) setRecording(false);
+        const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+        if (blob.size < 400) return;
+        if (alive.current) setTranscribing(true);
+        const fd = new FormData();
+        fd.append("file", blob, "nota.webm");
+        void aiTranscribe(fd)
+          .then((res) => {
+            if (!alive.current || !res?.trim()) return;
+            setNote((prev) => [prev.trim(), res.trim()].filter(Boolean).join(" "));
+          })
+          .catch(() => {
+            if (alive.current) toast("Não consegui transcrever o áudio", { tone: "warn" });
+          })
+          .finally(() => {
+            if (alive.current) setTranscribing(false);
+          });
+      };
+      rec.start();
+      setRecording(true);
+    } catch {
+      toast("Permita o uso do microfone para gravar áudio", { tone: "warn" });
+    }
+  };
+
+  const filteredTimeline = timeline.filter((item) => {
+    if (timelineFilter === "todos") return true;
+    if (timelineFilter === "notas") return item.source === "interaction" && item.interaction?.kind === "note";
+    if (timelineFilter === "cobrancas") return item.source === "interaction" && item.interaction?.kind === "cobranca";
+    return item.source === "activity" || (item.source === "interaction" && item.interaction?.kind !== "note" && item.interaction?.kind !== "cobranca");
+  });
+
+  const stageCriteria = deal && stage ? stage.criterios : [];
+  const metCount = deal ? stageCriteria.filter((crit) => criterionMet(s, deal, company, crit)).length : 0;
+  const stageDays = deal ? daysInStage(deal) : 0;
+  const stageOverLimit = Boolean(deal && stage && stage.limiteDias > 0 && stageDays > stage.limiteDias);
 
   const tabs: { id: Tab; label: string; count?: number }[] = [
     { id: "timeline", label: "Histórico" },
@@ -173,6 +251,11 @@ function EmpresaView() {
               <Button variant="outline" size="sm" onClick={() => open({ kind: "quick", companyId: company.id })}>
                 <Sparkles size={14} /> Registrar
               </Button>
+              {isManager(user) && company.status !== "perdida" && (
+                <Button variant="outline" size="sm" onClick={() => open({ kind: "cobranca", companyId: company.id })} title="Enviar cobrança para o vendedor responsável">
+                  <Megaphone size={14} /> Cobrar
+                </Button>
+              )}
               {company.status === "perdida" && (
                 <Button variant="primary" size="sm" onClick={reabrir} title="Volta para Qualificação: o cliente já é conhecido">
                   <RotateCcw size={14} /> Reabrir cliente
@@ -255,17 +338,69 @@ function EmpresaView() {
         </div>
         {lastDeal && (
           <div className="border-t border-line bg-soft/40 px-4 py-3 md:px-5">
-            <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[12px] text-muted">
-              <span className="text-ink">{FUNNELS[lastDeal.funnel].nome}</span>
-              {lastDeal.funnel === "recorrencia" && <span>ciclo {lastDeal.ciclo}</span>}
-              {deal && stage && (
-                <span>
-                  {daysInStage(deal)} de {stage.limiteDias || "—"} dias na etapa{deal.valor ? ` · ${money(deal.valor)}` : ""}
+            <div className="mb-2 flex flex-wrap items-center justify-between gap-2 text-[12px] text-muted">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                <span className="font-medium text-ink">{FUNNELS[lastDeal.funnel].nome}</span>
+                {lastDeal.funnel === "recorrencia" && <span>ciclo {lastDeal.ciclo}</span>}
+                {deal && stage && (
+                  <span className={cn(stageOverLimit && "font-semibold text-brand")}>
+                    {stageDays} de {stage.limiteDias || "—"} dias na etapa{deal.valor ? ` · ${money(deal.valor)}` : ""}
+                  </span>
+                )}
+                {!deal && lastDeal.status === "perdida" && <span className="text-brand">Perdida — {lastDeal.motivo}</span>}
+              </div>
+              {deal && stageCriteria.length > 0 && (
+                <span className={cn("text-[11.5px] font-semibold", metCount === stageCriteria.length ? "text-ok" : "text-navy-3")}>
+                  Avanço: {metCount} de {stageCriteria.length} critérios
                 </span>
               )}
-              {!deal && lastDeal.status === "perdida" && <span className="text-brand">Perdida — {lastDeal.motivo}</span>}
             </div>
-            <StageStepper deal={lastDeal} />
+            <StageStepper
+              deal={lastDeal}
+              onSelectStage={(stageId) =>
+                open(
+                  deal && company.status === "ativa" && stageId !== deal.stageId
+                    ? { kind: "move", dealId: deal.id, toStageId: stageId }
+                    : { kind: "viewStage", dealId: lastDeal.id },
+                )
+              }
+            />
+            {deal && stageCriteria.length > 0 && company.status === "ativa" && (
+              <div className="mt-2.5 flex flex-wrap items-center gap-1.5 border-t border-line/60 pt-2.5">
+                <span className="mr-1 text-[11px] font-semibold uppercase tracking-wide text-muted">Para avançar:</span>
+                {stageCriteria.map((crit) => {
+                  const ok = criterionMet(s, deal, company, crit);
+                  const handleClick = () => {
+                    if (crit.kind === "field") {
+                      open({ kind: "editCompany", companyId: company.id });
+                    } else if (crit.kind === "contact") {
+                      open({ kind: "contact", companyId: company.id });
+                    } else {
+                      const nextVal = !deal.checklist[crit.id];
+                      s.setChecklist(deal.id, { [crit.id]: nextVal });
+                      toast(nextVal ? `Critério marcado: ${crit.label}` : `Critério desmarcado: ${crit.label}`);
+                    }
+                  };
+                  return (
+                    <button
+                      key={crit.id}
+                      type="button"
+                      onClick={handleClick}
+                      title={ok ? "Critério cumprido" : "Clique para resolver este critério"}
+                      className={cn(
+                        "inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11.5px] transition",
+                        ok
+                          ? "border-ok/30 bg-ok/10 font-medium text-ok hover:bg-ok/15"
+                          : "border-line bg-white font-medium text-ink hover:border-navy/40 hover:bg-soft",
+                      )}
+                    >
+                      {ok ? <Check size={11} className="text-ok" /> : <Circle size={10} className="text-muted" />}
+                      {crit.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
           </div>
         )}
       </Card>
@@ -314,15 +449,25 @@ function EmpresaView() {
 
           {tab === "timeline" && (
             <div>
-              <div className="flex gap-2 border-b border-line/70 px-4 py-3">
-                <StickyNote size={16} className="mt-2.5 shrink-0 text-muted" />
+              <div className="flex flex-wrap items-center gap-2 border-b border-line/70 px-4 py-3">
+                <StickyNote size={16} className="shrink-0 text-muted" />
                 <input
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addNote()}
-                  placeholder="Adicionar nota interna ao histórico…"
-                  className="h-9.5 flex-1 rounded-[5px] border border-line px-3 text-[13px] outline-none focus:border-navy-3"
+                  placeholder={recording ? "Gravando áudio…" : transcribing ? "Transcrevendo áudio…" : "Adicionar nota interna ao histórico…"}
+                  className="h-9.5 min-w-[200px] flex-1 rounded-[5px] border border-line px-3 text-[13px] outline-none focus:border-navy-3"
                 />
+                <Button
+                  size="sm"
+                  variant={recording ? "danger" : "outline"}
+                  onClick={toggleNoteAudio}
+                  disabled={transcribing}
+                  title={recording ? "Parar gravação" : "Gravar nota por áudio"}
+                >
+                  {recording ? <Square size={12} /> : <Mic size={13} />}
+                  {recording ? "Parar" : transcribing ? "Transcrevendo…" : "Áudio"}
+                </Button>
                 <Button size="sm" variant="outline" onClick={addNote} disabled={!note.trim()}>
                   Salvar
                 </Button>
@@ -330,7 +475,29 @@ function EmpresaView() {
                   <Sparkles size={13} /> Com IA
                 </Button>
               </div>
-              <Timeline items={timeline} />
+              <div className="flex flex-wrap items-center gap-1.5 border-b border-line/50 bg-soft/30 px-4 py-2">
+                {(
+                  [
+                    { id: "todos", label: `Tudo (${timeline.length})` },
+                    { id: "notas", label: "Notas" },
+                    { id: "atividades", label: "Atividades" },
+                    { id: "cobrancas", label: "Cobranças" },
+                  ] as { id: TimelineFilter; label: string }[]
+                ).map((f) => (
+                  <button
+                    key={f.id}
+                    type="button"
+                    onClick={() => setTimelineFilter(f.id)}
+                    className={cn(
+                      "rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold transition",
+                      timelineFilter === f.id ? "bg-navy text-white" : "bg-white text-muted hover:text-ink border border-line/70",
+                    )}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
+              <Timeline items={filteredTimeline} />
             </div>
           )}
 
@@ -481,16 +648,44 @@ function EmpresaView() {
           </Card>
 
           <Card>
-            <CardHeader title="Contatos" kicker={`${contacts.length} ${contacts.length === 1 ? "pessoa" : "pessoas"}`} action={<Button size="xs" variant="ghost" onClick={() => open({ kind: "contact", companyId: company.id })}><UserPlus size={13} /></Button>} />
+            <CardHeader
+              title="Contatos"
+              kicker={`${contacts.length} ${contacts.length === 1 ? "pessoa" : "pessoas"}`}
+              action={
+                <div className="flex items-center gap-1">
+                  {contacts.length > 4 && (
+                    <button type="button" onClick={() => setTab("contatos")} className="px-1.5 text-[11.5px] font-semibold text-navy-3 hover:text-brand">
+                      Ver todos
+                    </button>
+                  )}
+                  <Button size="xs" variant="ghost" onClick={() => open({ kind: "contact", companyId: company.id })}>
+                    <UserPlus size={13} />
+                  </Button>
+                </div>
+              }
+            />
             <ul className="px-4 py-2">
+              {contacts.length === 0 && (
+                <li className="py-2 text-[12px] text-muted">Nenhum contato cadastrado.</li>
+              )}
               {contacts.slice(0, 4).map((c) => (
                 <li key={c.id} className="flex items-center gap-2 py-1.5 text-[12.5px]">
-                  <span className="grid size-7 place-items-center rounded-full bg-soft text-[11px] font-bold text-navy-3">{c.nome[0]}</span>
+                  <span className="grid size-7 shrink-0 place-items-center rounded-full bg-soft text-[11px] font-bold text-navy-3">{c.nome[0]}</span>
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-semibold text-ink">{c.nome}</span>
                     <span className="block truncate text-[11.5px] text-muted">{c.cargo}</span>
                   </span>
                   <Badge tone={c.papel === "Decisor" ? "navy" : "outline"}>{papelRotulo(c.papel)}</Badge>
+                  {c.whatsapp && (
+                    <button
+                      type="button"
+                      onClick={() => startConversation(c)}
+                      title={`Conversar com ${c.nome} no WhatsApp`}
+                      className="grid size-7 shrink-0 place-items-center rounded-full text-ok hover:bg-ok/10"
+                    >
+                      <MessageCircle size={14} />
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>
@@ -499,6 +694,12 @@ function EmpresaView() {
           <Card className="p-4 text-[12.5px]">
             <div className="mb-2 text-[13.5px] font-medium text-ink">Resumo da conta</div>
             <dl className="space-y-1.5">
+              {deal && (
+                <div className="flex justify-between">
+                  <dt className="text-muted">Negócio aberto</dt>
+                  <dd className="font-semibold text-ink">{deal.valor ? money(deal.valor) : "sem valor"}</dd>
+                </div>
+              )}
               <div className="flex justify-between">
                 <dt className="text-muted">Última interação</dt>
                 <dd className="font-medium">{(() => { const l = lastInteractionAt(s, company.id); return l ? fmtAgo(l) : "—"; })()}</dd>
@@ -513,7 +714,7 @@ function EmpresaView() {
               </div>
               <div className="flex justify-between">
                 <dt className="text-muted">Receita registrada</dt>
-                <dd className="font-medium">{money(wins.reduce((a, d) => a + (d.valorRealizado ?? d.valor ?? 0), 0))}</dd>
+                <dd className="font-medium text-ok">{money(wins.reduce((a, d) => a + (d.valorRealizado ?? d.valor ?? 0), 0))}</dd>
               </div>
             </dl>
           </Card>

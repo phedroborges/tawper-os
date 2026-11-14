@@ -1,6 +1,7 @@
 "use client";
 
 import { Check, Circle, FileText, Trophy, XCircle, Paperclip } from "lucide-react";
+import { useRouter } from "next/navigation";
 import { StagePill } from "@/components/crm/crm";
 import { Badge, Button, Card, CardHeader } from "@/components/ui/primitives";
 import { FUNNELS, getStage } from "@/lib/constants";
@@ -14,6 +15,7 @@ import { cn, money, quoteTotals } from "@/lib/utils";
 const QUOTE_TONE: Record<QuoteStatus, "neutral" | "ai" | "green" | "red"> = { rascunho: "neutral", enviado: "ai", aceito: "green", recusado: "red" };
 
 export function DealTab({ company }: { company: Company }) {
+  const router = useRouter();
   const s = useStore();
   const { open } = useUI();
   const deal = openDealOf(s, company.id);
@@ -116,7 +118,7 @@ export function DealTab({ company }: { company: Company }) {
           kicker={quotes.length ? `${quotes.length} orçamento(s)` : "proposta comercial"}
           action={
             <div className="flex flex-wrap gap-1.5">
-              <Button size="xs" variant="primary" onClick={() => { window.location.href = `/propostas?empresa=${company.id}`; }}>
+              <Button size="xs" variant="primary" onClick={() => router.push(`/propostas?empresa=${company.id}`)}>
                 <FileText size={13} /> Gerar proposta
               </Button>
               {deal && (

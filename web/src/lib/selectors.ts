@@ -260,11 +260,21 @@ export interface TimelineItem {
 }
 
 export function timelineOf(d: Data, companyId: string): TimelineItem[] {
+  const interactions = d.interactions.filter((i) => i.companyId === companyId);
+  const doneActivities = d.activities.filter((a) => {
+    if (a.companyId !== companyId || a.status !== "concluida" || !a.completedAt) return false;
+    const actTime = new Date(a.completedAt).getTime();
+    const actTitle = a.titulo.trim().toLowerCase();
+    // Evita mostrar dois itens idênticos quando a conclusão da atividade gera uma interação espelhada no mesmo instante.
+    const hasMirror = interactions.some(
+      (i) => i.titulo.trim().toLowerCase() === actTitle && Math.abs(new Date(i.at).getTime() - actTime) <= 5 * 60_000,
+    );
+    return !hasMirror;
+  });
+
   const items: TimelineItem[] = [
-    ...d.interactions.filter((i) => i.companyId === companyId).map((i) => ({ id: i.id, at: i.at, source: "interaction" as const, interaction: i })),
-    ...d.activities
-      .filter((a) => a.companyId === companyId && a.status === "concluida" && a.completedAt)
-      .map((a) => ({ id: a.id, at: a.completedAt!, source: "activity" as const, activity: a })),
+    ...interactions.map((i) => ({ id: i.id, at: i.at, source: "interaction" as const, interaction: i })),
+    ...doneActivities.map((a) => ({ id: a.id, at: a.completedAt!, source: "activity" as const, activity: a })),
   ];
   return items.sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime());
 }
