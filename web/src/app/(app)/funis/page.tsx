@@ -3,7 +3,7 @@
 import { AlertTriangle, GitMerge, GripVertical, Headset, Pause, Search, Sparkles, Trophy, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
 import { DaysInStage, DueLabel, PeriodFilter, RegionSelect, UserAvatar } from "@/components/crm/crm";
 import { Badge, Input, PageHeader, Segmented, Select } from "@/components/ui/primitives";
@@ -33,8 +33,20 @@ function Kanban() {
   const [period, setPeriod] = useState<Period>(NO_PERIOD);
   const hasPeriod = Boolean(period.from || period.to);
   const [onlyRisk, setOnlyRisk] = useState(false);
-  const [dragId, setDragId] = useState<string | null>(null);
+  const [drag, setDrag] = useState<{
+    dealId: string;
+    startX: number;
+    startY: number;
+    x: number;
+    y: number;
+    offsetX: number;
+    offsetY: number;
+    width: number;
+    active: boolean;
+  } | null>(null);
   const [over, setOver] = useState<string | null>(null);
+  const overRef = useRef<string | null>(null);
+  const boardRef = useRef<HTMLDivElement>(null);
 
   const stages = FUNNELS[funnel].stages;
   const deals = useMemo(() => {
@@ -75,34 +87,106 @@ function Kanban() {
     setOnlyRisk(false);
   };
 
-  const drop = (stageId: string) => {
-    const d = s.deals.find((x) => x.id === dragId);
-    setDragId(null);
-    setOver(null);
-    if (!d || stageKeyToUi(d.stageId) === stageId || d.status !== "aberta") return;
-    const st = stages.find((x) => x.id === stageId)!;
-    if (st.terminal) {
-      open({ kind: "win", dealId: d.id });
-      return;
-    }
-    const c = s.companies.find((x) => x.id === d.companyId);
-    const fromIdx = stageIndex(d.funnel, d.stageId);
-    const toIdx = stageIndex(d.funnel, stageId);
-    if (toIdx < fromIdx) {
-      warnNoBack(d.id);
-      return;
-    }
-    if (c && toIdx > fromIdx && missingCriteria(s, d, c).length === 0) {
-      const hops = s.autoAdvanceDeal(d.id, { untilStageId: stageId, ignoreHold: true });
-      if (hops) {
-        const fresh = useStore.getState().deals.find((x) => x.id === d.id);
-        const landed = fresh ? FUNNELS[fresh.funnel].stages.find((x) => x.id === stageKeyToUi(fresh.stageId)) : st;
-        toast(`Etapa alterada para ${landed?.nome ?? st.nome}`, { sub: hops > 1 ? "Etapas já cumpridas foram avançadas automaticamente" : undefined });
+  const dropDeal = useCallback(
+    (dealId: string, stageId: string) => {
+      const d = s.deals.find((x) => x.id === dealId);
+      if (!d || stageKeyToUi(d.stageId) === stageId || d.status !== "aberta") return;
+      const st = stages.find((x) => x.id === stageId)!;
+      if (st.terminal) {
+        open({ kind: "win", dealId: d.id });
         return;
       }
-    }
-    open({ kind: "move", dealId: d.id, toStageId: stageId });
+      const c = s.companies.find((x) => x.id === d.companyId);
+      const fromIdx = stageIndex(d.funnel, d.stageId);
+      const toIdx = stageIndex(d.funnel, stageId);
+      if (toIdx < fromIdx) {
+        warnNoBack(d.id);
+        return;
+      }
+      if (c && toIdx > fromIdx && missingCriteria(s, d, c).length === 0) {
+        const hops = s.autoAdvanceDeal(d.id, { untilStageId: stageId, ignoreHold: true });
+        if (hops) {
+          const fresh = useStore.getState().deals.find((x) => x.id === d.id);
+          const landed = fresh ? FUNNELS[fresh.funnel].stages.find((x) => x.id === stageKeyToUi(fresh.stageId)) : st;
+          toast(`Etapa alterada para ${landed?.nome ?? st.nome}`, { sub: hops > 1 ? "Etapas já cumpridas foram avançadas automaticamente" : undefined });
+          return;
+        }
+      }
+      open({ kind: "move", dealId: d.id, toStageId: stageId });
+    },
+    [s, stages, open, toast],
+  );
+
+  useEffect(() => {
+    if (!drag) return;
+    const onMove = (e: PointerEvent) => {
+      const dist = Math.hypot(e.clientX - drag.startX, e.clientY - drag.startY);
+      if (!drag.active && dist < 6) return;
+      setDrag((prev) =>
+        prev
+          ? {
+              ...prev,
+              active: true,
+              x: e.clientX - prev.offsetX,
+              y: e.clientY - prev.offsetY,
+            }
+          : null,
+      );
+      const el = document.elementFromPoint(e.clientX, e.clientY);
+      const colEl = el?.closest("[data-stage-id]") as HTMLElement | null;
+      const stageId = colEl?.dataset.stageId ?? null;
+      overRef.current = stageId;
+      setOver(stageId);
+
+      // Auto-scroll horizontal quando arrastar perto das bordas
+      const board = boardRef.current;
+      if (board) {
+        const rect = board.getBoundingClientRect();
+        if (e.clientX < rect.left + 64) board.scrollLeft -= 14;
+        else if (e.clientX > rect.right - 64) board.scrollLeft += 14;
+      }
+    };
+    const onUp = () => {
+      const targetStage = overRef.current;
+      const wasActive = drag.active;
+      const dealId = drag.dealId;
+      overRef.current = null;
+      setDrag(null);
+      setOver(null);
+      if (wasActive && targetStage) {
+        dropDeal(dealId, targetStage);
+      }
+    };
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    window.addEventListener("pointercancel", onUp);
+    return () => {
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      window.removeEventListener("pointercancel", onUp);
+    };
+  }, [drag, dropDeal]);
+
+  const startPointerDrag = (e: React.PointerEvent<HTMLElement>, d: Deal) => {
+    if (d.status !== "aberta" || e.button !== 0) return;
+    if ((e.target as HTMLElement).closest("a, button, input, select, textarea")) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    overRef.current = stageKeyToUi(d.stageId);
+    setDrag({
+      dealId: d.id,
+      startX: e.clientX,
+      startY: e.clientY,
+      x: rect.left,
+      y: rect.top,
+      offsetX: e.clientX - rect.left,
+      offsetY: e.clientY - rect.top,
+      width: rect.width,
+      active: false,
+    });
   };
+
+  const draggedDeal = drag?.active ? s.deals.find((x) => x.id === drag.dealId) : undefined;
+  const draggedFromIdx = draggedDeal ? stageIndex(draggedDeal.funnel, draggedDeal.stageId) : -1;
 
   const startMove = (d: Deal) => {
     const c = s.companies.find((x) => x.id === d.companyId);
@@ -216,25 +300,32 @@ function Kanban() {
         <span className="ml-auto hidden xl:inline text-[12px] text-muted">{FUNNELS[funnel].subtitulo}</span>
       </div>
 
-      <div className="scrollbar-thin -mx-4 overflow-x-auto px-4 pb-4 md:-mx-6 md:px-6 2xl:-mx-8 2xl:px-8">
+      <div ref={boardRef} className={cn("scrollbar-thin -mx-4 overflow-x-auto px-4 pb-4 md:-mx-6 md:px-6 2xl:-mx-8 2xl:px-8", drag?.active && "select-none cursor-grabbing")}>
         {/* Cada etapa ganha uma fatia igual da largura, nunca menos que 240px: telas largas mostram todas. */}
         <div className="grid auto-cols-[minmax(240px,1fr)] grid-flow-col gap-3">
-          {stages.map((st) => {
-            const col = deals.filter((d) => stageKeyToUi(d.stageId) === st.id && (!onlyRisk || (d.status === "aberta" && risky(d))));
+          {stages.map((st, stIdx) => {
+            const col = deals
+              .filter((d) => stageKeyToUi(d.stageId) === st.id && (!onlyRisk || (d.status === "aberta" && risky(d))))
+              .sort((a, b) => {
+                if (st.terminal) return (b.closedAt ?? "").localeCompare(a.closedAt ?? "");
+                const ra = risky(a) ? 0 : 1;
+                const rb = risky(b) ? 0 : 1;
+                if (ra !== rb) return ra - rb;
+                return (a.stageEnteredAt ?? "").localeCompare(b.stageEnteredAt ?? "");
+              });
             const total = col.reduce((a, d) => a + (d.valorRealizado ?? d.valor ?? 0), 0);
+            const isOverOther = Boolean(drag?.active && over === st.id && draggedDeal && stageKeyToUi(draggedDeal.stageId) !== st.id);
+            const isValidDrop = isOverOther && stIdx > draggedFromIdx;
+            const isInvalidDrop = isOverOther && stIdx < draggedFromIdx;
             return (
               <section
                 key={st.id}
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setOver(st.id);
-                }}
-                onDragLeave={() => setOver((o) => (o === st.id ? null : o))}
-                onDrop={() => drop(st.id)}
+                data-stage-id={st.id}
                 className={cn(
-                  "flex min-w-0 flex-col rounded-[8px] border transition-colors",
+                  "flex min-w-0 flex-col rounded-[8px] border transition-all duration-150",
                   st.terminal ? "border-line bg-ok-soft/30" : "border-line bg-soft/50",
-                  over === st.id && "border-navy-3/40 bg-soft",
+                  isValidDrop && "border-navy/50 bg-navy/[0.04] ring-2 ring-navy/15",
+                  isInvalidDrop && "border-brand/40 bg-brand-soft/20",
                 )}
               >
                 <header className="border-b border-line/80 px-3 pt-2.5 pb-2">
@@ -250,7 +341,17 @@ function Kanban() {
                     <span>{st.terminal ? (hasPeriod ? "no período" : "últimos 90 dias") : `limite ${st.limiteDias}d`}</span>
                   </div>
                 </header>
-                <div className="scrollbar-thin flex max-h-[calc(100vh-290px)] min-h-[140px] flex-col gap-2 overflow-y-auto p-2">
+                <div className="scrollbar-thin flex max-h-[calc(100vh-370px)] min-h-[220px] flex-col gap-2 overflow-y-auto p-2">
+                  {isValidDrop && (
+                    <div className="rounded-[8px] border-2 border-dashed border-navy/40 bg-navy/[0.05] px-3 py-2.5 text-center text-[11.5px] font-semibold text-navy transition-all">
+                      Soltar para mover para {st.nome}
+                    </div>
+                  )}
+                  {isInvalidDrop && (
+                    <div className="rounded-[8px] border border-dashed border-brand/40 bg-brand-soft/30 px-3 py-2 text-center text-[11px] font-medium text-brand">
+                      Não é possível voltar etapa
+                    </div>
+                  )}
                   {col.map((d) => {
                     const c = s.companies.find((x) => x.id === d.companyId)!;
                     const next = nextStepOf(s, d.companyId);
@@ -258,20 +359,16 @@ function Kanban() {
                     const overdue = next && new Date(next.dueAt) < new Date(now.toDateString());
                     const sug = s.suggestions.some((x) => x.companyId === c.id && x.status === "pendente");
                     const isRisk = d.status === "aberta" && (stagnant || (!next && c.status === "ativa") || Boolean(overdue));
+                    const isDragging = drag?.active && drag.dealId === d.id;
                     return (
                       <article
                         key={d.id}
-                        draggable={d.status === "aberta"}
-                        onDragStart={() => setDragId(d.id)}
-                        onDragEnd={() => {
-                          setDragId(null);
-                          setOver(null);
-                        }}
+                        onPointerDown={(e) => startPointerDrag(e, d)}
                         className={cn(
-                          "group rounded-[8px] border bg-white p-3 transition hover:border-navy-3/30",
-                          d.status === "aberta" && "cursor-grab active:cursor-grabbing",
+                          "group rounded-[8px] border bg-white p-3 transition-all duration-150 hover:border-navy-3/30",
+                          d.status === "aberta" && "cursor-grab touch-none",
                           isRisk ? "border-brand/30 border-l-[3px] border-l-brand bg-brand-soft/10" : "border-line",
-                          dragId === d.id && "opacity-40",
+                          isDragging && "border-dashed border-navy/35 bg-navy/[0.03] opacity-35 scale-[0.98]",
                         )}
                       >
                         <div className="flex items-start gap-1.5">
@@ -363,13 +460,60 @@ function Kanban() {
                       </article>
                     );
                   })}
-                  {col.length === 0 && <div className="grid flex-1 place-items-center py-6 text-[11.5px] text-muted/70">{over === st.id ? "Solte aqui" : "Vazio"}</div>}
+                  {col.length === 0 && !isOverOther && <div className="grid flex-1 place-items-center py-6 text-[11.5px] text-muted/70">Vazio</div>}
                 </div>
               </section>
             );
           })}
         </div>
       </div>
+
+      {/* Cartão flutuante animado dentro do sistema durante o arraste */}
+      {drag?.active && draggedDeal && (() => {
+        const c = s.companies.find((x) => x.id === draggedDeal.companyId);
+        if (!c) return null;
+        const next = nextStepOf(s, draggedDeal.companyId);
+        const stagnant = isStagnant(draggedDeal, now);
+        const overdue = next && new Date(next.dueAt) < new Date(now.toDateString());
+        const isRisk = stagnant || (!next && c.status === "ativa") || Boolean(overdue);
+        return (
+          <div
+            style={{
+              position: "fixed",
+              left: drag.x,
+              top: drag.y,
+              width: drag.width,
+              zIndex: 60,
+              pointerEvents: "none",
+            }}
+            className={cn(
+              "rounded-[8px] border bg-white p-3 shadow-2xl ring-2 ring-navy/20 rotate-[1.5deg] scale-[1.03]",
+              isRisk ? "border-brand/40 border-l-[3px] border-l-brand" : "border-navy/30",
+            )}
+          >
+            <div className="flex items-start gap-1.5">
+              <GripVertical size={14} className="mt-0.5 shrink-0 text-navy" />
+              <div className="min-w-0 flex-1">
+                <div className="truncate text-[13px] leading-snug font-semibold text-ink">{c.nome}</div>
+                <div className="truncate text-[11px] text-muted">
+                  {c.cidade}/{c.uf} · {draggedDeal.titulo}
+                </div>
+              </div>
+              <UserAvatar userId={c.ownerId} size={22} />
+            </div>
+            <div className="mt-2 flex flex-wrap items-center gap-1.5">
+              <DaysInStage deal={draggedDeal} />
+              {draggedDeal.valor ? <span className="ml-auto text-[11.5px] font-semibold text-ink">{moneyShort(draggedDeal.valor)}</span> : null}
+            </div>
+            {next && (
+              <div className={cn("mt-2 rounded-[6px] px-2 py-1.5 text-[11.5px]", overdue ? "bg-brand-soft/60" : "bg-soft/70")}>
+                <div className="truncate font-medium text-ink">{next.titulo}</div>
+                <DueLabel iso={next.dueAt} className="text-[11px]" />
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 }
