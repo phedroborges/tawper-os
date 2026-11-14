@@ -8,7 +8,7 @@ import { invalidateCrmReadCache } from "@/server/crm";
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-const ADMIN_KEYS: (keyof AppConfig)[] = ["stageRules", "activityRules", "goals"];
+const ADMIN_KEYS: (keyof AppConfig)[] = ["stageRules", "activityRules", "goals", "proposalStandard"];
 
 /** Grava uma parte da configuração. Regras e metas: só administrador. Lembrete: cada pessoa liga ou desliga o seu. */
 export async function POST(request: Request) {

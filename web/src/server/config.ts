@@ -6,7 +6,7 @@ import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 // shortcut: a configuração mora em reference_options (list_key = 'config', value = chave, label = JSON),
 // a tabela de configuração da organização que já existe. Passar para tabela própria se ganhar histórico ou crescer.
 const LIST_KEY = "config";
-const KEYS: (keyof AppConfig)[] = ["stageRules", "activityRules", "goals", "remindersOff"];
+const KEYS: (keyof AppConfig)[] = ["stageRules", "activityRules", "goals", "remindersOff", "proposalStandard"];
 
 const TTL_MS = 5_000;
 let cache: { at: number; config: AppConfig } | null = null;

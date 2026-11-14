@@ -1,4 +1,5 @@
 import { PDFDocument, StandardFonts, rgb, type PDFImage, type PDFFont, type PDFPage } from "pdf-lib";
+import type { ProposalStandardConfig } from "./config";
 import { CONDICOES_PAGAMENTO, papelRotulo } from "./constants";
 import type { Company, Contact, Deal, User } from "./types";
 import { money } from "./utils";
@@ -153,14 +154,15 @@ export function buildInitialProposalInput(params: {
   contact: Contact;
   owner?: User;
   deal?: Deal;
+  standard?: ProposalStandardConfig | null;
   now?: Date;
 }): ProposalDocumentInput {
-  const { company, contact, owner, deal, now = new Date() } = params;
+  const { company, contact, owner, deal, standard, now = new Date() } = params;
   const yy = now.getFullYear();
   const suffix = company.codigo.replace(/\D/g, "").slice(-4).padStart(4, "0");
   const hasTawperPrensa = company.prensa === "Comodato Tawper";
 
-  const initialItems: ProposalLineItem[] = [
+  const defaultItems: ProposalLineItem[] = [
     ...(hasTawperPrensa
       ? []
       : [
@@ -205,7 +207,16 @@ export function buildInitialProposalInput(params: {
     },
   ];
 
+  const initialItems: ProposalLineItem[] =
+    standard?.itensPadrao && standard.itensPadrao.length > 0
+      ? standard.itensPadrao.map((it) => ({ ...it }))
+      : defaultItems;
+
   const cidadeUf = [company.cidade, company.uf].filter(Boolean).join(" / ") || company.regiao || "";
+  const obsCombined = [standard?.observacoesPadrao, company.observacoes]
+    .filter((x) => typeof x === "string" && x.trim().length > 0)
+    .join(" · ");
+
   return {
     cliente: {
       nomeFantasia: company.nome,
@@ -239,14 +250,14 @@ export function buildInitialProposalInput(params: {
     termos: {
       numero: `PROP-${yy}-${suffix}`,
       emitidaEm: now.toLocaleDateString("pt-BR"),
-      validadeDias: 15,
-      condicaoPagamento: CONDICOES_PAGAMENTO[1] ?? "28 dias",
-      prazoEntrega: "Imediato / até 5 dias úteis após aprovação",
-      frete: "CIF — Entrega e implantação pela Tawper",
-      mostrarValores: Boolean(deal?.valor && deal.valor > 0),
-      descontoPct: 0,
-      observacoes: company.observacoes ?? "",
-      incluirInstitucional: true,
+      validadeDias: standard?.validadeDias ?? 15,
+      condicaoPagamento: standard?.condicaoPagamento || CONDICOES_PAGAMENTO[1] || "28 dias",
+      prazoEntrega: standard?.prazoEntrega || "Imediato / até 5 dias úteis após aprovação",
+      frete: standard?.frete || "CIF — Entrega e implantação pela Tawper",
+      mostrarValores: standard ? standard.mostrarValores : Boolean(deal?.valor && deal.valor > 0),
+      descontoPct: standard?.descontoMaxPct ?? 0,
+      observacoes: obsCombined,
+      incluirInstitucional: standard?.incluirInstitucional ?? true,
     },
   };
 }

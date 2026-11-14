@@ -71,7 +71,7 @@ interface Actions {
   logout: () => void;
   hydrateCrm: (snapshot: Partial<DemoData>) => void;
   /** Grava uma parte da configuração (no banco quando ligado) e aplica na hora. */
-  saveConfig: <K extends "stageRules" | "activityRules" | "goals">(key: K, value: AppConfig[K]) => Promise<void>;
+  saveConfig: <K extends "stageRules" | "activityRules" | "goals" | "proposalStandard">(key: K, value: AppConfig[K]) => Promise<void>;
   setReminder: (enabled: boolean) => Promise<void>;
   adoptSaved: (saved: { company: Company; contacts: Contact[]; deal: Deal; activity: Activity }) => void;
   removeCompany: (id: string) => void;

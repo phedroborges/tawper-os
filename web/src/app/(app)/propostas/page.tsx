@@ -9,12 +9,15 @@ import {
   Check,
   CheckCircle2,
   Download,
-  ExternalLink,
   Eye,
+  Lock,
   Plus,
   Printer,
+  Save,
   Search,
+  ShieldCheck,
   Trash2,
+  Unlock,
   UserRound,
   Wrench,
 } from "lucide-react";
@@ -32,6 +35,7 @@ import {
   Select,
 } from "@/components/ui/primitives";
 import { CONDICOES_PAGAMENTO, papelRotulo } from "@/lib/constants";
+import type { ProposalStandardConfig } from "@/lib/config";
 import {
   buildInitialProposalInput,
   buildProposalPdfBytes,
@@ -103,6 +107,12 @@ function PropostasInner() {
   const params = useSearchParams();
   const initialCompanyId = params.get("empresa");
 
+  // Regra de governança: proposta segue um padrão oficial; apenas Administrador altera o padrão/modelo.
+  const isAdmin = user.role === "admin";
+  const [adminUnlocked, setAdminUnlocked] = useState(false);
+  const canEditStandard = isAdmin && adminUnlocked;
+  const [savingStandard, setSavingStandard] = useState(false);
+
   const [step, setStep] = useState<WizardStep>(() => (initialCompanyId ? 2 : 1));
   const [q, setQ] = useState("");
   const [onlyWithDeal, setOnlyWithDeal] = useState(false);
@@ -167,12 +177,14 @@ function PropostasInner() {
     : user.id;
   const activeSeller = s.users.find((u) => u.id === activeSellerId) ?? user;
 
+  const standard = s.config.proposalStandard ?? null;
+
   const baseDraft = useMemo(() => {
     if (!company) return null;
     const fallbackContact = activeContact ?? {
       id: "manual",
       companyId: company.id,
-      nome: "",
+      nome: "Gestão de Manutenção e Compras",
       cargo: "",
       papel: "Decisor" as const,
       influencia: 2 as const,
@@ -185,15 +197,17 @@ function PropostasInner() {
       contact: fallbackContact,
       owner: activeSeller,
       deal,
+      standard,
     });
-  }, [company, activeContact, activeSeller, deal]);
+  }, [company, activeContact, activeSeller, deal, standard]);
 
+  // Se não for Admin (ou se Admin não desbloqueou edição), usa estritamente o padrão oficial (baseDraft)
   const draft: ProposalDocumentInput | null = company
-    ? (draftsByCompany[company.id] ?? baseDraft)
+    ? (canEditStandard ? (draftsByCompany[company.id] ?? baseDraft) : baseDraft)
     : null;
 
   const patchDraft = (updater: (cur: ProposalDocumentInput) => ProposalDocumentInput) => {
-    if (!company || !draft) return;
+    if (!canEditStandard || !company || !draft) return;
     setDraftsByCompany((prev) => ({
       ...prev,
       [company.id]: updater(draft),
@@ -213,7 +227,7 @@ function PropostasInner() {
     if (!company) return;
     setSelectedContactIdByCompany((prev) => ({ ...prev, [company.id]: contactId }));
     const found = contacts.find((c) => c.id === contactId);
-    if (!found) return;
+    if (!found || !canEditStandard) return;
     patchDraft((cur) => ({
       ...cur,
       cliente: {
@@ -228,7 +242,7 @@ function PropostasInner() {
   };
 
   const handleSelectSeller = (sellerId: string) => {
-    if (!company) return;
+    if (!canEditStandard || !company) return;
     setSelectedSellerIdByCompany((prev) => ({ ...prev, [company.id]: sellerId }));
     const found = s.users.find((u) => u.id === sellerId);
     if (!found) return;
@@ -285,6 +299,36 @@ function PropostasInner() {
         itens: [...cur.itens, nextItem],
       };
     });
+  };
+
+  const saveAsOfficialStandard = async () => {
+    if (!isAdmin || !draft) return;
+    setSavingStandard(true);
+    try {
+      const nextStandard: ProposalStandardConfig = {
+        validadeDias: draft.termos.validadeDias,
+        condicaoPagamento: draft.termos.condicaoPagamento,
+        prazoEntrega: draft.termos.prazoEntrega,
+        frete: draft.termos.frete,
+        mostrarValores: draft.termos.mostrarValores,
+        descontoMaxPct: draft.termos.descontoPct,
+        incluirInstitucional: draft.termos.incluirInstitucional,
+        observacoesPadrao: draft.termos.observacoes,
+        itensPadrao: draft.itens.map((it) => ({ ...it })),
+      };
+      await s.saveConfig("proposalStandard", nextStandard);
+      setAdminUnlocked(false);
+      toast("Padrão oficial salvo", {
+        sub: "Todas as novas propostas da equipe seguirão este modelo bloqueado.",
+      });
+    } catch (e) {
+      toast("Erro ao salvar padrão", {
+        tone: "warn",
+        sub: e instanceof Error ? e.message : "Somente o administrador pode alterar o padrão.",
+      });
+    } finally {
+      setSavingStandard(false);
+    }
   };
 
   const generatePdf = async (mode: "download" | "preview") => {
@@ -358,21 +402,18 @@ function PropostasInner() {
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-10">
-      {/* Header simples e direto + Link para a Apresentação Oficial Guardada */}
+      {/* Cabeçalho limpo sem nenhum link externo/aberto */}
       <PageHeader
-        kicker="Comercial · Fluxo Guiado"
+        kicker="Comercial · Modelo Oficial Tawper"
         title="Gerador de Proposta Comercial"
-        subtitle="Escolha o cliente, alinhe os dados da operação e gere a proposta comercial pronta."
+        subtitle="Modelo padrão protegido pela política Tawper: escolha o cliente, confirme o destinatário e emita a proposta pronta."
         actions={
-          <a
-            href="/apresentacao-tawper/index.html"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-line bg-white px-3 text-[12px] font-semibold text-ink shadow-2xs transition-colors hover:bg-soft"
-            title="Abrir a apresentação comercial oficial da Tawper (guardada no sistema, sem sorteio)"
-          >
-            Apresentação Institucional Tawper <ExternalLink size={13} className="text-muted" />
-          </a>
+          <Badge tone={canEditStandard ? "amber" : "navy"}>
+            {canEditStandard ? <Unlock size={12} /> : <Lock size={12} />}
+            {canEditStandard
+              ? "Modo Administrador (Edição Liberada)"
+              : "Padrão Oficial Bloqueado"}
+          </Badge>
         }
       />
 
@@ -442,7 +483,7 @@ function PropostasInner() {
               Passo 2
             </div>
             <div className="truncate text-[13.5px] font-bold text-ink">
-              Alinhar Informações
+              Conferir Padrão
             </div>
           </div>
         </button>
@@ -486,7 +527,7 @@ function PropostasInner() {
                 Passo 01 · Selecionar Conta
               </div>
               <h2 className="mt-0.5 text-[17px] font-bold tracking-tight text-ink">
-                Para qual cliente vamos preparar a proposta?
+                Para qual cliente vamos emitir a proposta padrão?
               </h2>
             </div>
 
@@ -573,7 +614,7 @@ function PropostasInner() {
       )}
 
       {/* ===================================================================== */}
-      {/* PASSO 2: ALINHAR AS INFORMAÇÕES DA PROPOSTA                           */}
+      {/* PASSO 2: CONFERÊNCIA DO PADRÃO OFICIAL (BLOQUEADO PARA NÃO-ADMIN)     */}
       {/* ===================================================================== */}
       {step === 2 && company && draft && (
         <div className="space-y-5">
@@ -594,9 +635,65 @@ function PropostasInner() {
               </div>
             </div>
 
-            <Button variant="primary" size="sm" onClick={() => setStep(3)}>
-              Finalizar Proposta Pronta <ArrowRight size={14} />
-            </Button>
+            <div className="flex flex-wrap items-center gap-2">
+              {isAdmin && !adminUnlocked && (
+                <Button variant="outline" size="sm" onClick={() => setAdminUnlocked(true)}>
+                  <ShieldCheck size={14} /> Editar Padrão (Admin)
+                </Button>
+              )}
+              {isAdmin && adminUnlocked && (
+                <>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setAdminUnlocked(false)}
+                  >
+                    <Lock size={14} /> Bloquear novamente
+                  </Button>
+                  <Button
+                    variant="dark"
+                    size="sm"
+                    disabled={savingStandard}
+                    onClick={() => void saveAsOfficialStandard()}
+                  >
+                    <Save size={14} /> {savingStandard ? "Salvando…" : "Salvar Padrão Oficial"}
+                  </Button>
+                </>
+              )}
+              <Button variant="primary" size="sm" onClick={() => setStep(3)}>
+                Gerar Proposta Pronta <ArrowRight size={14} />
+              </Button>
+            </div>
+          </div>
+
+          {/* Aviso de Governança / Travamento */}
+          <div
+            className={cn(
+              "flex flex-wrap items-center justify-between gap-3 rounded-[8px] border px-4 py-3 text-[12.5px]",
+              canEditStandard
+                ? "border-warn/40 bg-warn-soft/50 text-ink"
+                : "border-navy/20 bg-soft/60 text-ink",
+            )}
+          >
+            <div className="flex items-center gap-2.5">
+              {canEditStandard ? (
+                <Unlock size={16} className="shrink-0 text-warn" />
+              ) : (
+                <Lock size={16} className="shrink-0 text-navy" />
+              )}
+              <span>
+                {canEditStandard ? (
+                  <>
+                    <strong>Modo Administrador ativo:</strong> você pode ajustar equipamentos, preços e condições e clicar em{" "}
+                    <strong>&quot;Salvar Padrão Oficial&quot;</strong> para aplicar à toda a equipe.
+                  </>
+                ) : (
+                  <>
+                    <strong>Proposta Padrão Tawper:</strong> os equipamentos, valores, condições comerciais e textos são padronizados. Apenas um <strong>Administrador</strong> pode alterar o modelo padrão.
+                  </>
+                )}
+              </span>
+            </div>
           </div>
 
           {/* Bloco 1: Cliente, Destinatário e Consultor */}
@@ -608,8 +705,9 @@ function PropostasInner() {
             />
             <div className="space-y-4 border-t border-line/70 px-5 py-4">
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label="Nome Fantasia" required>
+                <Field label="Nome Fantasia">
                   <Input
+                    disabled={!canEditStandard}
                     value={draft.cliente.nomeFantasia}
                     onChange={(e) =>
                       patchDraft((cur) => ({
@@ -621,6 +719,7 @@ function PropostasInner() {
                 </Field>
                 <Field label="Razão Social">
                   <Input
+                    disabled={!canEditStandard}
                     value={draft.cliente.razaoSocial}
                     onChange={(e) =>
                       patchDraft((cur) => ({
@@ -632,8 +731,9 @@ function PropostasInner() {
                 </Field>
                 <Field label="CNPJ">
                   <Input
+                    disabled={!canEditStandard}
                     value={draft.cliente.cnpj}
-                    placeholder="00.000.000/0001-00"
+                    placeholder="Conforme cadastro no CRM"
                     onChange={(e) =>
                       patchDraft((cur) => ({
                         ...cur,
@@ -644,6 +744,7 @@ function PropostasInner() {
                 </Field>
                 <Field label="Cidade / UF">
                   <Input
+                    disabled={!canEditStandard}
                     value={draft.cliente.cidadeUf}
                     onChange={(e) =>
                       patchDraft((cur) => ({
@@ -656,17 +757,17 @@ function PropostasInner() {
               </div>
 
               <div className="grid gap-4 border-t border-line/60 pt-4 lg:grid-cols-2">
-                {/* Destinatário no Cliente */}
+                {/* Destinatário no Cliente (Vendedor pode selecionar um contato já cadastrado no CRM) */}
                 <div className="space-y-3 rounded-[8px] border border-line/80 bg-paper/60 p-3.5">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-[11px] font-extrabold tracking-[0.1em] text-navy-3 uppercase">
-                      Destinatário no Cliente (A/C)
+                      Destinatário Cadastrado (A/C)
                     </span>
                     {contacts.length > 0 && (
                       <select
                         value={activeContactId}
                         onChange={(e) => handleSelectContact(e.target.value)}
-                        className="rounded border border-line bg-white px-2 py-0.5 text-[11.5px] font-medium text-ink"
+                        className="rounded border border-line bg-white px-2 py-1 text-[12px] font-semibold text-ink"
                       >
                         {contacts.map((c) => (
                           <option key={c.id} value={c.id}>
@@ -679,6 +780,7 @@ function PropostasInner() {
                   <div className="grid gap-2.5 sm:grid-cols-3">
                     <Field label="Nome do Responsável">
                       <Input
+                        disabled={!canEditStandard}
                         value={draft.cliente.contatoNome}
                         onChange={(e) =>
                           patchDraft((cur) => ({
@@ -690,6 +792,7 @@ function PropostasInner() {
                     </Field>
                     <Field label="Cargo / Setor">
                       <Input
+                        disabled={!canEditStandard}
                         value={draft.cliente.contatoCargo}
                         onChange={(e) =>
                           patchDraft((cur) => ({
@@ -701,6 +804,7 @@ function PropostasInner() {
                     </Field>
                     <Field label="WhatsApp / Telefone">
                       <Input
+                        disabled={!canEditStandard}
                         value={draft.cliente.contatoWhatsapp}
                         onChange={(e) =>
                           patchDraft((cur) => ({
@@ -715,25 +819,28 @@ function PropostasInner() {
 
                 {/* Consultor Tawper */}
                 <div className="space-y-3 rounded-[8px] border border-line/80 bg-paper/60 p-3.5">
-                  <div className="flex items-center justify-between">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-[11px] font-extrabold tracking-[0.1em] text-brand uppercase">
                       Consultor Responsável Tawper
                     </span>
-                    <select
-                      value={activeSellerId}
-                      onChange={(e) => handleSelectSeller(e.target.value)}
-                      className="rounded border border-line bg-white px-2 py-0.5 text-[11.5px] font-medium text-ink"
-                    >
-                      {sellers.map((u) => (
-                        <option key={u.id} value={u.id}>
-                          {u.name}
-                        </option>
-                      ))}
-                    </select>
+                    {canEditStandard && (
+                      <select
+                        value={activeSellerId}
+                        onChange={(e) => handleSelectSeller(e.target.value)}
+                        className="rounded border border-line bg-white px-2 py-1 text-[12px] font-medium text-ink"
+                      >
+                        {sellers.map((u) => (
+                          <option key={u.id} value={u.id}>
+                            {u.name}
+                          </option>
+                        ))}
+                      </select>
+                    )}
                   </div>
                   <div className="grid gap-2.5 sm:grid-cols-3">
-                    <Field label="Nome na Proposta">
+                    <Field label="Consultor">
                       <Input
+                        disabled={!canEditStandard}
                         value={draft.vendedor.nome}
                         onChange={(e) =>
                           patchDraft((cur) => ({
@@ -745,6 +852,7 @@ function PropostasInner() {
                     </Field>
                     <Field label="Cargo">
                       <Input
+                        disabled={!canEditStandard}
                         value={draft.vendedor.cargo}
                         onChange={(e) =>
                           patchDraft((cur) => ({
@@ -756,6 +864,7 @@ function PropostasInner() {
                     </Field>
                     <Field label="WhatsApp Comercial">
                       <Input
+                        disabled={!canEditStandard}
                         value={draft.vendedor.telefone}
                         onChange={(e) =>
                           patchDraft((cur) => ({
@@ -771,19 +880,19 @@ function PropostasInner() {
             </div>
           </Card>
 
-          {/* Bloco 2: Frota do Cliente & Escopo de Equipamentos */}
+          {/* Bloco 2: Frota do Cliente & Escopo Padrão Tawper */}
           <Card>
             <CardHeader
-              kicker="2 · Diagnóstico Técnico e Escopo"
-              title="Parque de Máquinas e Equipamentos da Proposta"
+              kicker="2 · Diagnóstico Técnico e Escopo Padrão"
+              title="Parque de Máquinas e Soluções Tawper"
               action={<Wrench size={16} className="text-navy-3" />}
             />
             <div className="space-y-4 border-t border-line/70 px-5 py-4">
               <div className="grid gap-3 rounded-[8px] border border-line bg-soft/35 p-3.5 sm:grid-cols-2 lg:grid-cols-4">
                 <Field label="Qtd. Colhedoras / Máquinas">
                   <Input
+                    disabled={!canEditStandard}
                     value={draft.frota.colhedoras}
-                    placeholder="Ex.: 18"
                     onChange={(e) =>
                       patchDraft((cur) => ({
                         ...cur,
@@ -794,8 +903,8 @@ function PropostasInner() {
                 </Field>
                 <Field label="Modelos dos Equipamentos">
                   <Input
+                    disabled={!canEditStandard}
                     value={draft.frota.modelos}
-                    placeholder="Ex.: Case A8800, John Deere CH570"
                     onChange={(e) =>
                       patchDraft((cur) => ({
                         ...cur,
@@ -806,8 +915,8 @@ function PropostasInner() {
                 </Field>
                 <Field label="Sistema de Prensa">
                   <Input
+                    disabled={!canEditStandard}
                     value={draft.frota.prensa}
-                    placeholder="Comodato Tawper / Própria"
                     onChange={(e) =>
                       patchDraft((cur) => ({
                         ...cur,
@@ -818,8 +927,8 @@ function PropostasInner() {
                 </Field>
                 <Field label="Marca / Fornecedor Atual">
                   <Input
+                    disabled={!canEditStandard}
                     value={draft.frota.marcaAtual}
-                    placeholder="Ex.: Parker, Gates…"
                     onChange={(e) =>
                       patchDraft((cur) => ({
                         ...cur,
@@ -830,48 +939,54 @@ function PropostasInner() {
                 </Field>
               </div>
 
-              <div>
-                <div className="label mb-2">Adicionar equipamento ou solução rápida</div>
-                <div className="flex flex-wrap gap-1.5">
-                  {PROPOSAL_EQUIPMENT_PRESETS.map((preset) => (
-                    <Button
-                      key={preset.key}
-                      type="button"
-                      size="xs"
-                      variant="outline"
-                      onClick={() => addPresetItem(preset)}
-                    >
-                      {preset.label}
+              {canEditStandard && (
+                <div>
+                  <div className="label mb-2">Adicionar equipamento ou solução padrão (Somente Admin)</div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {PROPOSAL_EQUIPMENT_PRESETS.map((preset) => (
+                      <Button
+                        key={preset.key}
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={() => addPresetItem(preset)}
+                      >
+                        {preset.label}
+                      </Button>
+                    ))}
+                    <Button type="button" size="xs" variant="ghost" onClick={() => addPresetItem()}>
+                      <Plus size={12} /> Item personalizado
                     </Button>
-                  ))}
-                  <Button type="button" size="xs" variant="ghost" onClick={() => addPresetItem()}>
-                    <Plus size={12} /> Item personalizado
-                  </Button>
+                  </div>
                 </div>
-              </div>
+              )}
 
               <div className="space-y-2.5">
                 {draft.itens.map((item, idx) => (
                   <div key={item.id} className="rounded-[8px] border border-line bg-paper/60 p-3.5">
                     <div className="mb-2 flex items-center justify-between gap-2">
                       <Badge tone="navy">Item {String(idx + 1).padStart(2, "0")}</Badge>
-                      <button
-                        type="button"
-                        onClick={() => removeItem(item.id)}
-                        className="inline-flex items-center gap-1 text-[11.5px] text-muted hover:text-brand"
-                      >
-                        <Trash2 size={13} /> Remover
-                      </button>
+                      {canEditStandard && (
+                        <button
+                          type="button"
+                          onClick={() => removeItem(item.id)}
+                          className="inline-flex items-center gap-1 text-[11.5px] text-muted hover:text-brand"
+                        >
+                          <Trash2 size={13} /> Remover
+                        </button>
+                      )}
                     </div>
                     <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-[1.6fr_1fr_90px_90px_130px]">
                       <Field label="Equipamento / Solução">
                         <Input
+                          disabled={!canEditStandard}
                           value={item.equipamento}
                           onChange={(e) => updateItem(item.id, { equipamento: e.target.value })}
                         />
                       </Field>
                       <Field label="Modalidade">
                         <Select
+                          disabled={!canEditStandard}
                           value={item.modalidade}
                           onChange={(e) =>
                             updateItem(item.id, { modalidade: e.target.value as ProposalMode })
@@ -886,6 +1001,7 @@ function PropostasInner() {
                       </Field>
                       <Field label="Qtd.">
                         <Input
+                          disabled={!canEditStandard}
                           type="number"
                           min={1}
                           value={item.qtd}
@@ -896,6 +1012,7 @@ function PropostasInner() {
                       </Field>
                       <Field label="Unid.">
                         <Input
+                          disabled={!canEditStandard}
                           value={item.unidade}
                           onChange={(e) => updateItem(item.id, { unidade: e.target.value })}
                         />
@@ -905,7 +1022,7 @@ function PropostasInner() {
                           type="number"
                           min={0}
                           step="100"
-                          disabled={item.modalidade === "cortesia" || !draft.termos.mostrarValores}
+                          disabled={!canEditStandard || item.modalidade === "cortesia" || !draft.termos.mostrarValores}
                           value={item.modalidade === "cortesia" ? 0 : item.valorUnitario}
                           onChange={(e) =>
                             updateItem(item.id, {
@@ -918,6 +1035,7 @@ function PropostasInner() {
                     <div className="mt-2">
                       <Field label="Especificação técnica / Aplicação">
                         <Input
+                          disabled={!canEditStandard}
                           value={item.especificacao}
                           onChange={(e) => updateItem(item.id, { especificacao: e.target.value })}
                         />
@@ -929,28 +1047,40 @@ function PropostasInner() {
             </div>
           </Card>
 
-          {/* Bloco 3: Condições Comerciais */}
+          {/* Bloco 3: Condições Comerciais Padrão */}
           <Card>
             <CardHeader
-              kicker="3 · Fechamento Comercial"
-              title="Condições Comerciais, Prazos e Valores"
+              kicker="3 · Termos e Condições Padronizadas"
+              title="Condições Comerciais Oficiais"
               action={<UserRound size={16} className="text-brand" />}
             />
             <div className="space-y-4 border-t border-line/70 px-5 py-4">
               <div className="flex flex-wrap items-center justify-between gap-4 rounded-[8px] border border-line bg-soft/45 px-4 py-3">
                 <div className="flex flex-wrap items-center gap-5">
-                  <Checkbox
-                    checked={draft.termos.mostrarValores}
-                    onChange={(on) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        termos: { ...cur.termos, mostrarValores: on },
-                      }))
-                    }
-                    label="Exibir valores financeiros (R$) na proposta"
-                    sub="Desmarque para proposta técnica / comodato sem preço aberto"
-                  />
-                  {draft.termos.mostrarValores && (
+                  {canEditStandard ? (
+                    <Checkbox
+                      checked={draft.termos.mostrarValores}
+                      onChange={(on) =>
+                        patchDraft((cur) => ({
+                          ...cur,
+                          termos: { ...cur.termos, mostrarValores: on },
+                        }))
+                      }
+                      label="Exibir valores financeiros (R$) na proposta"
+                      sub="Somente Administrador define política de preço aberto/comodato"
+                    />
+                  ) : (
+                    <div className="text-[12.5px] font-semibold text-ink">
+                      Política de exibição de preço:{" "}
+                      <span className="text-navy">
+                        {draft.termos.mostrarValores
+                          ? "Com valores comerciais (R$)"
+                          : "Modelo técnico / Comodato (sem preço aberto)"}
+                      </span>
+                    </div>
+                  )}
+
+                  {draft.termos.mostrarValores && canEditStandard && (
                     <div className="flex items-center gap-2 text-[12.5px]">
                       <span className="text-muted">Desconto (%):</span>
                       <Input
@@ -990,6 +1120,7 @@ function PropostasInner() {
               <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 <Field label="Nº da Proposta">
                   <Input
+                    disabled={!canEditStandard}
                     value={draft.termos.numero}
                     onChange={(e) =>
                       patchDraft((cur) => ({
@@ -1001,6 +1132,7 @@ function PropostasInner() {
                 </Field>
                 <Field label="Validade (dias)">
                   <Input
+                    disabled={!canEditStandard}
                     type="number"
                     min={1}
                     max={180}
@@ -1018,6 +1150,7 @@ function PropostasInner() {
                 </Field>
                 <Field label="Condição de Pagamento">
                   <Select
+                    disabled={!canEditStandard}
                     value={draft.termos.condicaoPagamento}
                     onChange={(e) =>
                       patchDraft((cur) => ({
@@ -1038,6 +1171,7 @@ function PropostasInner() {
                 </Field>
                 <Field label="Frete / Entrega">
                   <Input
+                    disabled={!canEditStandard}
                     value={draft.termos.frete}
                     onChange={(e) =>
                       patchDraft((cur) => ({
@@ -1052,6 +1186,7 @@ function PropostasInner() {
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Prazo de Entrega / Implantação">
                   <Input
+                    disabled={!canEditStandard}
                     value={draft.termos.prazoEntrega}
                     onChange={(e) =>
                       patchDraft((cur) => ({
@@ -1061,8 +1196,9 @@ function PropostasInner() {
                     }
                   />
                 </Field>
-                <Field label="Observações e Diretrizes da Operação">
+                <Field label="Observações Padrão da Proposta">
                   <Input
+                    disabled={!canEditStandard}
                     value={draft.termos.observacoes}
                     onChange={(e) =>
                       patchDraft((cur) => ({
@@ -1078,9 +1214,20 @@ function PropostasInner() {
                 <Button variant="outline" onClick={() => setStep(1)}>
                   <ArrowLeft size={14} /> Escolher outro cliente
                 </Button>
-                <Button variant="primary" onClick={() => setStep(3)}>
-                  Finalizar e Gerar Proposta Pronta <ArrowRight size={14} />
-                </Button>
+                <div className="flex flex-wrap items-center gap-2">
+                  {canEditStandard && (
+                    <Button
+                      variant="dark"
+                      disabled={savingStandard}
+                      onClick={() => void saveAsOfficialStandard()}
+                    >
+                      <Save size={14} /> {savingStandard ? "Salvando…" : "Salvar Padrão Oficial"}
+                    </Button>
+                  )}
+                  <Button variant="primary" onClick={() => setStep(3)}>
+                    Finalizar e Gerar Proposta Pronta <ArrowRight size={14} />
+                  </Button>
+                </div>
               </div>
             </div>
           </Card>
@@ -1098,7 +1245,7 @@ function PropostasInner() {
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.5 text-[11.5px] font-extrabold tracking-[0.14em] text-white/85 uppercase">
                   <CheckCircle2 size={15} className="text-brand" />
-                  Proposta Pronta para Envio · {draft.termos.numero}
+                  Proposta Oficial Pronta · {draft.termos.numero}
                 </span>
                 <span className="text-[12px] text-white/75">
                   Validade: {draft.termos.validadeDias} dias
@@ -1126,7 +1273,7 @@ function PropostasInner() {
                     {draft.frota.colhedoras || "—"} máquina(s)
                   </div>
                   <div className="mt-0.5 text-[12px] text-muted">
-                    {draft.frota.modelos} · Prensa: {draft.frota.prensa}
+                    {draft.frota.modelos || "Frota agroindustrial"} · Prensa: {draft.frota.prensa || "Padrão Tawper"}
                   </div>
                 </div>
 
@@ -1135,10 +1282,10 @@ function PropostasInner() {
                     02 · Escopo Técnico
                   </div>
                   <div className="mt-1 text-[14.5px] font-bold text-ink">
-                    {draft.itens.length} item(ns) na proposta
+                    {draft.itens.length} item(ns) padrão Tawper
                   </div>
                   <div className="mt-0.5 text-[12px] text-muted">
-                    Padrão Tawper + Rastreabilidade HydraSense
+                    Apresentação oficial + Rastreabilidade HydraSense
                   </div>
                 </div>
 
@@ -1158,7 +1305,7 @@ function PropostasInner() {
               {/* Lista enxuta dos itens incluídos */}
               <div className="rounded-[8px] border border-line bg-paper p-4">
                 <div className="mb-2.5 text-[11px] font-extrabold tracking-[0.1em] text-navy-3 uppercase">
-                  Itens alinhados nesta proposta
+                  Itens da proposta oficial
                 </div>
                 <ul className="divide-y divide-line/60 text-[13px]">
                   {draft.itens.map((it, idx) => (
@@ -1202,14 +1349,14 @@ function PropostasInner() {
                   onClick={printWidescreenProposal}
                   className="w-full justify-center"
                 >
-                  <Printer size={16} /> Imprimir Proposta no Formato Apresentação
+                  <Printer size={16} /> Imprimir Apresentação Comercial
                 </Button>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button variant="ghost" size="sm" onClick={() => setStep(2)}>
-                    <ArrowLeft size={14} /> Voltar e editar dados
+                    <ArrowLeft size={14} /> Voltar
                   </Button>
                   <Button
                     variant="outline"

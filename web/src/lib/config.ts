@@ -48,15 +48,45 @@ export interface Goals {
   registros?: RecordGoalConfig;
 }
 
+export interface ProposalStandardItem {
+  id: string;
+  equipamento: string;
+  especificacao: string;
+  modalidade: "venda" | "comodato" | "locacao" | "cortesia";
+  unidade: string;
+  qtd: number;
+  valorUnitario: number;
+}
+
+export interface ProposalStandardConfig {
+  validadeDias: number;
+  condicaoPagamento: string;
+  prazoEntrega: string;
+  frete: string;
+  mostrarValores: boolean;
+  descontoMaxPct: number;
+  incluirInstitucional: boolean;
+  observacoesPadrao: string;
+  itensPadrao?: ProposalStandardItem[];
+}
+
 export interface AppConfig {
   stageRules: Record<string, StageRule>;
   activityRules: Partial<Record<ActivityType, ActivityRule>>;
   goals: Goals | null;
   /** Quem desligou o lembrete diário por WhatsApp. */
   remindersOff: string[];
+  /** Padrão oficial da Proposta Comercial (alterado somente pelo Administrador). */
+  proposalStandard?: ProposalStandardConfig | null;
 }
 
-export const EMPTY_CONFIG: AppConfig = { stageRules: {}, activityRules: {}, goals: null, remindersOff: [] };
+export const EMPTY_CONFIG: AppConfig = {
+  stageRules: {},
+  activityRules: {},
+  goals: null,
+  remindersOff: [],
+  proposalStandard: null,
+};
 
 export const stageRuleKey = (funnel: FunnelId, stageId: string) => `${funnel}:${stageId}`;
 
@@ -125,5 +155,23 @@ export function parseConfig(raw: Partial<Record<keyof AppConfig, unknown>>): App
           }
         : null,
     remindersOff: Array.isArray(raw.remindersOff) ? raw.remindersOff.filter((x): x is string => typeof x === "string") : [],
+    proposalStandard: (() => {
+      const ps = obj(raw.proposalStandard);
+      if (typeof ps.condicaoPagamento !== "string" && typeof ps.validadeDias !== "number") return null;
+      const itens = Array.isArray(ps.itensPadrao)
+        ? (ps.itensPadrao as ProposalStandardItem[]).filter((x) => x && typeof x.equipamento === "string")
+        : undefined;
+      return {
+        validadeDias: typeof ps.validadeDias === "number" && ps.validadeDias > 0 ? Math.min(180, Math.round(ps.validadeDias)) : 15,
+        condicaoPagamento: typeof ps.condicaoPagamento === "string" && ps.condicaoPagamento ? ps.condicaoPagamento : "28 dias",
+        prazoEntrega: typeof ps.prazoEntrega === "string" && ps.prazoEntrega ? ps.prazoEntrega : "Imediato / até 5 dias úteis após aprovação",
+        frete: typeof ps.frete === "string" && ps.frete ? ps.frete : "CIF — Entrega e implantação pela Tawper",
+        mostrarValores: typeof ps.mostrarValores === "boolean" ? ps.mostrarValores : true,
+        descontoMaxPct: typeof ps.descontoMaxPct === "number" ? Math.max(0, Math.min(90, ps.descontoMaxPct)) : 0,
+        incluirInstitucional: typeof ps.incluirInstitucional === "boolean" ? ps.incluirInstitucional : true,
+        observacoesPadrao: typeof ps.observacoesPadrao === "string" ? ps.observacoesPadrao : "",
+        ...(itens && itens.length > 0 ? { itensPadrao: itens } : {}),
+      };
+    })(),
   };
 }

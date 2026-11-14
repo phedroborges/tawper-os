@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { parseConfig } from "./config";
 import { buildInitialProposalInput, buildProposalPdfBytes, calcProposalTotals, pdfSafeText } from "./proposal";
 import { buildTawperPresentationDeck } from "./tawper-presentation";
 import type { Company, Contact, Deal, User } from "./types";
@@ -112,5 +113,54 @@ describe("proposal PDF generator", () => {
     const fullDeck = buildTawperPresentationDeck(data, { mode: "complete" });
     expect(fullDeck.slides.length).toBe(35);
     expect(fullDeck.html.toLowerCase()).not.toContain("kit churrasco");
+  });
+
+  it("aplica o padrão oficial salvo pelo administrador e preserva o parseConfig", () => {
+    const parsed = parseConfig({
+      proposalStandard: {
+        validadeDias: 30,
+        condicaoPagamento: "30/60 dias",
+        prazoEntrega: "Entrega em 48h",
+        frete: "FOB (retira)",
+        mostrarValores: false,
+        descontoMaxPct: 5,
+        incluirInstitucional: false,
+        observacoesPadrao: "Regra oficial de safra",
+        itensPadrao: [
+          {
+            id: "std-1",
+            equipamento: "Prensa Hidráulica Padrão",
+            especificacao: "Modelo oficial homologado",
+            modalidade: "comodato",
+            unidade: "un",
+            qtd: 2,
+            valorUnitario: 0,
+          },
+        ],
+      },
+    });
+
+    expect(parsed.proposalStandard?.validadeDias).toBe(30);
+    expect(parsed.proposalStandard?.mostrarValores).toBe(false);
+
+    const data = buildInitialProposalInput({
+      company,
+      contact,
+      owner,
+      deal,
+      now: new Date(2026, 10, 14),
+      standard: parsed.proposalStandard,
+    });
+
+    expect(data.termos.validadeDias).toBe(30);
+    expect(data.termos.condicaoPagamento).toBe("30/60 dias");
+    expect(data.termos.prazoEntrega).toBe("Entrega em 48h");
+    expect(data.termos.frete).toBe("FOB (retira)");
+    expect(data.termos.mostrarValores).toBe(false);
+    expect(data.termos.incluirInstitucional).toBe(false);
+    expect(data.termos.observacoes).toContain("Regra oficial de safra");
+    expect(data.itens).toHaveLength(1);
+    expect(data.itens[0]?.equipamento).toBe("Prensa Hidráulica Padrão");
+    expect(data.itens[0]?.qtd).toBe(2);
   });
 });
