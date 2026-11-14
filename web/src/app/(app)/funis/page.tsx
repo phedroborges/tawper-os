@@ -300,7 +300,7 @@ function Kanban() {
         <span className="ml-auto hidden xl:inline text-[12px] text-muted">{FUNNELS[funnel].subtitulo}</span>
       </div>
 
-      <div ref={boardRef} className={cn("scrollbar-thin -mx-4 overflow-x-auto px-4 pb-1 md:-mx-6 md:px-6 2xl:-mx-8 2xl:px-8 lg:min-h-0 lg:flex-1 lg:overflow-y-hidden", drag?.active && "select-none cursor-grabbing")}>
+      <div ref={boardRef} className={cn("no-scrollbar -mx-4 overflow-x-auto px-4 pb-1 md:-mx-6 md:px-6 2xl:-mx-8 2xl:px-8 lg:min-h-0 lg:flex-1 lg:overflow-y-hidden", drag?.active && "select-none cursor-grabbing")}>
         {/* Cada etapa ganha uma fatia igual da largura, nunca menos que 240px: telas largas mostram todas. */}
         <div className="grid h-full auto-cols-[minmax(240px,1fr)] grid-flow-col gap-3">
           {stages.map((st, stIdx) => {
@@ -341,7 +341,7 @@ function Kanban() {
                     <span>{st.terminal ? (hasPeriod ? "no período" : "últimos 90 dias") : `limite ${st.limiteDias}d`}</span>
                   </div>
                 </header>
-                <div className="scrollbar-thin flex min-h-[220px] flex-1 flex-col gap-2 overflow-y-auto p-2 lg:min-h-0">
+                <div className="no-scrollbar flex min-h-[220px] flex-1 flex-col gap-2 overflow-y-auto p-2 lg:min-h-0">
                   {isValidDrop && (
                     <div className="rounded-[8px] border-2 border-dashed border-navy/40 bg-navy/[0.05] px-3 py-2.5 text-center text-[11.5px] font-semibold text-navy transition-all">
                       Soltar para mover para {st.nome}
@@ -367,7 +367,7 @@ function Kanban() {
                         className={cn(
                           "group rounded-[8px] border bg-white p-3 transition-all duration-150 hover:border-navy-3/30",
                           d.status === "aberta" && "cursor-grab touch-none",
-                          isRisk ? "border-brand/30 border-l-[3px] border-l-brand bg-brand-soft/10" : "border-line",
+                          isRisk ? "border-brand/35 bg-brand-soft/10" : "border-line",
                           isDragging && "border-dashed border-navy/35 bg-navy/[0.03] opacity-35 scale-[0.98]",
                         )}
                       >
@@ -488,7 +488,7 @@ function Kanban() {
             }}
             className={cn(
               "rounded-[8px] border bg-white p-3 shadow-2xl ring-2 ring-navy/20 rotate-[1.5deg] scale-[1.03]",
-              isRisk ? "border-brand/40 border-l-[3px] border-l-brand" : "border-navy/30",
+              isRisk ? "border-brand/40" : "border-navy/30",
             )}
           >
             <div className="flex items-start gap-1.5">
