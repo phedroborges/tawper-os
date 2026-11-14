@@ -84,3 +84,12 @@ export async function confirmRouteRecord(id: string) {
   const upd = await getSupabaseAdmin().from("route_plans").update({ status: "confirmed" }).eq("id", id).eq("organization_id", TAWPER_ORG_ID).eq("status", "planned");
   if (upd.error) throw new Error(upd.error.message);
 }
+
+export async function deleteRouteRecord(id: string) {
+  if (!isUuid(id)) throw new Error("Esta rota ainda não está no banco.");
+  const sb = getSupabaseAdmin();
+  const delStops = await sb.from("route_stops").delete().eq("route_plan_id", id).eq("organization_id", TAWPER_ORG_ID);
+  if (delStops.error) throw new Error(delStops.error.message);
+  const delPlan = await sb.from("route_plans").delete().eq("id", id).eq("organization_id", TAWPER_ORG_ID).eq("status", "planned");
+  if (delPlan.error) throw new Error(delPlan.error.message);
+}

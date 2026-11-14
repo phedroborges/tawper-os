@@ -131,6 +131,7 @@ interface Actions {
   }) => string;
   /** Confirma rota planejada: cria atividades de visita e marca como confirmada. */
   confirmRoute: (routeId: string) => void;
+  deleteRoute: (routeId: string) => void;
 }
 
 export type AppState = DemoData & Session & Actions;
@@ -959,6 +960,28 @@ export const useStore = create<AppState>()(
           });
           void pushMutation({ action: "confirmRoute", id: routeId });
           scheduleRouteVisits(get, route);
+        },
+
+        deleteRoute: (routeId) => {
+          const s = get();
+          const r = s.routes.find((x) => x.id === routeId);
+          if (!r || r.status !== "planejada") return;
+          set({
+            routes: s.routes.filter((x) => x.id !== routeId),
+            audit: [
+              auditEntry({
+                autorId: me(),
+                origem: "usuario",
+                entidade: "Rota",
+                entidadeId: routeId,
+                campo: "status",
+                de: "planejada",
+                para: "excluída",
+              }),
+              ...s.audit,
+            ],
+          });
+          void pushMutation({ action: "deleteRoute", id: routeId });
         },
       };
     },

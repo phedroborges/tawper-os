@@ -55,6 +55,8 @@ type Props = {
   stops: RouteMapStop[];
   /** Destaca a sequência da rota (ids na ordem). Sem isso, só mostra pins dos candidatos. */
   orderedIds?: string[] | null;
+  pickedIds?: string[];
+  onToggleStop?: (id: string) => void;
   className?: string;
   height?: number;
   onRouteComputed?: (summary: DrivingRouteSummary | null) => void;
@@ -296,13 +298,17 @@ function useResolvedPoints(stops: RouteMapStop[]) {
 function CompanyMarker({
   point,
   order,
+  picked,
   selected,
   onSelect,
+  onToggleStop,
 }: {
   point: MapPoint;
   order?: number;
+  picked: boolean;
   selected: boolean;
   onSelect: (id: string | null) => void;
+  onToggleStop?: (id: string) => void;
 }) {
   const [markerRef, marker] = useMarkerRef();
   const place = [point.cidade, point.uf].filter(Boolean).join("/");
@@ -322,27 +328,46 @@ function CompanyMarker({
           onCloseClick={() => onSelect(null)}
           headerDisabled
         >
-          <div style={{ minWidth: 160, maxWidth: 240, padding: "2px 0" }}>
+          <div style={{ minWidth: 170, maxWidth: 240, padding: "2px 0" }}>
             {order ? (
               <div style={{ fontSize: 11, color: "#6b7c93", marginBottom: 2 }}>Parada {order}</div>
             ) : null}
             <div style={{ fontSize: 13.5, fontWeight: 700, color: "#0b244a", lineHeight: 1.3 }}>{point.nome}</div>
             {place ? <div style={{ fontSize: 12, color: "#5a6a7e", marginTop: 2 }}>{place}</div> : null}
-            <a
-              href={googleMapsNavigateUrl(point.pos)}
-              target="_blank"
-              rel="noopener noreferrer"
-              style={{
-                display: "inline-block",
-                marginTop: 8,
-                fontSize: 12,
-                fontWeight: 600,
-                color: "#123a7b",
-                textDecoration: "none",
-              }}
-            >
-              Navegar no Google Maps →
-            </a>
+            <div style={{ display: "flex", flexDirection: "column", gap: 6, marginTop: 8 }}>
+              {onToggleStop && (
+                <button
+                  type="button"
+                  onClick={() => onToggleStop(point.id)}
+                  style={{
+                    border: "1px solid #cbd5e1",
+                    borderRadius: 5,
+                    padding: "4px 8px",
+                    fontSize: 12,
+                    fontWeight: 600,
+                    cursor: "pointer",
+                    background: picked ? "#fef2f2" : "#0b244a",
+                    color: picked ? "#b91c1c" : "#ffffff",
+                  }}
+                >
+                  {picked ? "Tirar da rota" : "+ Incluir na rota"}
+                </button>
+              )}
+              <a
+                href={googleMapsNavigateUrl(point.pos)}
+                target="_blank"
+                rel="noopener noreferrer"
+                style={{
+                  display: "inline-block",
+                  fontSize: 12,
+                  fontWeight: 600,
+                  color: "#123a7b",
+                  textDecoration: "none",
+                }}
+              >
+                Navegar no Google Maps →
+              </a>
+            </div>
           </div>
         </InfoWindow>
       )}
@@ -350,10 +375,11 @@ function CompanyMarker({
   );
 }
 
-function InnerMap({ stops, orderedIds, height, onRouteComputed, optimizeWaypoints }: Omit<Props, "className">) {
+function InnerMap({ stops, orderedIds, pickedIds, onToggleStop, height, onRouteComputed, optimizeWaypoints }: Omit<Props, "className">) {
   const points = useResolvedPoints(stops);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const center = points[0]?.pos ?? { lat: -16.7, lng: -49.3 };
+  const pickedSet = useMemo(() => new Set(pickedIds ?? []), [pickedIds]);
   const orderIndex = useMemo(() => {
     const index = new globalThis.Map<string, number>();
     orderedIds?.forEach((id, i) => index.set(id, i + 1));
@@ -389,8 +415,10 @@ function InnerMap({ stops, orderedIds, height, onRouteComputed, optimizeWaypoint
           key={p.id}
           point={p}
           order={orderIndex.get(p.id)}
+          picked={pickedSet.has(p.id)}
           selected={selectedId === p.id}
           onSelect={setSelectedId}
+          onToggleStop={onToggleStop}
         />
       ))}
     </Map>
@@ -408,6 +436,8 @@ function MapLoadError({ message }: { message: string }) {
 export function RouteMap({
   stops,
   orderedIds,
+  pickedIds,
+  onToggleStop,
   className,
   height = 320,
   onRouteComputed,
@@ -453,6 +483,8 @@ export function RouteMap({
           <InnerMap
             stops={stops}
             orderedIds={orderedIds}
+            pickedIds={pickedIds}
+            onToggleStop={onToggleStop}
             height={height}
             onRouteComputed={onRouteComputed}
             optimizeWaypoints={optimizeWaypoints}

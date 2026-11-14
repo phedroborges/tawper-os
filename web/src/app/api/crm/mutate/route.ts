@@ -1,4 +1,4 @@
-import { confirmRouteRecord, saveRouteRecord } from "@/server/routes";
+import { confirmRouteRecord, deleteRouteRecord, saveRouteRecord } from "@/server/routes";
 import { NextResponse } from "next/server";
 import { jsonAuthError, withSession } from "@/server/auth/http";
 import { invalidateCrmReadCache } from "@/server/crm";
@@ -49,6 +49,11 @@ export async function POST(request: Request) {
       }
       case "confirmRoute": {
         await confirmRouteRecord(body.id);
+        response = NextResponse.json({ ok: true });
+        break;
+      }
+      case "deleteRoute": {
+        await deleteRouteRecord(body.id);
         response = NextResponse.json({ ok: true });
         break;
       }

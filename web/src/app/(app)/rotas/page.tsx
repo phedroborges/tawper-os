@@ -1,11 +1,11 @@
 "use client";
 
-import { AlertTriangle, CalendarDays, Car, Check, Clock, ExternalLink, MapPin, Navigation, Route, X } from "lucide-react";
-import { useMemo, useState } from "react";
+import { AlertTriangle, ArrowDown, ArrowUp, CalendarDays, Car, Check, Clock, ExternalLink, MapPin, Navigation, Route, Search, Trash2, X } from "lucide-react";
+import { useCallback, useMemo, useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
 import { CompanyLink, RegionSelect, StagePill, UserAvatar } from "@/components/crm/crm";
 import { RouteMap, type DrivingRouteSummary } from "@/components/maps/RouteMap";
-import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader } from "@/components/ui/primitives";
+import { Badge, Button, Card, CardHeader, Empty, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import { isManager } from "@/lib/constants";
 import { addDays, dayDiff, fmtDateShort, fmtTime, longToday, startOfDay } from "@/lib/dates";
 import { useNow } from "@/lib/hooks";
@@ -16,7 +16,7 @@ import { composeRouteDescription } from "@/lib/route-text";
 import { alertsOf, daysInStage, lastInteractionAt, openDealOf, stageOf } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
-import { cn } from "@/lib/utils";
+import { cn, normalize } from "@/lib/utils";
 
 function toDateInputValue(d: Date) {
   const x = startOfDay(d);
@@ -45,10 +45,14 @@ export default function RotasPage() {
   const routes = useStore((s) => s.routes);
   const planRoute = useStore((s) => s.planRoute);
   const confirmRoute = useStore((s) => s.confirmRoute);
+  const deleteRoute = useStore((s) => s.deleteRoute);
   const user = useCurrentUser();
+  const manager = isManager(user);
   const now = useNow();
   const toast = useUI((u) => u.toast);
   const [regiao, setRegiao] = useState("");
+  const [q, setQ] = useState("");
+  const [owner, setOwner] = useState("");
   const [dataVisita, setDataVisita] = useState(() => toDateInputValue(toBusinessDay(addDays(now, 2))));
   const [picked, setPicked] = useState<string[] | null>(null);
   const [driving, setDriving] = useState<DrivingRouteSummary | null>(null);
@@ -60,12 +64,24 @@ export default function RotasPage() {
     [companies, contacts, deals, activities, interactions, quotes, suggestions, strategies, users, conversations],
   );
 
-  const mine = useMemo(() => data.companies.filter((c) => (c.status === "ativa" || c.status === "espera") && (isManager(user) || c.ownerId === user.id)), [data.companies, user]);
+  const companyMap = useMemo(() => new Map(companies.map((c) => [c.id, c])), [companies]);
+  const posMap = useMemo(() => new Map(companies.map((c) => [c.id, companyLatLng(c)])), [companies]);
+
+  const mine = useMemo(
+    () => companies.filter((c) => (c.status === "ativa" || c.status === "espera") && (manager || c.ownerId === user.id)),
+    [companies, manager, user.id],
+  );
 
   const candidates = useMemo(() => {
     const al = alertsOf(data, { now });
+    const n = q.trim() ? normalize(q.trim()) : "";
     return mine
-      .filter((c) => matchesRegionFilter(regiao, c.uf))
+      .filter((c) => {
+        if (!matchesRegionFilter(regiao, c.uf)) return false;
+        if (owner && c.ownerId !== owner) return false;
+        if (n && !normalize(`${c.nome} ${c.cidade ?? ""} ${c.uf ?? ""}`).includes(n)) return false;
+        return true;
+      })
       .map((c) => {
         const deal = openDealOf(data, c.id);
         const last = lastInteractionAt(data, c.id);
@@ -81,32 +97,36 @@ export default function RotasPage() {
         return { c, deal, score, motivos };
       })
       .sort((a, b) => b.score - a.score);
-  }, [data, mine, regiao, now]);
+  }, [data, mine, regiao, owner, q, now]);
+
+  const candidateMap = useMemo(() => new Map(candidates.map((item) => [item.c.id, item])), [candidates]);
 
   const myRoutes = useMemo(
-    () => routes.filter((r) => isManager(user) || r.ownerId === user.id).sort((a, b) => a.data.localeCompare(b.data)),
-    [routes, user],
+    () =>
+      routes
+        .filter((r) => (manager || r.ownerId === user.id) && (!owner || r.ownerId === owner))
+        .sort((a, b) => {
+          if (a.status !== b.status) return a.status === "planejada" ? -1 : 1;
+          return a.status === "planejada" ? a.data.localeCompare(b.data) : b.data.localeCompare(a.data);
+        }),
+    [routes, manager, user.id, owner],
   );
   const viewed = viewing ? myRoutes.find((r) => r.id === viewing) : undefined;
 
   const mapStops = useMemo(() => {
     const ids = new Set(candidates.map((x) => x.c.id));
-    const extra = viewed ? viewed.paradas.map((p) => companies.find((c) => c.id === p.companyId)).filter((c) => c && !ids.has(c.id)) : [];
+    const extra = viewed ? viewed.paradas.map((p) => companyMap.get(p.companyId)).filter((c) => c && !ids.has(c.id)) : [];
     return [...candidates.map((x) => x.c), ...extra].map((c) => ({ id: c!.id, nome: c!.nome, cidade: c!.cidade, uf: c!.uf, latitude: c!.latitude, longitude: c!.longitude }));
-  }, [candidates, viewed, companies]);
+  }, [candidates, viewed, companyMap]);
 
   const stopOrder = useMemo(() => driving?.orderedIds ?? picked ?? [], [driving, picked]);
-  const posOf = (id: string) => {
-    const c = companies.find((x) => x.id === id);
-    return c ? companyLatLng(c) : undefined;
-  };
+  const posOf = useCallback((id: string) => posMap.get(id), [posMap]);
 
   /** Sem o Google: distância em linha reta × 1,35 entre as cidades da ordem. */
   const kmFallback = useMemo(() => {
     if (!picked?.length) return 0;
     return estimateRoadKm(stopOrder.map(posOf).filter((p): p is NonNullable<typeof p> => !!p));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- posOf só lê companies
-  }, [picked, stopOrder, companies]);
+  }, [picked, stopOrder, posOf]);
   const kmEstimado = driving?.distanceKm ?? kmFallback;
 
   /** Agenda encaixada na jornada: 8h às 18h, almoço, dia útil e folgas de estrada. */
@@ -122,18 +142,19 @@ export default function RotasPage() {
         return { id, driveMinutes: a && b ? fallbackDriveMinutes(estimateRoadKm([a, b])) : 60 };
       }),
     );
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- posOf só lê companies
-  }, [stopOrder, driving, dataVisita, companies]);
+  }, [stopOrder, driving, dataVisita, posOf]);
 
-  const stopsInfo = (ids: string[]) =>
-    ids.map((id) => {
-      const row = candidates.find((item) => item.c.id === id);
-      return { nome: row?.c.nome ?? "Conta", cidade: row?.c.cidade, uf: row?.c.uf, motivo: row?.motivos[0] };
-    });
   const routeDescricao = useMemo(
-    () => composeRouteDescription(undefined, stopsInfo(stopOrder), kmEstimado),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- stopsInfo só lê candidates
-    [stopOrder, candidates, kmEstimado],
+    () =>
+      composeRouteDescription(
+        undefined,
+        stopOrder.map((id) => {
+          const row = candidateMap.get(id);
+          return { nome: row?.c.nome ?? "Conta", cidade: row?.c.cidade, uf: row?.c.uf, motivo: row?.motivos[0] };
+        }),
+        kmEstimado,
+      ),
+    [stopOrder, candidateMap, kmEstimado],
   );
 
   const resetSelection = () => {
@@ -167,7 +188,20 @@ export default function RotasPage() {
     setViewing(null);
     setDriving(null);
     setOptimizeWaypoints(true);
-    setPicked((p) => ((p ?? []).includes(id) ? (p ?? []).filter((x) => x !== id) : [...(p ?? []), id]));
+    setPicked((p) => {
+      const next = (p ?? []).includes(id) ? (p ?? []).filter((x) => x !== id) : [...(p ?? []), id];
+      return next.length ? next : null;
+    });
+  };
+
+  const moveStop = (index: number, dir: -1 | 1) => {
+    const base = [...stopOrder];
+    const target = index + dir;
+    if (target < 0 || target >= base.length) return;
+    [base[index], base[target]] = [base[target], base[index]];
+    setOptimizeWaypoints(false);
+    setDriving(null);
+    setPicked(base);
   };
 
   const onRouteComputed = (summary: DrivingRouteSummary | null) => {
@@ -185,7 +219,7 @@ export default function RotasPage() {
       regiao: regionFilterLabel(regiao),
       data: (agenda.stops[0]?.arrive ?? fromDateInputValue(dataVisita)).toISOString(),
       paradas: stopOrder.map((id, i) => {
-        const x = candidates.find((k) => k.c.id === id);
+        const x = candidateMap.get(id);
         return {
           companyId: id,
           objetivo: x?.motivos[0] ? `Visita: ${x.motivos[0]}` : "Visita de relacionamento",
@@ -210,6 +244,12 @@ export default function RotasPage() {
     toast(`Rota confirmada: ${stops} visitas criadas`, { tone: "ok", sub: "Cada visita ganhou uma tarefa de confirmação com o cliente" });
   };
 
+  const removeRoute = (routeId: string) => {
+    if (viewing === routeId) setViewing(null);
+    deleteRoute(routeId);
+    toast("Rota planejada excluída", { tone: "info" });
+  };
+
   const orderedForMap = viewed ? viewed.paradas.map((p) => p.companyId) : picked && picked.length >= 2 ? picked : null;
   const lastDay = agenda.stops.length ? agenda.stops[agenda.stops.length - 1].arrive : null;
 
@@ -218,11 +258,29 @@ export default function RotasPage() {
       <PageHeader
         kicker={`Visitas e rotas · ${longToday(now)}`}
         title="Rotas"
-        subtitle={`Marque as contas, a IA ordena e o sistema encaixa as visitas na jornada: ${WORK_START}h às ${WORK_END}h, com almoço, sem fim de semana.`}
+        subtitle={`Marque as contas na lista ou no mapa: o trajeto é otimizado e as visitas são encaixadas das ${WORK_START}h às ${WORK_END}h, com almoço, sem fim de semana.`}
       />
 
       <div className="mb-4 flex flex-wrap items-end gap-3">
-        <Field label="Região" hint="filtra a lista e o mapa" className="w-full sm:w-64">
+        <Field label="Buscar conta" className="w-full sm:w-60">
+          <div className="relative">
+            <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
+            <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Nome ou cidade..." className="pl-9" />
+          </div>
+        </Field>
+        {manager && (
+          <Field label="Vendedor" className="w-full sm:w-44">
+            <Select value={owner} onChange={(e) => setOwner(e.target.value)} className="w-full">
+              <option value="">Todos</option>
+              {users.map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.short}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        )}
+        <Field label="Região" hint="filtra a lista e o mapa" className="w-full sm:w-56">
           <RegionSelect
             value={regiao}
             onChange={(v) => {
@@ -233,7 +291,7 @@ export default function RotasPage() {
             className="w-full"
           />
         </Field>
-        <Field label="Data da viagem" hint="dia da 1ª visita" className="w-full sm:w-64">
+        <Field label="Data da viagem" hint="dia da 1ª visita" className="w-full sm:w-48">
           <Input type="date" value={dataVisita} min={toDateInputValue(now)} onChange={(e) => changeDate(e.target.value)} />
         </Field>
       </div>
@@ -256,12 +314,12 @@ export default function RotasPage() {
           )}
           <ol className="grid gap-x-6 px-4 py-3 md:grid-cols-2 xl:grid-cols-3">
             {stopOrder.map((id, i) => {
-              const x = candidates.find((k) => k.c.id === id);
+              const x = candidateMap.get(id);
               const slot = agenda.stops[i];
               if (!x || !slot) return null;
               const novoDia = i > 0 && agenda.stops[i - 1].day !== slot.day;
               return (
-                <li key={id} className="flex items-start gap-3 py-1.5">
+                <li key={id} className="flex items-start gap-2.5 py-1.5">
                   <span className="grid size-6 shrink-0 place-items-center rounded-full bg-ai text-[11px] font-bold text-white">{i + 1}</span>
                   <div className="min-w-0 flex-1 text-[12.5px]">
                     <div className="truncate font-semibold text-ink">{x.c.nome}</div>
@@ -270,15 +328,43 @@ export default function RotasPage() {
                       {fmtTime(slot.arrive.toISOString())} às {fmtTime(slot.leave.toISOString())} · {x.c.cidade}/{x.c.uf}
                     </div>
                   </div>
-                  <button
-                    type="button"
-                    disabled={!posOf(id)}
-                    title={posOf(id) ? "Abrir no Google Maps" : "Sem coordenadas"}
-                    onClick={() => navigateStop(id)}
-                    className="inline-flex shrink-0 items-center gap-1 rounded-[6px] px-2 py-1 text-[11.5px] font-medium text-navy hover:bg-soft disabled:cursor-not-allowed disabled:opacity-40"
-                  >
-                    <Navigation size={12} /> Ir
-                  </button>
+                  <div className="flex shrink-0 items-center gap-0.5">
+                    <button
+                      type="button"
+                      disabled={i === 0}
+                      onClick={() => moveStop(i, -1)}
+                      title="Subir parada"
+                      className="rounded p-1 text-muted hover:bg-soft hover:text-ink disabled:opacity-25"
+                    >
+                      <ArrowUp size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={i === stopOrder.length - 1}
+                      onClick={() => moveStop(i, 1)}
+                      title="Descer parada"
+                      className="rounded p-1 text-muted hover:bg-soft hover:text-ink disabled:opacity-25"
+                    >
+                      <ArrowDown size={13} />
+                    </button>
+                    <button
+                      type="button"
+                      disabled={!posOf(id)}
+                      title={posOf(id) ? "Abrir no Google Maps" : "Sem coordenadas"}
+                      onClick={() => navigateStop(id)}
+                      className="inline-flex items-center gap-1 rounded-[6px] px-1.5 py-1 text-[11.5px] font-medium text-navy hover:bg-soft disabled:cursor-not-allowed disabled:opacity-40"
+                    >
+                      <Navigation size={12} /> Ir
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => togglePick(id)}
+                      title="Tirar da rota"
+                      className="rounded p-1 text-muted hover:bg-brand-soft/60 hover:text-brand"
+                    >
+                      <X size={13} />
+                    </button>
+                  </div>
                 </li>
               );
             })}
@@ -327,7 +413,7 @@ export default function RotasPage() {
               <li key={p.companyId} className="flex items-start gap-3 py-1.5 text-[12.5px]">
                 <span className="grid size-6 shrink-0 place-items-center rounded-full bg-navy text-[11px] font-bold text-white">{i + 1}</span>
                 <div className="min-w-0">
-                  <CompanyLink company={companies.find((c) => c.id === p.companyId)} className="text-[12.5px]" />
+                  <CompanyLink company={companyMap.get(p.companyId)} className="text-[12.5px]" />
                   <div className="text-muted">{p.horario ? `${weekday(new Date(p.horario))} · ${fmtTime(p.horario)} · ` : ""}{p.objetivo}</div>
                 </div>
               </li>
@@ -337,7 +423,15 @@ export default function RotasPage() {
       )}
 
       <div className="mb-5">
-        <RouteMap stops={mapStops} orderedIds={orderedForMap} optimizeWaypoints={!viewed && optimizeWaypoints} onRouteComputed={onRouteComputed} height={360} />
+        <RouteMap
+          stops={mapStops}
+          orderedIds={orderedForMap}
+          pickedIds={picked ?? undefined}
+          onToggleStop={!viewed ? togglePick : undefined}
+          optimizeWaypoints={!viewed && optimizeWaypoints}
+          onRouteComputed={onRouteComputed}
+          height={360}
+        />
       </div>
 
       <div className="grid gap-5 xl:grid-cols-[minmax(0,1fr)_clamp(360px,30vw,520px)]">
@@ -347,12 +441,13 @@ export default function RotasPage() {
             title="Contas com visita necessária ou recomendada"
           />
           {candidates.length === 0 ? (
-            <Empty icon={<MapPin size={22} />} title={regiao ? "Nenhuma conta nesta região" : "Nenhuma conta disponível"} text={regiao ? "Troque para “Todas as regiões” ou revise a carteira." : "Cadastre empresas ativas ou revise a carteira."} />
+            <Empty icon={<MapPin size={22} />} title={regiao || q ? "Nenhuma conta com esse filtro" : "Nenhuma conta disponível"} text={regiao || q ? "Ajuste a busca ou troque a região." : "Cadastre empresas ativas ou revise a carteira."} />
           ) : (
             <ul>
               {candidates.map(({ c, deal, score, motivos }) => {
                 const on = picked?.includes(c.id);
                 const order = stopOrder.indexOf(c.id);
+                const hasPos = Boolean(posOf(c.id));
                 return (
                   <li key={c.id} className={cn("flex items-start gap-3 border-b border-line/70 px-4 py-3 last:border-b-0", on && "bg-ai-soft/50")}>
                     <button
@@ -369,6 +464,7 @@ export default function RotasPage() {
                         <CompanyLink company={c} className="text-[13.5px]" />
                         <StagePill deal={deal} />
                         {deal && <span className="text-[11.5px] text-muted">{daysInStage(deal)}d na etapa</span>}
+                        {!hasPos && <Badge tone="amber">sem GPS</Badge>}
                       </div>
                       <div className="text-[12px] text-muted">
                         <MapPin size={11} className="mr-0.5 inline" />
@@ -410,13 +506,18 @@ export default function RotasPage() {
                   <li key={p.companyId} className="flex gap-3 py-1.5">
                     <span className="grid size-6 shrink-0 place-items-center rounded-full bg-navy text-[11px] font-bold text-white">{i + 1}</span>
                     <div className="min-w-0 text-[12.5px]">
-                      <CompanyLink company={companies.find((c) => c.id === p.companyId)} className="text-[12.5px]" />
+                      <CompanyLink company={companyMap.get(p.companyId)} className="text-[12.5px]" />
                       <div className="text-[11.5px] text-muted">{p.horario ? `${fmtTime(p.horario)} · ` : ""}{p.objetivo}</div>
                     </div>
                   </li>
                 ))}
               </ol>
               <div className="flex flex-wrap justify-end gap-2 border-t border-line/70 px-4 py-3">
+                {route.status === "planejada" && (
+                  <Button size="sm" variant="ghost" onClick={() => removeRoute(route.id)} title="Excluir rota planejada">
+                    <Trash2 size={14} className="text-brand" />
+                  </Button>
+                )}
                 <Button
                   size="sm"
                   variant="ghost"
