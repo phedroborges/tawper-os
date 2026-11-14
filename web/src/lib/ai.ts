@@ -737,15 +737,36 @@ export function dailyBriefing(d: Data, user: User, now = new Date()) {
 export function managerDigest(d: Data, now = new Date()) {
   const al = alertsOf(d, { now });
   const m = computeMetrics(d, { now });
-  const stats = sellerStats(d, now).filter((s) => s.user.role === "vendedor");
-  const best = [...stats].sort((a, b) => b.execucao.rate - a.execucao.rate)[0];
-  const worst = [...stats].sort((a, b) => a.execucao.rate - b.execucao.rate)[0];
-  const counts = (t: string) => al.filter((a) => a.tipo === t).length;
+  const activeStats = sellerStats(d, now).filter(
+    (s) => s.contas > 0 || s.feitas > 0 || s.ganhos > 0 || s.user.role === "vendedor" || s.user.role === "representante",
+  );
+  const byExec = [...activeStats].sort((a, b) => b.execucao.rate - a.execucao.rate);
+  const best = byExec[0];
+  const worst = byExec[byExec.length - 1];
+  const totalFeitas = activeStats.reduce((sum, s) => sum + s.feitas, 0);
+  const totalAvancos = activeStats.reduce((sum, s) => sum + s.avancos, 0);
+  const atrasosPorVendedor = activeStats
+    .map((s) => ({
+      name: s.user.short,
+      atrasos: al.filter((a) => a.ownerId === s.user.id && a.tipo === "atraso").length,
+      excecoes: al.filter((a) => a.ownerId === s.user.id).length,
+    }))
+    .filter((x) => x.excecoes > 0)
+    .sort((a, b) => b.atrasos - a.atrasos || b.excecoes - a.excecoes);
+  const foco = atrasosPorVendedor[0];
+  const avgExec = activeStats.length
+    ? Math.round((activeStats.reduce((sum, s) => sum + s.execucao.rate, 0) / activeStats.length) * 100)
+    : 100;
+
   return {
     linhas: [
-      `${counts("atraso")} tarefas atrasadas, ${counts("sem_proximo_passo")} contas sem próximo passo e ${counts("estagnacao")} estagnadas.`,
-      `${m.ganhos.value} vendas ganhas nos últimos 30 dias (${m.ganhos.sub}). ${m.propostas.value} propostas abertas (${m.propostas.sub}).`,
-      best && worst ? `${best.user.short} lidera a execução (${Math.round(best.execucao.rate * 100)}% no prazo). ${worst.user.short} precisa de atenção (${Math.round(worst.execucao.rate * 100)}%).` : "",
+      best && worst && best.user.id !== worst.user.id
+        ? `Comprometimento: equipe com ${avgExec}% de execução no prazo. ${best.user.short} lidera (${Math.round(best.execucao.rate * 100)}%, ${best.feitas} feitas); ${worst.user.short} está em ${Math.round(worst.execucao.rate * 100)}% e precisa de acompanhamento.`
+        : `Comprometimento: equipe operando com ${avgExec}% de execução no prazo nos últimos 30 dias.`,
+      foco
+        ? `Resolução e gargalos: ${foco.name} concentra ${foco.excecoes} pendências (${foco.atrasos} atrasos) — vale cobrar prioridade hoje.`
+        : "Resolução: nenhum vendedor com gargalo crítico de atraso no momento.",
+      `Produtividade (30d): ${totalFeitas} atividades concluídas, ${totalAvancos} avanços de etapa e ${m.ganhos.value} ganhos (${m.ganhos.sub}).`,
     ].filter(Boolean),
   };
 }

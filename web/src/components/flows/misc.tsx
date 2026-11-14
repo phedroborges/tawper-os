@@ -1,9 +1,9 @@
 "use client";
 
-import { Building2, ExternalLink, LocateFixed, Megaphone, Trash2, UserPlus } from "lucide-react";
+import { Building2, ExternalLink, LocateFixed, Megaphone, Mic, Trash2, UserPlus } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { DueLabel, StagePill, StatusBadge, UserAvatar } from "@/components/crm/crm";
 import { Modal } from "@/components/ui/overlay";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui/primitives";
@@ -17,6 +17,7 @@ import type { Company, Papel, Potencial, Prensa, Urgencia } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 import { regionForUf } from "@/lib/regions";
 import { cn } from "@/lib/utils";
+import { aiTranscribe } from "@/server/ai/actions";
 import { geocodeCepOrAddress, reverseGeocode } from "@/server/geo/geocode";
 
 export function ContactModal({ companyId, preset }: { companyId: string; preset?: { nome?: string; whatsapp?: string } }) {
@@ -151,7 +152,7 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
     }
   };
 
-  const useCurrentLocation = async () => {
+  const fillCurrentLocation = async () => {
     setGpsLoading(true);
     setCepHint("Obtendo GPS…");
     try {
@@ -285,7 +286,7 @@ export function EditCompanyModal({ companyId }: { companyId: string }) {
             size="sm"
             variant="outline"
             disabled={gpsLoading || cepStatus === "loading"}
-            onClick={() => void useCurrentLocation()}
+            onClick={() => void fillCurrentLocation()}
           >
             <LocateFixed size={14} />
             {gpsLoading ? "Localizando…" : "Preencher com localização atual"}
@@ -392,7 +393,68 @@ export function CobrancaModal({ companyId, texto: initial }: { companyId: string
   const owner = s.users.find((u) => u.id === company?.ownerId);
   const next = company ? nextStepOf(s, company.id) : undefined;
   const [texto, setTexto] = useState(initial ?? "");
+  const [recording, setRecording] = useState(false);
+  const [transcribing, setTranscribing] = useState(false);
+  const tape = useRef<{ rec: MediaRecorder; stream: MediaStream; chunks: Blob[] } | null>(null);
+  const alive = useRef(true);
+
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      const cur = tape.current;
+      if (cur && cur.rec.state !== "inactive") cur.rec.stop();
+    };
+  }, []);
+
   if (!company || !owner) return null;
+
+  const toggleAudio = async () => {
+    if (recording) {
+      const cur = tape.current;
+      if (cur && cur.rec.state !== "inactive") cur.rec.stop();
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === "undefined") {
+      toast("Áudio indisponível neste navegador", { tone: "warn" });
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const rec = new MediaRecorder(stream);
+      const chunks: Blob[] = [];
+      tape.current = { rec, stream, chunks };
+      rec.ondataavailable = (e) => {
+        if (e.data.size > 0) chunks.push(e.data);
+      };
+      rec.onstop = () => {
+        stream.getTracks().forEach((t) => t.stop());
+        tape.current = null;
+        if (alive.current) setRecording(false);
+        const blob = new Blob(chunks, { type: rec.mimeType || "audio/webm" });
+        if (blob.size < 400) return;
+        if (alive.current) setTranscribing(true);
+        const fd = new FormData();
+        fd.append("file", blob, "cobranca.webm");
+        void aiTranscribe(fd)
+          .then((res) => {
+            if (!alive.current || !res?.trim()) return;
+            setTexto((prev) => [prev.trim(), res.trim()].filter(Boolean).join(" "));
+          })
+          .catch(() => {
+            if (alive.current) toast("Não consegui transcrever o áudio", { tone: "warn" });
+          })
+          .finally(() => {
+            if (alive.current) setTranscribing(false);
+          });
+      };
+      rec.start();
+      setRecording(true);
+    } catch {
+      toast("Permita o uso do microfone para gravar áudio", { tone: "warn" });
+    }
+  };
+
   const chips = [
     next ? `${owner.short}, como está "${next.titulo}"? Me atualiza até amanhã.` : `${owner.short}, essa conta está sem próximo passo. Define hoje, por favor.`,
     `${owner.short}, vamos rever a estratégia dessa conta na reunião de sexta.`,
@@ -400,28 +462,37 @@ export function CobrancaModal({ companyId, texto: initial }: { companyId: string
   ];
   const send = () => {
     s.sendCobranca({ companyId, toUserId: owner.id, texto });
-    toast(`Comentário enviado para ${owner.short}`, { sub: "Notificação no app e registro no histórico" });
+    toast(`Cobrança enviada para ${owner.short}`, { sub: "Notificação no app e registro no histórico" });
     close();
   };
   return (
     <Modal
       onClose={close}
       kicker={company.nome}
-      title={`Comentar e cobrar ${owner.short}`}
+      title={`Cobrar ${owner.short}`}
       icon={<Megaphone size={18} />}
       footer={
         <>
+          <Button
+            type="button"
+            variant={recording ? "primary" : "outline"}
+            onClick={() => void toggleAudio()}
+            disabled={transcribing}
+            className={cn("mr-auto", recording && "animate-pulse bg-brand text-white border-brand")}
+          >
+            <Mic size={14} /> {recording ? "Parar áudio" : transcribing ? "Transcrevendo…" : "Gravar áudio"}
+          </Button>
           <Button variant="ghost" onClick={close}>
             Cancelar
           </Button>
-          <Button variant="primary" onClick={send} disabled={!texto.trim()}>
-            Enviar
+          <Button variant="primary" onClick={send} disabled={!texto.trim() || recording || transcribing}>
+            Enviar cobrança
           </Button>
         </>
       }
     >
       <div className="space-y-3">
-        <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} placeholder="Escreva o comentário para o vendedor…" autoFocus />
+        <Textarea value={texto} onChange={(e) => setTexto(e.target.value)} rows={3} placeholder={`Fale no microfone ou escreva a cobrança para ${owner.short}…`} autoFocus />
         <div className="flex flex-col gap-1.5">
           {chips.map((c) => (
             <button key={c} type="button" onClick={() => setTexto(c)} className="rounded-[4px] border border-dashed border-line px-2.5 py-1.5 text-left text-[12px] text-navy-3 hover:border-navy/40">
