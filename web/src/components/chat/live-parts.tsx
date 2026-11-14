@@ -12,7 +12,7 @@ import { initialOf, labelOf, MAX_FILE_BYTES, type LiveChat, type Thread } from "
 /** Bolinha com a inicial do contato. */
 export function ChatAvatar({ name, peer, size = 40 }: { name: string; peer: string; size?: number }) {
   return (
-    <span className="grid shrink-0 place-items-center rounded-full bg-[#e7f6ee] font-bold text-ok" style={{ width: size, height: size, fontSize: Math.round(size * 0.34) }}>
+    <span className="grid shrink-0 place-items-center rounded-full bg-ok-soft font-bold text-ok" style={{ width: size, height: size, fontSize: Math.round(size * 0.34) }}>
       {initialOf(name, peer)}
     </span>
   );
@@ -106,7 +106,7 @@ export function MessageList({
   }, [count, thread?.peer]);
 
   return (
-    <div className={cn("scrollbar-thin min-h-0 flex-1 overflow-y-auto bg-[#efeae2]", compact ? "px-2.5 py-2" : "px-3 py-3 md:px-6")}>
+    <div className={cn("scrollbar-thin chat-wallpaper min-h-0 flex-1 overflow-y-auto", compact ? "px-2.5 py-2" : "px-3 py-3 md:px-6")}>
       {hiddenOwner ? (
         <div className="mx-auto mt-10 max-w-xs rounded-[6px] bg-white/90 p-3 text-center text-[12.5px] text-muted">Esta conversa está com {hiddenOwner}.</div>
       ) : (
@@ -126,7 +126,7 @@ export function MessageList({
                     className={cn(
                       "group relative rounded-[8px] px-2.5 pt-1.5 pb-1 leading-snug shadow-[0_1px_0.5px_#0000001f]",
                       compact ? "max-w-[86%] text-[12.5px]" : "max-w-[78%] text-[13px]",
-                      message.out ? "rounded-tr-[2px] bg-[#d9fdd3]" : "rounded-tl-[2px] bg-white",
+                      message.out ? "rounded-tr-[2px] bg-[#d9fdd3] dark:bg-[#005c4b]" : "rounded-tl-[2px] bg-white",
                     )}
                   >
                     {canErase && !message.id.startsWith("local-") && (
@@ -316,7 +316,7 @@ export function Composer({
           e.preventDefault();
           send();
         }}
-        className={cn("flex items-center gap-1.5 border-t border-line bg-[#f6f6f4]", compact ? "px-2 py-2" : "gap-2 px-3 py-2.5")}
+        className={cn("flex items-center gap-1.5 border-t border-line bg-[#f6f6f4] dark:bg-surface", compact ? "px-2 py-2" : "gap-2 px-3 py-2.5")}
       >
         <input
           ref={fileRef}

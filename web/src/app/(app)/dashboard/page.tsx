@@ -604,7 +604,7 @@ export default function DashboardPage() {
                       <span className="inline-flex items-center justify-end gap-1" title={`1 a 3 dias: ${r.atrasadas[0]} · 4 a 7 dias: ${r.atrasadas[1]} · mais de 7 dias: ${r.atrasadas[2]}`}>
                         <b className="mr-1 text-brand">{late}</b>
                         {r.atrasadas.map((n, i) => (
-                          <span key={i} className={cn("min-w-5 rounded-[3px] px-1 text-center text-[11px]", n === 0 ? "bg-soft text-muted/60" : i === 2 ? "bg-brand text-white" : i === 1 ? "bg-brand-soft text-brand" : "bg-amber-100 text-amber-900")}>
+                          <span key={i} className={cn("min-w-5 rounded-[3px] px-1 text-center text-[11px]", n === 0 ? "bg-soft text-muted/60" : i === 2 ? "bg-brand text-white" : i === 1 ? "bg-brand-soft text-brand" : "bg-amber-100 text-amber-900 dark:bg-amber-500/25 dark:text-amber-200")}>
                             {n}
                           </span>
                         ))}
@@ -632,7 +632,7 @@ export default function DashboardPage() {
         </table>
         <div className="flex flex-wrap gap-x-4 gap-y-1 border-t border-line px-4 py-2 text-[11px] text-muted">
           <span>Atrasadas agora, por idade:</span>
-          <span className="inline-flex items-center gap-1"><span className="size-2.5 rounded-[2px] bg-amber-100" /> 1 a 3 dias</span>
+          <span className="inline-flex items-center gap-1"><span className="size-2.5 rounded-[2px] bg-amber-100 dark:bg-amber-500/35" /> 1 a 3 dias</span>
           <span className="inline-flex items-center gap-1"><span className="size-2.5 rounded-[2px] bg-brand-soft" /> 4 a 7 dias</span>
           <span className="inline-flex items-center gap-1"><span className="size-2.5 rounded-[2px] bg-brand" /> mais de 7 dias</span>
         </div>

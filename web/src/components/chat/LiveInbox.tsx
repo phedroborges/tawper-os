@@ -164,7 +164,7 @@ export function LiveInbox({ initial, selected: selectedPeer, onSelect }: { initi
                 value={query}
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder="Buscar conversa ou digitar um número"
-                className="h-9 w-full rounded-[7px] border border-line bg-[#fbfbfa] pr-3 pl-8 text-[12.5px] outline-none focus:border-navy-3"
+                className="h-9 w-full rounded-[7px] border border-line bg-soft pr-3 pl-8 text-[12.5px] text-ink outline-none focus:border-navy-3"
               />
             </form>
           </div>
@@ -304,7 +304,7 @@ export function LiveInbox({ initial, selected: selectedPeer, onSelect }: { initi
               <Composer chat={chat} peer={selected} onError={setError} onSent={(number) => number !== selected && select(number)} />
             </>
           ) : (
-            <div className="grid flex-1 place-items-center bg-[#f7f6f3]">
+            <div className="grid flex-1 place-items-center bg-soft/40">
               <Empty icon={<MessageCircle size={20} />} title="Selecione uma conversa" text="Um único WhatsApp, vários atendentes. Assuma uma conversa da fila ou digite um número na busca." />
             </div>
           )}

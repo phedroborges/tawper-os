@@ -252,7 +252,7 @@ function ListWindow({ chat, className }: { chat: LiveChat; className?: string })
       className={className}
       header={
         <>
-          <span className="grid size-8 place-items-center rounded-full bg-[#e7f6ee] text-ok">
+          <span className="grid size-8 place-items-center rounded-full bg-ok-soft text-ok">
             <MessageCircle size={16} />
           </span>
           <div className="min-w-0 flex-1">
@@ -318,7 +318,7 @@ function ListWindow({ chat, className }: { chat: LiveChat; className?: string })
                   }
                 }}
                 placeholder="Buscar ou digitar um número"
-                className="h-8 w-full rounded-full border border-line bg-[#fbfbfa] pr-3 pl-8 text-[12.5px] outline-none focus:border-navy-3"
+                className="h-8 w-full rounded-full border border-line bg-soft pr-3 pl-8 text-[12.5px] text-ink outline-none focus:border-navy-3"
               />
             </div>
           </div>

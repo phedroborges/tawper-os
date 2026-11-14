@@ -122,7 +122,7 @@ function PhaseCard({ phase, current, last }: { phase: PlanPhase; current: boolea
           <ChevronDown size={17} className="mt-1 shrink-0 text-muted transition-transform group-open:rotate-180" />
         </summary>
 
-        <div className="border-t border-line bg-[#fcfcfc] px-4 py-4 md:px-5">
+        <div className="border-t border-line bg-soft/40 px-4 py-4 md:px-5">
           <div className="grid gap-5 xl:grid-cols-2">
             {phase.sections.filter((section) => section.items.length > 0).map((section) => (
               <section key={section.title}>
@@ -253,7 +253,7 @@ export default async function ImplementacaoPage() {
           const info = MILESTONES[milestone];
           const phases = plan.phases.filter((phase) => phase.milestone === milestone);
           return (
-            <section key={milestone} className="rounded-[11px] border border-line bg-white/50 p-4 md:p-5">
+            <section key={milestone} className="rounded-[11px] border border-line bg-surface/60 p-4 md:p-5">
               <div className="mb-5 flex flex-col gap-2 border-b border-line pb-4 md:flex-row md:items-end md:justify-between">
                 <div>
                   <div className="text-[11px] font-semibold tracking-[0.08em] text-brand uppercase">{info.name}</div>

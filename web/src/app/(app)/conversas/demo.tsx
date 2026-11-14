@@ -59,7 +59,7 @@ function Central() {
           <div className="space-y-2 border-b border-line p-3">
             <div className="relative">
               <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
-              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar conversa" className="h-9 w-full rounded-[5px] border border-line bg-[#fbfbfa] pr-3 pl-8 text-[12.5px] outline-none focus:border-navy-3" />
+              <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar conversa" className="h-9 w-full rounded-[5px] border border-line bg-soft pr-3 pl-8 text-[12.5px] text-ink outline-none focus:border-navy-3" />
             </div>
             <Segmented
               value={filter}
@@ -79,7 +79,7 @@ function Central() {
               return (
                 <li key={c.id}>
                   <button type="button" onClick={() => select(c.id)} className={cn("flex w-full items-start gap-2.5 border-b border-line/70 px-3 py-2.5 text-left hover:bg-soft/40", selected === c.id && "bg-soft")}>
-                    <span className={cn("grid size-10 shrink-0 place-items-center rounded-full text-[14px] font-bold", co ? "bg-[#e7f6ee] text-ok" : "bg-warn-soft text-warn")}>{c.contatoNome[0]}</span>
+                    <span className={cn("grid size-10 shrink-0 place-items-center rounded-full text-[14px] font-bold", co ? "bg-ok-soft text-ok" : "bg-warn-soft text-warn")}>{c.contatoNome[0]}</span>
                     <span className="min-w-0 flex-1">
                       <span className="flex items-center gap-1.5">
                         <span className="truncate text-[13px] font-semibold text-ink">{c.contatoNome}</span>
@@ -115,7 +115,7 @@ function Central() {
               </div>
             </>
           ) : (
-            <div className="grid flex-1 place-items-center bg-[#f7f6f3]">
+            <div className="grid flex-1 place-items-center bg-soft/40">
               <Empty icon={<MessageCircle size={20} />} title="Selecione uma conversa" text="Toda conversa fica vinculada à empresa, ao contato e à oportunidade — e pode virar atividade com um clique." />
             </div>
           )}
@@ -142,7 +142,7 @@ function Central() {
                     <StagePill deal={deal} />
                     {company.marcaAtual && <Badge tone="outline">usa {company.marcaAtual}</Badge>}
                   </div>
-                  <div className="mt-2 rounded-[4px] bg-[#f5f6f8] px-2 py-1.5 text-[11.5px]">
+                  <div className="mt-2 rounded-[4px] bg-soft px-2 py-1.5 text-[11.5px]">
                     {next ? (
                       <>
                         <div className="label">Próximo passo</div>

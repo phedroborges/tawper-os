@@ -44,7 +44,7 @@ export default function LembretesPage() {
         </div>
         <div className="p-4">
           {preview ? (
-            <pre className="max-w-md rounded-[10px] bg-[#e7f6e1] px-3.5 py-3 font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-ink">{preview}</pre>
+            <pre className="max-w-md rounded-[10px] border border-ok/20 bg-[#e7f6e1] px-3.5 py-3 font-sans text-[13px] leading-relaxed whitespace-pre-wrap text-[#111b21] dark:bg-[#134d37] dark:text-[#e9edef]">{preview}</pre>
           ) : (
             <p className="text-[13px] text-muted">Você não tem nada para hoje, nada atrasado e nada para daqui a dois dias. Hoje não chegaria mensagem.</p>
           )}

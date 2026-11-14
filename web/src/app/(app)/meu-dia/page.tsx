@@ -21,11 +21,11 @@ import { aiBriefing } from "@/server/ai/actions";
 
 /** Cor de cada tipo de atividade na agenda (o ícone e o nome vão junto: a cor nunca fala sozinha). */
 const TYPE_TONE: Partial<Record<ActivityType, string>> = {
-  Visita: "bg-[#e3ecf9] text-[#2456a6]",
-  Reunião: "bg-[#ece6f7] text-[#5b3fa6]",
-  Ligação: "bg-[#e1f3ee] text-[#0f8a72]",
-  WhatsApp: "bg-[#e1f3ee] text-[#0f8a72]",
-  Cotação: "bg-[#f8ecd9] text-[#8a5a00]",
+  Visita: "bg-[#e3ecf9] text-[#2456a6] dark:bg-blue-500/15 dark:text-blue-300",
+  Reunião: "bg-[#ece6f7] text-[#5b3fa6] dark:bg-violet-500/15 dark:text-violet-300",
+  Ligação: "bg-[#e1f3ee] text-[#0f8a72] dark:bg-emerald-500/15 dark:text-emerald-300",
+  WhatsApp: "bg-[#e1f3ee] text-[#0f8a72] dark:bg-emerald-500/15 dark:text-emerald-300",
+  Cotação: "bg-[#f8ecd9] text-[#8a5a00] dark:bg-amber-500/15 dark:text-amber-300",
   Suporte: "bg-brand-soft text-brand",
 };
 

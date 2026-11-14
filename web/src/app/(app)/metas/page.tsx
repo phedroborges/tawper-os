@@ -30,9 +30,24 @@ import { useCurrentUser, useStore } from "@/lib/store";
 import { cn, money, moneyShort } from "@/lib/utils";
 
 const MEDALS = [
-  { nome: "Ouro", cor: "#c99a1b", fundo: "#fbf3d9", altura: "h-28" },
-  { nome: "Prata", cor: "#7d8794", fundo: "#eef0f3", altura: "h-20" },
-  { nome: "Bronze", cor: "#a9683f", fundo: "#f6e9df", altura: "h-14" },
+  {
+    nome: "Ouro",
+    box: "border-amber-400/70 bg-amber-100/90 dark:border-amber-400/40 dark:bg-amber-500/15",
+    text: "text-amber-800 dark:text-amber-200",
+    altura: "h-28",
+  },
+  {
+    nome: "Prata",
+    box: "border-slate-300 bg-slate-100 dark:border-slate-400/40 dark:bg-slate-400/15",
+    text: "text-slate-600 dark:text-slate-200",
+    altura: "h-20",
+  },
+  {
+    nome: "Bronze",
+    box: "border-orange-400/60 bg-orange-100/90 dark:border-orange-400/40 dark:bg-orange-500/15",
+    text: "text-orange-800 dark:text-orange-200",
+    altura: "h-14",
+  },
 ];
 
 /** Ritmo: vendido comparado com o que já deveria estar vendido hoje, no período. */
@@ -142,8 +157,8 @@ export default function MetasPage() {
                 <span>{vendidoEmpresa >= metaEmpresa ? "meta do período batida!" : `faltam ${money(metaEmpresa - vendidoEmpresa)}`}</span>
               </div>
               {period !== "ano" && metaEmpresaCobranca > metaEmpresa * 1.05 && (
-                <div className="mt-3 flex items-start gap-2 rounded-[6px] bg-amber-50/80 px-3 py-2 text-[12px] text-amber-950">
-                  <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-700" />
+                <div className="mt-3 flex items-start gap-2 rounded-[6px] border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-[12px] text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-100">
+                  <AlertTriangle size={14} className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300" />
                   <span>
                     <b>Consciência do ano:</b> acumulado {moneyShort(vendidoAnoEmpresa)} de {moneyShort(goals.anual)}. Para fechar {goals.ano} no alvo, o ritmo exigido é <b>{moneyShort(metaEmpresaCobranca)}/{PERIOD_LABEL[period].toLowerCase()}</b>.
                   </span>
@@ -175,11 +190,11 @@ export default function MetasPage() {
                       <div className="mt-1.5 w-full truncate text-[13px] font-semibold text-ink">{r.user.short}</div>
                       <div className="text-[12.5px] font-bold text-ink">{moneyShort(r.vendido)}</div>
                       <div className="text-[11px] text-muted">{r.meta > 0 ? `${Math.round(r.pct)}% da meta` : "sem meta"}</div>
-                      <div className={cn("mt-2 grid w-full place-items-center rounded-t-[8px] border border-b-0", m.altura)} style={{ background: m.fundo, borderColor: m.cor }}>
-                        <span className="text-[22px] leading-none font-bold" style={{ color: m.cor }}>
+                      <div className={cn("mt-2 grid w-full place-items-center rounded-t-[8px] border border-b-0", m.altura, m.box)}>
+                        <span className={cn("text-[22px] leading-none font-bold", m.text)}>
                           {pos + 1}º
                         </span>
-                        <span className="text-[10.5px] font-medium tracking-wide uppercase" style={{ color: m.cor }}>
+                        <span className={cn("text-[10.5px] font-medium tracking-wide uppercase", m.text)}>
                           {m.nome}
                         </span>
                       </div>
@@ -198,7 +213,7 @@ export default function MetasPage() {
                     className={cn(
                       "flex items-center gap-3 border-b border-line/70 px-4 py-2.5 last:border-b-0 transition",
                       manager && "cursor-pointer hover:bg-soft/50",
-                      selected && "bg-navy/[0.04] ring-1 ring-inset ring-navy/20",
+                      selected && "bg-navy/[0.04] ring-1 ring-inset ring-navy/20 dark:bg-navy-3/10 dark:ring-navy-3/30",
                     )}
                   >
                     <span className="w-5 text-center text-[12.5px] font-semibold text-muted">{i + 1}</span>
@@ -269,7 +284,7 @@ export default function MetasPage() {
                     className={cn(
                       "border-b border-line/70 px-4 py-3 last:border-b-0 transition",
                       manager && "cursor-pointer hover:bg-soft/50",
-                      selected && "bg-navy/[0.04] ring-1 ring-inset ring-navy/20",
+                      selected && "bg-navy/[0.04] ring-1 ring-inset ring-navy/20 dark:bg-navy-3/10 dark:ring-navy-3/30",
                     )}
                   >
                     <div className="flex items-center gap-2.5">
@@ -367,7 +382,7 @@ export default function MetasPage() {
                   </div>
                 </div>
                 {faltaMes > 0 && (
-                  <p className={cn("mt-2 text-[12px] font-medium", pipelineFoco >= faltaMes ? "text-ok" : "text-amber-800")}>
+                  <p className={cn("mt-2 text-[12px] font-medium", pipelineFoco >= faltaMes ? "text-ok" : "text-amber-800 dark:text-amber-300")}>
                     {pipelineFoco >= faltaMes
                       ? `Você já tem ${moneyShort(pipelineFoco)} em aberto na mesa — foco total em fechar!`
                       : `Seu funil aberto cobre ${Math.round((pipelineFoco / faltaMes) * 100)}% do que falta — precisa gerar novos orçamentos agora!`}
@@ -375,8 +390,8 @@ export default function MetasPage() {
                 )}
 
                 {metaMesCobranca > metaMes * 1.05 && (
-                  <div className="mt-2.5 flex items-start gap-2 rounded-[6px] bg-amber-50/80 px-3 py-2 text-[11.5px] text-amber-950">
-                    <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-700" />
+                  <div className="mt-2.5 flex items-start gap-2 rounded-[6px] border border-amber-200/80 bg-amber-50/90 px-3 py-2 text-[11.5px] text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-100">
+                    <AlertTriangle size={13} className="mt-0.5 shrink-0 text-amber-700 dark:text-amber-300" />
                     <span>
                       Para recuperar o saldo de {goals.ano}, o ritmo anual exigido é <b>{moneyShort(metaMesCobranca)}/mês</b>.
                     </span>
@@ -452,7 +467,7 @@ export default function MetasPage() {
                 </ol>
               )}
               {faltaMes > 0 && path.estimado && (
-                <p className="mx-4 mb-3 rounded-[6px] bg-amber-50 px-3 py-2 text-[12px] text-amber-950">
+                <p className="mx-4 mb-3 rounded-[6px] border border-amber-200/80 bg-amber-50 px-3 py-2 text-[12px] text-amber-950 dark:border-amber-500/30 dark:bg-amber-500/15 dark:text-amber-100">
                   Poucos negócios perdidos/fechados no histórico: usando referência conservadora de {Math.round(path.conversao * 100)}% de conversão.
                 </p>
               )}

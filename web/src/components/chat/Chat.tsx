@@ -82,7 +82,7 @@ export function ChatThread({ conv, className, showHeader = true }: { conv: Conve
     <div className={cn("flex min-h-0 flex-col", className)}>
       {showHeader && (
         <div className="flex items-center gap-3 border-b border-line bg-white px-4 py-2.5">
-          <span className="grid size-9 place-items-center rounded-full bg-[#e7f6ee] text-[13px] font-bold text-ok">{conv.contatoNome[0]}</span>
+          <span className="grid size-9 place-items-center rounded-full bg-ok-soft text-[13px] font-bold text-ok">{conv.contatoNome[0]}</span>
           <div className="min-w-0 flex-1">
             <div className="flex flex-wrap items-center gap-2 text-[13.5px] font-semibold text-ink">
               {conv.contatoNome}
@@ -102,7 +102,7 @@ export function ChatThread({ conv, className, showHeader = true }: { conv: Conve
         </div>
       )}
 
-      <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto bg-[#efeae2] px-3 py-3 md:px-6" style={{ backgroundImage: "radial-gradient(#d9d2c5 0.8px, transparent 0.8px)", backgroundSize: "14px 14px" }}>
+      <div className="scrollbar-thin chat-wallpaper min-h-0 flex-1 overflow-y-auto px-3 py-3 md:px-6">
         {conv.messages.length === 0 && <div className="mx-auto mt-10 max-w-xs rounded-[6px] bg-white/90 p-3 text-center text-[12.5px] text-muted">Nenhuma mensagem ainda. Comece a conversa abaixo.</div>}
         {conv.messages.map((m, i) => {
           const divider = i === 0 || conv.messages[i - 1].at.slice(0, 10) !== m.at.slice(0, 10);
@@ -127,9 +127,9 @@ export function ChatThread({ conv, className, showHeader = true }: { conv: Conve
             <div key={m.id}>
               {divider && <DayDivider iso={m.at} />}
               <div className={cn("my-1 flex", mine ? "justify-end" : "justify-start")}>
-                <div className={cn("max-w-[78%] rounded-[8px] px-2.5 pt-1.5 pb-1 text-[13px] leading-snug shadow-[0_1px_0.5px_#0000001f]", mine ? "rounded-tr-[2px] bg-[#d9fdd3]" : "rounded-tl-[2px] bg-white")}>
+                <div className={cn("max-w-[78%] rounded-[8px] px-2.5 pt-1.5 pb-1 text-[13px] leading-snug shadow-[0_1px_0.5px_#0000001f]", mine ? "rounded-tr-[2px] bg-[#d9fdd3] dark:bg-[#005c4b]" : "rounded-tl-[2px] bg-white")}>
                   {m.attachment && (
-                    <div className="mb-1.5 flex items-center gap-2 rounded-[5px] bg-black/[0.05] px-2.5 py-2">
+                    <div className="mb-1.5 flex items-center gap-2 rounded-[5px] bg-black/[0.05] px-2.5 py-2 dark:bg-white/[0.08]">
                       <span className="grid size-8 place-items-center rounded-[4px] bg-brand text-white">
                         <FileText size={16} />
                       </span>
@@ -162,7 +162,7 @@ export function ChatThread({ conv, className, showHeader = true }: { conv: Conve
         <div ref={endRef} />
       </div>
 
-      <div className="border-t border-line bg-[#f6f6f4] px-3 py-2.5">
+      <div className="border-t border-line bg-[#f6f6f4] px-3 py-2.5 dark:bg-surface">
         <div className="no-scrollbar mb-2 flex gap-1.5 overflow-x-auto">
           <button type="button" onClick={sendProposal} className="inline-flex shrink-0 items-center gap-1 rounded-full border border-line bg-white px-2.5 py-1 text-[11.5px] font-medium text-ink hover:border-navy/40">
             <BookOpen size={12} /> Proposta comercial

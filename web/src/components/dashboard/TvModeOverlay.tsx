@@ -347,11 +347,11 @@ export function TvModeOverlay({
                         className={cn(
                           "grid size-10 shrink-0 place-items-center rounded-full border text-[15px] font-bold tabular-nums",
                           idx === 0
-                            ? "border-amber-300 bg-amber-50 text-amber-800"
+                            ? "border-amber-400/50 bg-amber-500/20 text-amber-200"
                             : idx === 1
-                              ? "border-slate-300 bg-slate-100 text-slate-700"
+                              ? "border-slate-400/45 bg-slate-400/20 text-slate-200"
                               : idx === 2
-                                ? "border-orange-300 bg-orange-50 text-orange-800"
+                                ? "border-orange-400/45 bg-orange-500/20 text-orange-200"
                                 : "border-line bg-soft text-muted",
                         )}
                       >
@@ -493,7 +493,7 @@ export function TvModeOverlay({
                           Maior concentração financeira no funil
                         </div>
                         <div className="mt-1.5 text-[24px] font-bold text-ink xl:text-[28px]">{bottleneck.stageName}</div>
-                        <div className="mt-1 text-[16px] font-semibold text-navy xl:text-[18px]">
+                        <div className="mt-1 text-[16px] font-semibold text-navy-3 xl:text-[18px]">
                           {bottleneck.count} contas · {money(bottleneck.valor)} em aberto
                         </div>
                       </div>

@@ -36,7 +36,7 @@ export function ColumnChart({ rows, target, targetLabel, color = CATEGORY_COLORS
     <div>
       <div className="relative flex items-end gap-[2px] border-b border-line" style={{ height }} role="list">
         {target !== undefined && target > 0 && (
-          <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-[#657087]" style={{ bottom: `${(target / top) * 100}%` }}>
+          <div className="pointer-events-none absolute inset-x-0 border-t border-dashed border-muted" style={{ bottom: `${(target / top) * 100}%` }}>
             <span className="absolute -top-4 right-0 bg-surface pl-1 text-[10.5px] text-muted">{targetLabel}</span>
           </div>
         )}
@@ -193,7 +193,7 @@ export function LineChart({ labels, series, format = String }: { labels: string[
               {l}
             </text>
           ))}
-          {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={PAD.t} y2={H - PAD.b} stroke="#657087" strokeWidth="1" />}
+          {hover !== null && <line x1={x(hover)} x2={x(hover)} y1={PAD.t} y2={H - PAD.b} stroke="var(--color-muted)" strokeWidth="1" />}
           {series.map((s) => {
             const pts = s.values.map((v, i) => (v === null ? null : ([x(i), y(v)] as const))).filter((p): p is readonly [number, number] => p !== null);
             const last = pts[pts.length - 1];

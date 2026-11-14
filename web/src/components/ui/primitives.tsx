@@ -201,7 +201,7 @@ export function Field({ label, hint, required, children, className }: { label: R
 export function Checkbox({ checked, onChange, label, sub, disabled }: { checked: boolean; onChange: (v: boolean) => void; label: ReactNode; sub?: ReactNode; disabled?: boolean }) {
   return (
     <label className={cn("flex cursor-pointer items-start gap-2.5 text-[13.5px]", disabled && "cursor-default opacity-60")}>
-      <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-[#0a1d3f]" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
+      <input type="checkbox" className="mt-0.5 size-4 shrink-0 accent-navy" checked={checked} disabled={disabled} onChange={(e) => onChange(e.target.checked)} />
       <span>
         <span className="text-ink">{label}</span>
         {sub && <span className="block text-[12px] text-muted">{sub}</span>}
@@ -276,7 +276,7 @@ export function Stat({
       onClick={onClick}
       className={cn(
         "rounded-[8px] border border-line bg-white px-4 py-3.5 text-left transition",
-        onClick && "cursor-pointer hover:border-navy-3/30 hover:bg-[#fcfcfc]",
+        onClick && "cursor-pointer hover:border-navy-3/30 hover:bg-soft/40",
         className,
       )}
     >
