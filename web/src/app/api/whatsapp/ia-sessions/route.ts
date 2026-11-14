@@ -121,6 +121,16 @@ function phoneKey(value: string | null | undefined) {
   return digits.length >= 10 ? digits.slice(-10) : digits;
 }
 
+function normalizeModelLabel(raw: string | null | undefined): string {
+  const v = (raw ?? "").trim();
+  if (!v || v === "gpt-4o-mini" || v === "gpt-4o") return "gpt-5.6-luna";
+  return v.replace(/^openai\//i, "");
+}
+
+let cachedResponseData: Record<string, unknown> | null = null;
+let cachedResponseAt = 0;
+const CACHE_TTL_MS = 8_000;
+
 function formatPayloadSummary(payload?: Record<string, unknown> | null): string | undefined {
   if (!payload || typeof payload !== "object") return undefined;
   const entries = Object.entries(payload).filter(
@@ -171,15 +181,32 @@ async function buildAllowlistSummary(
   }
 
   if (configured.length > 0) {
+    const allProfiles = Array.from(profilesById.values());
     return configured.map((u) => {
-      const s = u.profileId ? sessionBySeller.get(u.profileId) : undefined;
+      const matchedProfile =
+        (u.profileId ? profilesById.get(u.profileId) : undefined) ??
+        allProfiles.find(
+          (p) =>
+            (p.whatsapp && phoneKey(p.whatsapp) === phoneKey(u.phone)) ||
+            p.full_name.toLowerCase() === u.name.toLowerCase() ||
+            p.short_name.toLowerCase() === u.name.split(" ")[0]?.toLowerCase(),
+        ) ??
+        seed.users.find(
+          (su) =>
+            su.name.toLowerCase() === u.name.toLowerCase() ||
+            su.short.toLowerCase() === u.name.split(" ")[0]?.toLowerCase(),
+        );
+      const resolvedId = u.profileId ?? matchedProfile?.id ?? `linked-${phoneKey(u.phone)}`;
+      const s =
+        sessionBySeller.get(resolvedId) ??
+        sessions.find((sess) => phoneKey(sess.phone) === phoneKey(u.phone));
       const role: "admin" | "gestor" | "vendedor" =
         u.role === "admin" ? "admin" : u.role === "gestor" ? "gestor" : "vendedor";
       return {
         phone: u.phone ?? "",
         name: u.name,
         role,
-        profileId: u.profileId,
+        profileId: resolvedId,
         hasActiveSession: Boolean(s),
         lastActivityAt: s?.lastActivityAt,
       };
@@ -293,66 +320,82 @@ function buildTopicsAndExamples(
 }
 
 export async function GET(request: Request) {
-  const learnedRules: LearnedRule[] = await loadLearnedRules().catch(() => []);
+  if (cachedResponseData && Date.now() - cachedResponseAt < CACHE_TTL_MS) {
+    return NextResponse.json(cachedResponseData);
+  }
+
   const seed = buildSeed();
 
   if (!process.env.DATABASE_URL) {
+    const learnedRules: LearnedRule[] = await loadLearnedRules().catch(() => []);
     const sessions = buildDemoIaSessions(seed);
     const allowlist = await buildAllowlistSummary(new Map(), sessions);
     const externalCallers = buildDemoExternalCallers(seed.companies);
-    return NextResponse.json({
+    const payload = {
       live: false,
       sessions,
       allowlist,
       externalCallers,
       learnedRules,
-    });
+    };
+    cachedResponseData = payload;
+    cachedResponseAt = Date.now();
+    return NextResponse.json(payload);
   }
 
   try {
     await withSession(request);
     const admin = getSupabaseAdmin();
 
-    const [sessionsRes, messagesRes, runsRes, profilesRes, companiesRes, liveConvsRes, liveMsgsRes] =
-      await Promise.all([
-        admin
-          .from("ai_channel_sessions")
-          .select("id, sender_key, sender_phone, profile_id, status, last_message_at, updated_at")
-          .eq("channel", "whatsapp")
-          .order("last_message_at", { ascending: false })
-          .limit(60),
-        admin
-          .from("ai_channel_messages")
-          .select("id, session_id, direction, media_kind, body_text, raw_payload, created_at")
-          .order("created_at", { ascending: false })
-          .limit(500),
-        admin
-          .from("ai_agent_runs")
-          .select(
-            "id, channel, session_id, actor_profile_id, company_id, question, response_text, model, status, used_fallback, latency_ms, total_tokens, error_message, created_at, finished_at",
-          )
-          .order("created_at", { ascending: false })
-          .limit(240),
-        admin
-          .from("profiles")
-          .select("id, full_name, short_name, initials, color, role, region, whatsapp")
-          .eq("is_active", true),
-        admin
-          .from("companies")
-          .select("id, trade_name, legal_name")
-          .is("deleted_at", null)
-          .limit(300),
-        admin
-          .from("whatsapp_live_conversations")
-          .select("id, contact_name, phone, company_id, last_message_at, unread_count")
-          .order("last_message_at", { ascending: false })
-          .limit(40),
-        admin
-          .from("whatsapp_live_messages")
-          .select("id, conversation_id, direction, body, created_at")
-          .order("created_at", { ascending: false })
-          .limit(200),
-      ]);
+    const [
+      learnedRules,
+      sessionsRes,
+      messagesRes,
+      runsRes,
+      profilesRes,
+      companiesRes,
+      liveConvsRes,
+      liveMsgsRes,
+    ] = await Promise.all([
+      loadLearnedRules().catch(() => [] as LearnedRule[]),
+      admin
+        .from("ai_channel_sessions")
+        .select("id, sender_key, sender_phone, profile_id, status, last_message_at, updated_at")
+        .eq("channel", "whatsapp")
+        .order("last_message_at", { ascending: false })
+        .limit(40),
+      admin
+        .from("ai_channel_messages")
+        .select("id, session_id, direction, media_kind, body_text, raw_payload, created_at")
+        .order("created_at", { ascending: false })
+        .limit(160),
+      admin
+        .from("ai_agent_runs")
+        .select(
+          "id, channel, session_id, actor_profile_id, company_id, question, response_text, model, status, used_fallback, latency_ms, total_tokens, error_message, created_at, finished_at",
+        )
+        .order("created_at", { ascending: false })
+        .limit(80),
+      admin
+        .from("profiles")
+        .select("id, full_name, short_name, initials, color, role, region, whatsapp")
+        .eq("is_active", true),
+      admin
+        .from("companies")
+        .select("id, trade_name, legal_name")
+        .is("deleted_at", null)
+        .limit(150),
+      admin
+        .from("whatsapp_live_conversations")
+        .select("id, contact_name, phone, company_id, last_message_at, unread_count")
+        .order("last_message_at", { ascending: false })
+        .limit(30),
+      admin
+        .from("whatsapp_live_messages")
+        .select("id, conversation_id, direction, body, created_at")
+        .order("created_at", { ascending: false })
+        .limit(80),
+    ]);
 
     const rawRuns = ((runsRes.data ?? []) as RunRow[]).filter(
       (r) => r.channel === "whatsapp" || r.channel === "web_assistant",
@@ -458,7 +501,7 @@ export async function GET(request: Request) {
         id: r.id,
         at: r.created_at,
         status: r.status,
-        model: r.model,
+        model: normalizeModelLabel(r.model),
         caminho: r.used_fallback ? "fluxo_antigo" : "ferramentas",
         latencyMs: r.latency_ms ?? 0,
         tokens: r.total_tokens ?? 0,
@@ -542,7 +585,7 @@ export async function GET(request: Request) {
             : classification.autoHealedCount > 0
               ? "IA WhatsApp + IA Avaliadora (Auto-Corrigido)"
               : "IA WhatsApp (Autônoma)",
-        modelLabel: latestRun?.model ?? "gpt-4o-mini",
+        modelLabel: normalizeModelLabel(latestRun?.model),
         intervention: classification.level,
         interventionReasons: classification.reasons,
         ...classification,
@@ -597,7 +640,7 @@ export async function GET(request: Request) {
         phone: profile.whatsapp ?? "App / WhatsApp",
         status: "active",
         attendant: "IA WhatsApp (Autônoma)",
-        modelLabel: latestRun?.model ?? "gpt-4o-mini",
+        modelLabel: normalizeModelLabel(latestRun?.model),
         intervention: classification.level,
         interventionReasons: classification.reasons,
         ...classification,
@@ -673,7 +716,7 @@ export async function GET(request: Request) {
       });
     }
 
-    return NextResponse.json({
+    const payload = {
       live: true,
       sessions: blocks,
       allowlist,
@@ -682,8 +725,12 @@ export async function GET(request: Request) {
           ? externalCallers
           : buildDemoExternalCallers(seed.companies),
       learnedRules,
-    });
+    };
+    cachedResponseData = payload;
+    cachedResponseAt = Date.now();
+    return NextResponse.json(payload);
   } catch {
+    const learnedRules = await loadLearnedRules().catch(() => [] as LearnedRule[]);
     const sessions = buildDemoIaSessions(seed);
     const allowlist = await buildAllowlistSummary(new Map(), sessions);
     const externalCallers = buildDemoExternalCallers(seed.companies);
@@ -698,6 +745,8 @@ export async function GET(request: Request) {
 }
 
 export async function POST(req: Request) {
+  cachedResponseData = null;
+  cachedResponseAt = 0;
   try {
     const body = (await req.json().catch(() => ({}))) as {
       sessionId?: string;

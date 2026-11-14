@@ -284,11 +284,22 @@ export function evaluateSellerOrderQuality(input: {
     };
   }
 
+  const hasClientRefusal = marcas.some(
+    (m) => m.includes("cliente_nao_identificado") || m.includes("cliente_ambiguo") || m.includes("sem_cliente"),
+  );
+  const iaAskedClient =
+    /\b(qual cliente|qual empresa|qual e a usina|qual usina|de qual empresa|de qual cliente)\b/.test(respLower);
+
   const hasClient =
-    Boolean(input.hasCompanyId) ||
-    gravou.length > 0 ||
-    /\b(usina|agro|destilaria| fazenda|grupo|cooperativa|ltda|s\/a|cliente|contato|empresa)\b/.test(lower) ||
-    q.split(/\s+/).some((w) => w.length > 3 && /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ]/.test(w));
+    !hasClientRefusal &&
+    !iaAskedClient &&
+    (Boolean(input.hasCompanyId) ||
+      gravou.length > 0 ||
+      /\b(usina|agro|destilaria|fazenda|grupo|cooperativa|ltda|s\/a)\b/.test(lower) ||
+      q
+        .split(/\s+/)
+        .slice(1)
+        .some((w) => w.length > 3 && /^[A-ZÁÉÍÓÚÂÊÔÃÕÇ]/.test(w)));
 
   const hasOutcome =
     gravou.length > 0 ||
@@ -316,16 +327,21 @@ export function evaluateSellerOrderQuality(input: {
       ) ||
       (gravou.includes("registrar_atividade") && !iaAskedMissingInfo));
 
+  const refusalMarks = marcas.filter((m) => m.startsWith("recusado:"));
   const missing: string[] = [];
   if (!hasClient) missing.push("Não informou o nome do cliente/usina");
   if (!hasOutcome) missing.push("Relato muito curto sem detalhar o que foi tratado");
   if (!hasNextStep) missing.push("Não informou o próximo passo ou data de retorno");
+  if (refusalMarks.length > 0 && missing.length === 0) {
+    missing.push(refusalMarks.map(formatRecordMark).join(", "));
+  }
 
   let score = 100;
   if (!hasClient) score -= 45;
   if (!hasOutcome) score -= 30;
   if (!hasNextStep) score -= 25;
-  if (iaAskedMissingInfo && score > 75) score = 72;
+  if (refusalMarks.length > 0 && score > 65) score = 60;
+  if (iaAskedMissingInfo && score > 75) score = 70;
   score = Math.max(15, Math.min(100, score));
 
   const grade: "completo" | "parcial" | "vago" =
@@ -423,15 +439,15 @@ export function analyzeRunWithEvaluator(
     };
   }
 
-  // Se recusou porque faltou dado obrigatório que o vendedor não informou (ex.: valor da venda, próximo passo, cliente ambíguo)
-  if (toolRefused.length > 0 && order.grade !== "completo") {
+  // Se recusou porque faltou dado obrigatório que o vendedor não informou (ex.: cliente não identificado, valor da venda, próximo passo)
+  if (toolRefused.length > 0 && !userFlaggedError) {
     return {
       rootCause: "pedido_incompleto_equipe",
-      rootCauseLabel: "Pedido incompleto do vendedor (não é erro da IA)",
+      rootCauseLabel: "Pedido incompleto do vendedor (aguardando complemento)",
       teamIssueDetail:
         order.missing.length > 0
-          ? `O vendedor enviou o relato sem: ${order.missing.join(", ")}.`
-          : `Faltou informação obrigatória no relato (${toolRefused.map(formatRecordMark).join(", ")}).`,
+          ? `O vendedor enviou o relato sem informar: ${order.missing.join(", ")}. A IA perguntou para concluir.`
+          : `Faltou dado obrigatório no relato (${toolRefused.map(formatRecordMark).join(", ")}).`,
       autoHealed: false,
       autoHealActions: [],
       autoHealNotifiedWhatsapp: false,
@@ -900,7 +916,7 @@ export function buildDemoIaSessions(input: {
             id: `demo-run-${u.id}-2`,
             at: tNow,
             status: "completed",
-            model: "gpt-4o-mini",
+            model: "gpt-5.6-luna",
             caminho: "ferramentas",
             latencyMs: 1320,
             tokens: 940,
@@ -943,7 +959,7 @@ export function buildDemoIaSessions(input: {
             id: `demo-run-${u.id}-1`,
             at: tPrev2,
             status: "completed",
-            model: "gpt-4o-mini",
+            model: "gpt-5.6-luna",
             caminho: "ferramentas",
             latencyMs: 1480,
             tokens: 860,
@@ -973,7 +989,7 @@ export function buildDemoIaSessions(input: {
               id: `demo-run-${u.id}-1`,
               at: tNow,
               status: "completed",
-              model: "gpt-4o-mini",
+              model: "gpt-5.6-luna",
               caminho: "ferramentas",
               latencyMs: 1180,
               tokens: 640,
@@ -998,7 +1014,7 @@ export function buildDemoIaSessions(input: {
               id: `demo-run-${u.id}-0`,
               at: tPrev3,
               status: "completed",
-              model: "gpt-4o-mini",
+              model: "gpt-5.6-luna",
               caminho: "ferramentas",
               latencyMs: 1290,
               tokens: 790,
@@ -1027,7 +1043,7 @@ export function buildDemoIaSessions(input: {
               id: `demo-run-${u.id}-1`,
               at: tNow,
               status: "completed",
-              model: "gpt-4o-mini",
+              model: "gpt-5.6-luna",
               caminho: "ferramentas",
               latencyMs: 1250,
               tokens: 780,
@@ -1197,7 +1213,7 @@ export function buildDemoIaSessions(input: {
           : diag.level === "intervencao"
             ? "IA Avaliadora / Gestor"
             : "Agente Tawper IA",
-      modelLabel: "gpt-4o-mini",
+      modelLabel: "gpt-5.6-luna",
       intervention: diag.level,
       interventionReasons: diag.reasons,
       messagesTotal: messages.length,

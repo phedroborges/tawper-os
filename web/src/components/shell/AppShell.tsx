@@ -464,13 +464,12 @@ export function AppShell({ children }: { children: ReactNode }) {
   const assistantOpen = useUI((s) => s.assistantOpen);
   const [extras, setExtras] = useState(false);
   const conversasLoading = useUI((s) => s.conversasLoading);
-  const beginConversasLoad = useUI((s) => s.beginConversasLoad);
   const endConversasLoad = useUI((s) => s.endConversasLoad);
   useEffect(() => {
-    if (!pathname.startsWith("/conversas")) endConversasLoad();
+    endConversasLoad();
   }, [pathname, endConversasLoad]);
   const onConversasIntent = () => {
-    if (!pathname.startsWith("/conversas")) beginConversasLoad();
+    // Navegação instantânea sem overlay bloqueante
   };
   useEffect(() => {
     const run = () => setExtras(true);

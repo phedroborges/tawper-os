@@ -1,6 +1,44 @@
 "use client";
 
+import {
+  AlertTriangle,
+  Bot,
+  Building2,
+  CheckCircle2,
+  ChevronRight,
+  Clock,
+  MessageSquare,
+  Mic,
+  Pencil,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Sparkles,
+  Trash2,
+  Users,
+  Zap,
+} from "lucide-react";
+import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { ConversasReady } from "@/components/chat/ConversasLoading";
+import { UserAvatar } from "@/components/crm/crm";
+import { Modal } from "@/components/ui/overlay";
+import {
+  Avatar,
+  Badge,
+  Button,
+  Card,
+  CardHeader,
+  Empty,
+  Input,
+  PageHeader,
+  Progress,
+  Segmented,
+  Select,
+  Textarea,
+} from "@/components/ui/primitives";
+import { fmtAgo, fmtDateTime } from "@/lib/dates";
 import {
   DEFAULT_LEARNED_RULES,
   buildDemoExternalCallers,
@@ -14,88 +52,57 @@ import {
 } from "@/lib/ia-sessions";
 import { useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
+import { cn } from "@/lib/utils";
 
 type MainTab = "equipe" | "acesso" | "treinamento";
 type FilterTab =
   | "todos"
-  | "pendencia_ia"
-  | "pendencia_equipe"
-  | "intervencao"
+  | "alerta_ia"
+  | "aguardando_vendedor"
   | "auto_corrigido"
   | "alinhado";
 
-const INTERVENTION_META: Record<
+const STATUS_BADGE: Record<
   InterventionLevel,
-  {
-    label: string;
-    badgeBg: string;
-    badgeText: string;
-    border: string;
-    dot: string;
-  }
+  { label: string; tone: "green" | "amber" | "red" | "ai" }
 > = {
-  normal: {
-    label: "IA Alinhada",
-    badgeBg: "bg-ok-soft border-ok-line",
-    badgeText: "text-ok",
-    border: "border-line",
-    dot: "bg-ok",
-  },
-  revisado: {
-    label: "Revisado pelo Gestor",
-    badgeBg: "bg-info-soft border-info-line",
-    badgeText: "text-info",
-    border: "border-info-line",
-    dot: "bg-info",
-  },
-  atencao: {
-    label: "Atenção / Monitorar",
-    badgeBg: "bg-warn-soft border-warn-line",
-    badgeText: "text-warn",
-    border: "border-warn-line",
-    dot: "bg-warn",
-  },
-  intervencao: {
-    label: "Intervenção Necessária",
-    badgeBg: "bg-err-soft border-err-line",
-    badgeText: "text-err",
-    border: "border-err-line",
-    dot: "bg-err",
-  },
+  normal: { label: "Alinhado", tone: "green" },
+  revisado: { label: "Revisado", tone: "ai" },
+  atencao: { label: "Aguardando vendedor", tone: "amber" },
+  intervencao: { label: "Requer atenção (IA)", tone: "red" },
 };
 
 const TOOL_LABELS: Record<string, string> = {
-  buscar_cliente: "Busca de empresa na carteira",
-  buscar_empresas: "Busca de empresa na carteira",
-  consultar_crm: "Consulta de dados no CRM",
-  detalhar_empresa: "Leitura da ficha do cliente",
-  listar_minhas_tarefas: "Consulta de tarefas da rotina",
-  resumo_carteira: "Leitura do resumo da carteira",
-  buscar_historico_empresa: "Consulta de histórico do cliente",
-  consultar_mensagens_whatsapp: "Leitura de conversas WhatsApp",
-  registrar_atividade: "Gravação de registro comercial",
-  registrar_interacao: "Gravação de registro comercial",
-  criar_tarefa: "Criação de tarefa / próximo passo",
-  concluir_tarefa: "Baixa de tarefa concluída",
-  mover_etapa: "Avanço de etapa no funil",
-  mover_etapa_empresa: "Avanço de etapa no funil",
-  atualizar_proximo_passo: "Atualização de próximo passo",
-  adicionar_nota_empresa: "Gravação de nota na ficha",
-  atualizar_cliente: "Atualização de dados técnicos/cadastro",
-  atualizar_dados_tecnicos: "Atualização de dados técnicos",
-  criar_proposta: "Emissão/registro de proposta",
-  registrar_proposta: "Emissão/registro de proposta",
-  atualizar_proposta: "Atualização de proposta",
+  buscar_cliente: "Busca de cliente",
+  buscar_empresas: "Busca de cliente",
+  consultar_crm: "Consulta ao CRM",
+  detalhar_empresa: "Leitura de ficha",
+  listar_minhas_tarefas: "Consulta de tarefas",
+  resumo_carteira: "Resumo da carteira",
+  buscar_historico_empresa: "Histórico do cliente",
+  consultar_mensagens_whatsapp: "Leitura WhatsApp",
+  registrar_atividade: "Atividade registrada",
+  registrar_interacao: "Interação registrada",
+  criar_tarefa: "Tarefa agendada",
+  reagendar_tarefa: "Tarefa reagendada",
+  concluir_tarefa: "Tarefa concluída",
+  mover_etapa: "Etapa avançada",
+  mover_etapa_empresa: "Etapa avançada",
+  atualizar_proximo_passo: "Próximo passo atualizado",
+  adicionar_nota_empresa: "Nota adicionada",
+  atualizar_cliente: "Ficha atualizada",
+  atualizar_dados_tecnicos: "Dados técnicos atualizados",
+  criar_proposta: "Proposta criada",
+  registrar_proposta: "Proposta registrada",
+  atualizar_proposta: "Proposta atualizada",
+  ganhar_negocio: "Negócio ganho",
+  perder_negocio: "Negócio perdido",
 };
 
-function formatTimeAgo(iso: string) {
-  const diffMs = Date.now() - new Date(iso).getTime();
-  const mins = Math.max(1, Math.floor(diffMs / 60_000));
-  if (mins < 60) return `há ${mins} min`;
-  const hours = Math.floor(mins / 60);
-  if (hours < 24) return `há ${hours}h`;
-  const days = Math.floor(hours / 24);
-  return `há ${days}d`;
+function formatLatency(ms: number) {
+  if (!ms || ms <= 0) return "1,2s";
+  if (ms < 1000) return `${ms}ms`;
+  return `${(ms / 1000).toFixed(1).replace(".", ",")}s`;
 }
 
 function formatClock(iso: string) {
@@ -104,13 +111,21 @@ function formatClock(iso: string) {
   return d.toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" });
 }
 
-function formatLatency(ms: number) {
-  if (!ms || ms <= 0) return "1,1s";
-  if (ms < 1000) return `${ms}ms`;
-  return `${(ms / 1000).toFixed(1).replace(".", ",")}s`;
+function formatPhone(raw: string) {
+  const digits = String(raw ?? "").replace(/\D/g, "");
+  if (digits.length === 13 && digits.startsWith("55")) {
+    return `(${digits.slice(2, 4)}) ${digits.slice(4, 9)}-${digits.slice(9)}`;
+  }
+  if (digits.length === 12 && digits.startsWith("55")) {
+    return `(${digits.slice(2, 4)}) ${digits.slice(4, 8)}-${digits.slice(8)}`;
+  }
+  if (digits.length === 11) {
+    return `(${digits.slice(0, 2)}) ${digits.slice(2, 7)}-${digits.slice(7)}`;
+  }
+  return raw || "—";
 }
 
-function initialsFromName(name: string) {
+function initialsOf(name: string) {
   const parts = name.trim().split(/\s+/);
   if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
   return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
@@ -128,7 +143,7 @@ export function IaSessionsConsole() {
   );
   const [allowlist, setAllowlist] = useState<AllowlistMember[]>(() =>
     users.map((u, idx) => ({
-      phone: `+55 34 9991${idx + 1}-00${idx + 1}0`,
+      phone: u.phone || `55349991${idx + 1}00${idx + 1}0`,
       name: u.name,
       role: u.role === "admin" ? "admin" : u.role === "gestor" ? "gestor" : "vendedor",
       profileId: u.id,
@@ -142,15 +157,14 @@ export function IaSessionsConsole() {
   const [learnedRules, setLearnedRules] = useState<LearnedRule[]>(() => DEFAULT_LEARNED_RULES);
 
   const [isLive, setIsLive] = useState(false);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(false);
   const [mainTab, setMainTab] = useState<MainTab>("equipe");
   const [filter, setFilter] = useState<FilterTab>("todos");
   const [search, setSearch] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
-  const [expandedCardChats, setExpandedCardChats] = useState<Record<string, boolean>>({});
   const [busySessionId, setBusySessionId] = useState<string | null>(null);
 
-  // Rule modal / form state
+  // Rule form state
   const [editingRule, setEditingRule] = useState<LearnedRule | null>(null);
   const [showNewRuleForm, setShowNewRuleForm] = useState(false);
   const [ruleText, setRuleText] = useState("");
@@ -165,7 +179,7 @@ export function IaSessionsConsole() {
   const fetchSessions = useCallback(async () => {
     try {
       const res = await fetch("/api/whatsapp/ia-sessions", { cache: "no-store" });
-      if (!res.ok) throw new Error("Falha ao carregar sessões");
+      if (!res.ok) return;
       const json = (await res.json()) as {
         live?: boolean;
         sessions?: IaSessionBlock[];
@@ -187,7 +201,7 @@ export function IaSessionsConsole() {
         setLearnedRules(json.learnedRules);
       }
     } catch {
-      // mantém dados em tela
+      // mantém dados atuais sem travar a interface
     } finally {
       setLoading(false);
     }
@@ -199,7 +213,7 @@ export function IaSessionsConsole() {
     }, 0);
     const timer = setInterval(() => {
       void fetchSessions();
-    }, 15_000);
+    }, 20_000);
     return () => {
       clearTimeout(initialTimer);
       clearInterval(timer);
@@ -214,9 +228,10 @@ export function IaSessionsConsole() {
 
   const filteredSessions = useMemo(() => {
     return sessions.filter((s) => {
-      if (filter === "pendencia_ia" && s.pendingOwner !== "ia") return false;
-      if (filter === "pendencia_equipe" && s.pendingOwner !== "equipe") return false;
-      if (filter === "intervencao" && s.intervention !== "intervencao") return false;
+      if (filter === "alerta_ia" && s.pendingOwner !== "ia" && s.intervention !== "intervencao") {
+        return false;
+      }
+      if (filter === "aguardando_vendedor" && s.pendingOwner !== "equipe") return false;
       if (filter === "auto_corrigido" && (s.autoHealedCount ?? 0) === 0) return false;
       if (filter === "alinhado" && s.intervention !== "normal" && s.intervention !== "revisado") {
         return false;
@@ -275,15 +290,15 @@ export function IaSessionsConsole() {
               id: `heal-${Date.now()}`,
               at: new Date().toISOString(),
               direction: "out" as const,
-              body: `🤖 [IA Avaliadora] Corrigi automaticamente o registro anterior no CRM e ajustei o próximo passo conforme seu pedido.`,
+              body: `[IA Avaliadora] Corrigi automaticamente o registro anterior no CRM e ajustei o próximo passo conforme seu pedido.`,
               fromEvaluator: true,
             },
           ];
           return {
             ...item,
-            intervention: "normal",
+            intervention: "revisado",
             interventionReasons: [],
-            iaScorePct: Math.max(94, item.iaScorePct),
+            iaScorePct: Math.max(95, item.iaScorePct),
             conversationState: "auto_corrigida",
             pendingOwner: "nenhuma",
             autoHealedCount: (item.autoHealedCount ?? 0) + 1,
@@ -301,9 +316,10 @@ export function IaSessionsConsole() {
         }),
       );
 
-      toast(
-        `IA Avaliadora corrigiu o atendimento de ${session.sellerShort} e atualizou as regras do prompt.`,
-      );
+      toast(`Atendimento de ${session.sellerShort} corrigido pela IA Avaliadora.`, {
+        tone: "ai",
+        sub: "Regra preventiva adicionada ao prompt ativo.",
+      });
     } finally {
       setBusySessionId(null);
     }
@@ -350,7 +366,7 @@ export function IaSessionsConsole() {
     if (Array.isArray(json.learnedRules)) {
       setLearnedRules(json.learnedRules);
     }
-    toast("Status da regra atualizado no prompt da IA.");
+    toast("Regra atualizada no prompt do agente.");
   };
 
   const handleDeleteRule = async (ruleId: string) => {
@@ -364,12 +380,12 @@ export function IaSessionsConsole() {
     if (Array.isArray(json.learnedRules)) {
       setLearnedRules(json.learnedRules);
     }
-    toast("Regra removida.");
+    toast("Regra removida do prompt.");
   };
 
   const handleSaveRule = async () => {
     if (!ruleText.trim()) {
-      toast("Escreva a instrução que deve entrar no prompt da IA.");
+      toast("Escreva a instrução que deve entrar no prompt.", { tone: "warn" });
       return;
     }
     const payload: Partial<LearnedRule> = editingRule
@@ -404,12 +420,12 @@ export function IaSessionsConsole() {
     setRuleBeforeQuestion("");
     setRuleBeforeError("");
     setRuleAfterResolution("");
-    toast("Regra salva e injetada no prompt ativo da IA do WhatsApp!");
+    toast("Regra salva e ativa no prompt do WhatsApp.");
   };
 
   const handleAuthorizeCaller = async (caller: ExternalCallerBlock) => {
     if (!selectedProfileForCaller) {
-      toast("Selecione a qual vendedor da equipe este número pertence.");
+      toast("Selecione o membro da equipe para vincular.", { tone: "warn" });
       return;
     }
     await fetch("/api/whatsapp/ia-sessions", {
@@ -431,852 +447,678 @@ export function IaSessionsConsole() {
     setExternalCallers((prev) => prev.filter((c) => c.peer !== caller.peer));
     setAuthorizingPeer(null);
     setSelectedProfileForCaller("");
-    toast(`Número ${caller.peer} autorizado na Lista de Acesso da equipe!`);
+    toast(`Número ${formatPhone(caller.peer)} vinculado à Lista de Acesso.`);
   };
 
   return (
-    <div className="flex-1 overflow-y-auto bg-bg p-6">
-      <div className="mx-auto max-w-[1440px] space-y-6">
-        {/* Cabeçalho Principal */}
-        <div className="flex flex-wrap items-start justify-between gap-4 rounded-xl border border-line bg-card p-5 shadow-xs">
-          <div className="space-y-1">
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-lg bg-ok-soft text-ok border border-ok-line font-bold">
-                ✦
-              </span>
-              <h1 className="text-xl font-bold tracking-tight text-fg">
-                Central de Auditoria, Conversas & Treinamento da IA (WhatsApp)
-              </h1>
-              <span
-                className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-semibold ${
-                  isLive
-                    ? "border-ok-line bg-ok-soft text-ok"
-                    : "border-info-line bg-info-soft text-info"
-                }`}
-              >
-                <span
-                  className={`h-1.5 w-1.5 rounded-full ${
-                    isLive ? "bg-ok animate-pulse" : "bg-info"
-                  }`}
-                />
-                {isLive ? "Conectado ao WhatsApp Real" : "Auditoria Operacional Ativa"}
-              </span>
-            </div>
-            <p className="text-sm text-fg-2 max-w-4xl">
-              Veja a <strong>conversa completa de cada vendedor</strong>, o que estão tratando em cada
-              empresa, o diagnóstico da <strong>IA Avaliadora (Auto-Corretora)</strong> separando erros
-              da IA de pedidos vagos da equipe, e as regras injetadas no prompt para melhoria contínua.
-            </p>
-          </div>
+    <div>
+      <ConversasReady />
 
+      <PageHeader
+        kicker="Gestão e auditoria do agente no WhatsApp · gpt-5.6-luna"
+        title="Atendimento IA"
+        subtitle="Acompanhe o que cada vendedor está tratando com a IA, clique no atendimento para ler a conversa completa e gerencie a lista de acesso e as regras do prompt."
+        actions={
           <div className="flex items-center gap-2">
-            <button
-              type="button"
+            <Badge tone={isLive ? "green" : "ai"}>
+              {isLive ? "WhatsApp conectado" : "Auditoria ativa"}
+            </Badge>
+            <Button
+              variant="outline"
+              size="sm"
               onClick={() => {
                 setLoading(true);
                 void fetchSessions();
               }}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-semibold text-fg-2 hover:bg-surface-2 transition-colors"
+              disabled={loading}
             >
-              ↻ {loading ? "Sincronizando..." : "Atualizar agora"}
-            </button>
-          </div>
-        </div>
-
-        {/* 6 KPIs de Inteligência Operacional */}
-        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-          {/* 1. Fechamento vs Em Aberto */}
-          <div className="rounded-xl border border-line bg-card p-4 shadow-xs">
-            <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-muted">
-              <span>Fechamento vs. Aberto</span>
-              <span className="text-ok font-bold">✓</span>
-            </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-ok">
-                {summary.closedWithRecordCount}
-              </span>
-              <span className="text-xs font-medium text-fg-2">
-                fechadas ·{" "}
-                <strong className="text-warn">{summary.openConversationsCount}</strong> abertas
-              </span>
-            </div>
-            <p className="mt-1 text-[11px] text-muted">
-              {summary.totalWrites} registros gravados no CRM ({summary.totalMessages} msgs)
-            </p>
-          </div>
-
-          {/* 2. Pendências: IA vs Equipe */}
-          <div className="rounded-xl border border-line bg-card p-4 shadow-xs">
-            <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-muted">
-              <span>Pendências: IA vs. Equipe</span>
-              <span className="text-warn font-bold">!</span>
-            </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span
-                className={`text-2xl font-bold ${
-                  summary.iaPendingCount > 0 ? "text-err" : "text-ok"
-                }`}
-              >
-                {summary.iaPendingCount} IA
-              </span>
-              <span className="text-xs font-medium text-fg-2">
-                · <strong className="text-warn">{summary.teamPendingCount}</strong> Equipe
-              </span>
-            </div>
-            <p className="mt-1 text-[11px] text-muted">
-              IA deve resposta vs. Vendedor não respondeu pergunta
-            </p>
-          </div>
-
-          {/* 3. Erros da IA & Auto-Correções */}
-          <div className="rounded-xl border border-line bg-card p-4 shadow-xs">
-            <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-muted">
-              <span>IA Avaliadora (2ª Camada)</span>
-              <span className="text-info font-bold">⚡</span>
-            </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-info">
-                {summary.autoHealedCount}
-              </span>
-              <span className="text-xs font-medium text-fg-2">
-                auto-corrigidos ·{" "}
-                <strong className={summary.iaErrorsCount > 0 ? "text-err" : "text-ok"}>
-                  {summary.iaErrorsCount}
-                </strong>{" "}
-                erros IA
-              </span>
-            </div>
-            <p className="mt-1 text-[11px] text-muted">
-              Audita falhas, corrige no CRM e gera regra
-            </p>
-          </div>
-
-          {/* 4. Qualidade dos Pedidos da Equipe */}
-          <div className="rounded-xl border border-line bg-card p-4 shadow-xs">
-            <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-muted">
-              <span>Qualidade dos Pedidos</span>
-              <span className="text-brand font-bold">◎</span>
-            </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span
-                className={`text-2xl font-bold ${
-                  summary.teamOrderQualityPct >= 80
-                    ? "text-ok"
-                    : summary.teamOrderQualityPct >= 60
-                      ? "text-warn"
-                      : "text-err"
-                }`}
-              >
-                {summary.teamOrderQualityPct}%
-              </span>
-              <span className="text-xs font-medium text-fg-2">clareza da equipe</span>
-            </div>
-            <p className="mt-1 text-[11px] text-muted">
-              Empresa + Ação/Resultado + Próximo Passo/Data
-            </p>
-          </div>
-
-          {/* 5. Tempo de Resposta, Fluidez & Desconexões */}
-          <div className="rounded-xl border border-line bg-card p-4 shadow-xs">
-            <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-muted">
-              <span>Tempo, Fluidez & Quedas</span>
-              <span className="text-ok font-bold">⚡</span>
-            </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-fg">
-                {formatLatency(summary.avgLatencyMs)}
-              </span>
-              <span className="text-xs font-medium text-fg-2">
-                · <strong>{summary.fluencyScorePct}%</strong> fluidez
-              </span>
-            </div>
-            <p className="mt-1 text-[11px] text-muted">
-              {summary.disconnectionsCount} desconexão(ões) técnica(s)
-            </p>
-          </div>
-
-          {/* 6. Lista de Acesso & Regras Aprendidas */}
-          <div className="rounded-xl border border-line bg-card p-4 shadow-xs">
-            <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wider text-muted">
-              <span>Acesso & Prompt Ativo</span>
-              <span className="text-ok font-bold">🛡️</span>
-            </div>
-            <div className="mt-2 flex items-baseline gap-2">
-              <span className="text-2xl font-bold text-fg">{allowlist.length}</span>
-              <span className="text-xs font-medium text-fg-2">
-                na lista · <strong className="text-warn">{externalCallers.length}</strong> fora
-              </span>
-            </div>
-            <p className="mt-1 text-[11px] text-muted">
-              {activeRulesCount} regras aprendidas ativas no prompt
-            </p>
-          </div>
-        </div>
-
-        {/* Navegação entre as 3 Abas Principais */}
-        <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-line bg-card p-2 shadow-xs">
-          <div className="flex flex-wrap items-center gap-1.5">
-            <button
-              type="button"
-              onClick={() => setMainTab("equipe")}
-              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold transition-colors ${
-                mainTab === "equipe"
-                  ? "bg-fg text-bg shadow-xs"
-                  : "text-fg-2 hover:bg-surface"
-              }`}
+              <RefreshCw size={14} className={cn(loading && "animate-spin")} />
+              Atualizar
+            </Button>
+            <Link
+              href="/registros"
+              className="inline-flex h-8.5 items-center gap-1.5 rounded-[6px] border border-line bg-white px-3 text-[12.5px] font-medium text-ink transition-colors hover:bg-soft"
             >
-              <span>💬 1. Atendimentos da Equipe ({sessions.length})</span>
-              {summary.needsIntervention > 0 && (
-                <span className="rounded-full bg-err px-2 py-0.5 text-[10px] font-bold text-white">
-                  {summary.needsIntervention} alerta(s)
-                </span>
-              )}
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setMainTab("acesso")}
-              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold transition-colors ${
-                mainTab === "acesso"
-                  ? "bg-fg text-bg shadow-xs"
-                  : "text-fg-2 hover:bg-surface"
-              }`}
-            >
-              <span>
-                🛡️ 2. Lista de Acesso & Outros Contatos ({allowlist.length} equipe ·{" "}
-                {externalCallers.length} externos)
-              </span>
-            </button>
-
-            <button
-              type="button"
-              onClick={() => setMainTab("treinamento")}
-              className={`inline-flex items-center gap-2 rounded-lg px-4 py-2.5 text-xs font-bold transition-colors ${
-                mainTab === "treinamento"
-                  ? "bg-fg text-bg shadow-xs"
-                  : "text-fg-2 hover:bg-surface"
-              }`}
-            >
-              <span>
-                🧠 3. Treinamento da IA & Qualidade dos Pedidos ({activeRulesCount} regras no prompt)
-              </span>
-            </button>
+              Ver tabela de registros
+            </Link>
           </div>
+        }
+      />
 
-          {mainTab === "equipe" && (
-            <div className="relative w-full sm:w-80">
-              <input
-                type="text"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-                placeholder="Buscar vendedor, usina/cliente ou conversa..."
-                className="w-full rounded-lg border border-line bg-surface py-2 px-3 text-xs text-fg placeholder:text-muted focus:border-fg focus:outline-none"
-              />
-            </div>
+      {/* Pulso de Inteligência (mesmo padrão visual de Registros e Gestão) */}
+      <div className="mb-4 grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <button
+          type="button"
+          onClick={() => {
+            setMainTab("equipe");
+            setFilter((f) => (f === "alinhado" ? "todos" : "alinhado"));
+          }}
+          className={cn(
+            "rounded-[8px] border bg-white p-3.5 text-left transition hover:border-navy/40",
+            filter === "alinhado" && mainTab === "equipe"
+              ? "border-navy ring-1 ring-navy/20"
+              : "border-line",
           )}
-        </div>
+        >
+          <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted">
+            <span>Fechamento vs. Aberto</span>
+            <CheckCircle2 size={14} className="text-ok" />
+          </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-[24px] font-bold leading-none tabular-nums text-ink">
+              {summary.closedWithRecordCount}
+            </span>
+            <span className="text-[12px] text-muted">
+              fechadas ·{" "}
+              <b className="text-warn">{summary.openConversationsCount} em aberto</b>
+            </span>
+          </div>
+          <div className="mt-1 text-[11.5px] text-muted">
+            {summary.totalWrites} ações gravadas no CRM ({summary.totalMessages} mensagens)
+          </div>
+        </button>
 
-        {/* =====================================================================
-            ABA 1: ATENDIMENTOS DA EQUIPE (COM CONVERSA COMPLETA VISÍVEL NO BLOCO)
-           ===================================================================== */}
+        <button
+          type="button"
+          onClick={() => {
+            setMainTab("equipe");
+            setFilter((f) =>
+              f === "aguardando_vendedor" ? "todos" : "aguardando_vendedor",
+            );
+          }}
+          className={cn(
+            "rounded-[8px] border bg-white p-3.5 text-left transition hover:border-navy/40",
+            filter === "aguardando_vendedor" && mainTab === "equipe"
+              ? "border-navy ring-1 ring-navy/20"
+              : "border-line",
+          )}
+        >
+          <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted">
+            <span>Pendências: IA vs. Equipe</span>
+            <AlertTriangle
+              size={14}
+              className={
+                summary.iaPendingCount > 0
+                  ? "text-brand"
+                  : summary.teamPendingCount > 0
+                    ? "text-warn"
+                    : "text-muted"
+              }
+            />
+          </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span
+              className={cn(
+                "text-[24px] font-bold leading-none tabular-nums",
+                summary.iaPendingCount > 0 ? "text-brand" : "text-ink",
+              )}
+            >
+              {summary.iaPendingCount} IA
+            </span>
+            <span className="text-[12px] text-muted">
+              · <b className="text-warn">{summary.teamPendingCount} vendedor</b>
+            </span>
+          </div>
+          <div className="mt-1 text-[11.5px] text-muted">
+            {summary.teamPendingCount > 0
+              ? "Vendedor ainda não respondeu pergunta da IA"
+              : "Nenhuma pergunta aguardando retorno"}
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => {
+            setMainTab("equipe");
+            setFilter((f) => (f === "auto_corrigido" ? "todos" : "auto_corrigido"));
+          }}
+          className={cn(
+            "rounded-[8px] border bg-white p-3.5 text-left transition hover:border-navy/40",
+            filter === "auto_corrigido" && mainTab === "equipe"
+              ? "border-navy ring-1 ring-navy/20"
+              : "border-line",
+          )}
+        >
+          <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted">
+            <span>IA Avaliadora (2ª Camada)</span>
+            <Sparkles size={14} className="text-ai" />
+          </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-[24px] font-bold leading-none tabular-nums text-ink">
+              {summary.autoHealedCount}
+            </span>
+            <span className="text-[12px] text-muted">
+              auto-corrigidos ·{" "}
+              <b className={summary.iaErrorsCount > 0 ? "text-brand" : "text-ok"}>
+                {summary.iaErrorsCount} erro(s) IA
+              </b>
+            </span>
+          </div>
+          <div className="mt-1 text-[11.5px] text-muted">
+            Tempo médio {formatLatency(summary.avgLatencyMs)} · Fluidez {summary.fluencyScorePct}%
+          </div>
+        </button>
+
+        <button
+          type="button"
+          onClick={() => setMainTab("treinamento")}
+          className={cn(
+            "rounded-[8px] border bg-white p-3.5 text-left transition hover:border-navy/40",
+            mainTab === "treinamento" ? "border-navy ring-1 ring-navy/20" : "border-line",
+          )}
+        >
+          <div className="flex items-center justify-between text-[11px] font-semibold uppercase tracking-wide text-muted">
+            <span>Qualidade & Prompt</span>
+            <Zap size={14} className="text-ok" />
+          </div>
+          <div className="mt-1 flex items-baseline gap-2">
+            <span className="text-[24px] font-bold leading-none tabular-nums text-ink">
+              {summary.teamOrderQualityPct}%
+            </span>
+            <span className="text-[12px] text-muted">clareza dos pedidos</span>
+          </div>
+          <div className="mt-1 text-[11.5px] text-muted">
+            {activeRulesCount} regras aprendidas ativas · {allowlist.length} na lista de acesso
+          </div>
+        </button>
+      </div>
+
+      {/* Barra de Navegação (Segmented padrão do sistema) + Busca */}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <Segmented<MainTab>
+          value={mainTab}
+          onChange={setMainTab}
+          options={[
+            {
+              value: "equipe",
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  <MessageSquare size={14} />
+                  Atendimentos da Equipe ({sessions.length})
+                </span>
+              ),
+            },
+            {
+              value: "acesso",
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  <Users size={14} />
+                  Lista de Acesso ({allowlist.length}) & Externos ({externalCallers.length})
+                </span>
+              ),
+            },
+            {
+              value: "treinamento",
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  <Sparkles size={14} />
+                  Treinamento da IA & Qualidade ({activeRulesCount})
+                </span>
+              ),
+            },
+          ]}
+        />
+
         {mainTab === "equipe" && (
-          <div className="space-y-4">
-            {/* Subfiltros rápidos */}
-            <div className="flex flex-wrap items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex flex-wrap items-center gap-1">
               {(
                 [
-                  { id: "todos", label: `Todos da Equipe (${sessions.length})` },
+                  { id: "todos", label: `Todos ${sessions.length}` },
+                  { id: "alerta_ia", label: `Alerta IA ${summary.iaPendingCount}` },
                   {
-                    id: "pendencia_ia",
-                    label: `Pendência da IA (${summary.iaPendingCount})`,
-                  },
-                  {
-                    id: "pendencia_equipe",
-                    label: `Pendência do Vendedor (${summary.teamPendingCount})`,
+                    id: "aguardando_vendedor",
+                    label: `Aguardando vendedor ${summary.teamPendingCount}`,
                   },
                   {
                     id: "auto_corrigido",
-                    label: `Auto-Corrigidos pela IA Avaliadora (${
+                    label: `Auto-corrigidos ${
                       sessions.filter((s) => (s.autoHealedCount ?? 0) > 0).length
-                    })`,
+                    }`,
                   },
-                  {
-                    id: "alinhado",
-                    label: `Alinhados (${
-                      sessions.filter(
-                        (s) => s.intervention === "normal" || s.intervention === "revisado",
-                      ).length
-                    })`,
-                  },
-                ] as const
-              ).map((tab) => (
+                ] as { id: FilterTab; label: string }[]
+              ).map((pill) => (
                 <button
-                  key={tab.id}
+                  key={pill.id}
                   type="button"
-                  onClick={() => setFilter(tab.id)}
-                  className={`rounded-lg border px-3 py-1.5 text-xs font-semibold transition-colors ${
-                    filter === tab.id
-                      ? "border-fg bg-fg text-bg"
-                      : "border-line bg-card text-fg-2 hover:bg-surface"
-                  }`}
+                  onClick={() => setFilter(pill.id)}
+                  className={cn(
+                    "rounded-full px-2.5 py-1 text-[12px] font-semibold transition",
+                    filter === pill.id
+                      ? pill.id === "alerta_ia"
+                        ? "bg-brand text-white"
+                        : "bg-navy text-white"
+                      : "border border-line bg-white text-navy-3 hover:bg-soft",
+                  )}
                 >
-                  {tab.label}
+                  {pill.label}
                 </button>
               ))}
             </div>
 
-            {/* Grade de Blocos dos Vendedores */}
-            <div className="grid grid-cols-1 gap-5 xl:grid-cols-2">
-              {filteredSessions.map((session) => {
-                const meta = INTERVENTION_META[session.intervention];
-                const isChatExpanded = Boolean(expandedCardChats[session.id]);
-                const visibleMessages = isChatExpanded
-                  ? session.messages
-                  : session.messages.slice(-6);
-                const orderScore = session.sellerOrderScorePct ?? 88;
-                const autoHealedCount = session.autoHealedCount ?? 0;
-                const companiesMentioned = session.companiesMentioned ?? [];
+            <div className="relative min-w-[240px]">
+              <Search
+                size={14}
+                className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted"
+              />
+              <Input
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder="Buscar vendedor, cliente ou assunto..."
+                className="pl-8"
+              />
+            </div>
+          </div>
+        )}
+      </div>
 
+      {/* =====================================================================
+          ABA 1: ATENDIMENTOS DA EQUIPE (BLOCOS ENXUTOS -> CLIQUE ABRE A CONVERSA)
+         ===================================================================== */}
+      {mainTab === "equipe" && (
+        <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
+          {filteredSessions.length === 0 && (
+            <Card className="lg:col-span-2">
+              <Empty
+                icon={<Bot size={20} />}
+                title="Nenhum atendimento neste filtro"
+                text="Altere os filtros acima para visualizar os atendimentos da equipe."
+              />
+            </Card>
+          )}
+
+          {filteredSessions.map((session) => {
+            const statusMeta = STATUS_BADGE[session.intervention];
+            const orderScore = session.sellerOrderScorePct ?? 88;
+            const autoHealedCount = session.autoHealedCount ?? 0;
+            const companiesMentioned = session.companiesMentioned ?? [];
+            const sellerUser = users.find((u) => u.id === session.sellerId);
+
+            // Alerta curto e claro apenas quando há problema, pergunta pendente ou auto-correção
+            const alertType =
+              session.intervention === "intervencao"
+                ? "erro_ia"
+                : session.pendingOwner === "equipe"
+                  ? "aguardando_vendedor"
+                  : autoHealedCount > 0
+                    ? "auto_corrigido"
+                    : null;
+
+            return (
+              <Card
+                key={session.id}
+                className={cn(
+                  "flex flex-col justify-between p-4 transition hover:border-navy/35",
+                  session.intervention === "intervencao" && "border-brand/35",
+                )}
+              >
+                <div className="space-y-3">
+                  {/* Linha 1: Vendedor + Telefone + Modelo + Status */}
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-3">
+                      {sellerUser ? (
+                        <UserAvatar userId={sellerUser.id} size={38} />
+                      ) : (
+                        <Avatar
+                          name={session.sellerName}
+                          initials={initialsOf(session.sellerName)}
+                          size={38}
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="truncate text-[15px] font-semibold text-ink">
+                            {session.sellerName}
+                          </span>
+                          <Badge tone="outline">{session.modelLabel || "gpt-5.6-luna"}</Badge>
+                        </div>
+                        <div className="mt-0.5 flex flex-wrap items-center gap-1.5 text-[12px] text-muted">
+                          <span>{formatPhone(session.phone)}</span>
+                          <span>·</span>
+                          <span>{fmtAgo(session.lastActivityAt)}</span>
+                          <span>·</span>
+                          <span>{session.messagesTotal} mensagens</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    <div className="flex shrink-0 flex-col items-end gap-1">
+                      <Badge tone={statusMeta.tone}>{statusMeta.label}</Badge>
+                      {autoHealedCount > 0 && (
+                        <Badge tone="ai">Auto-corrigido ({autoHealedCount})</Badge>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Alerta enxuto (só aparece quando teve problema, pendência do vendedor ou auto-correção) */}
+                  {alertType === "erro_ia" && (
+                    <div className="flex items-start gap-2 rounded-[6px] bg-brand-soft px-3 py-2 text-[12.5px] text-brand">
+                      <AlertTriangle size={15} className="mt-0.5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <span className="font-semibold">Alerta no atendimento: </span>
+                        <span>
+                          {session.evaluatorSummary?.iaErrorDetail ||
+                            session.interventionReasons[0] ||
+                            "O vendedor sinalizou falha na resposta anterior."}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {alertType === "aguardando_vendedor" && (
+                    <div className="flex items-start gap-2 rounded-[6px] bg-warn-soft px-3 py-2 text-[12.5px] text-warn">
+                      <Clock size={15} className="mt-0.5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <span className="font-semibold">Aguardando {session.sellerShort}: </span>
+                        <span>
+                          {session.evaluatorSummary?.teamIssueDetail ||
+                            "O vendedor enviou relato sem informar a empresa ou data; a IA perguntou para concluir."}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {alertType === "auto_corrigido" && (
+                    <div className="flex items-start gap-2 rounded-[6px] bg-ai-soft px-3 py-2 text-[12.5px] text-ai">
+                      <Sparkles size={15} className="mt-0.5 shrink-0" />
+                      <div className="min-w-0 flex-1">
+                        <span className="font-semibold">IA Avaliadora atuou: </span>
+                        <span>
+                          {session.evaluatorSummary?.autoHealSummary ||
+                            "Registro complementado automaticamente no CRM e regra adicionada ao prompt."}
+                        </span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* O que está sendo tratado neste atendimento (fonte clara e legível) */}
+                  <div className="rounded-[6px] border border-line bg-soft/45 px-3.5 py-2.5">
+                    <div className="flex items-center justify-between gap-2 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      <span>O que estão tratando</span>
+                      <span>{session.writesCount} gravado(s) no CRM</span>
+                    </div>
+                    <p className="mt-1 text-[13.5px] leading-snug font-medium text-ink">
+                      {session.topicsSummary || session.lastQuestion || "Atendimento em andamento."}
+                    </p>
+                    {companiesMentioned.length > 0 && (
+                      <div className="mt-2 flex flex-wrap items-center gap-1.5">
+                        {companiesMentioned.map((c) => (
+                          <span
+                            key={c.id ?? c.nome}
+                            className="inline-flex items-center gap-1 rounded-[4px] border border-line bg-white px-2 py-0.5 text-[11.5px] font-medium text-ink"
+                          >
+                            <Building2 size={12} className="text-navy-3" />
+                            {c.nome}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Dados lado a lado: Desempenho da IA vs Qualidade do Pedido */}
+                  <div className="grid grid-cols-2 gap-2.5">
+                    <div className="rounded-[6px] border border-line bg-white px-3 py-2.5">
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="font-medium text-muted">Desempenho da IA</span>
+                        <span className="font-semibold tabular-nums text-ink">
+                          {session.iaScorePct}%
+                        </span>
+                      </div>
+                      <Progress
+                        value={session.iaScorePct}
+                        tone={
+                          session.iaScorePct >= 85
+                            ? "green"
+                            : session.iaScorePct >= 65
+                              ? "amber"
+                              : "red"
+                        }
+                        className="mt-1.5"
+                      />
+                      <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted">
+                        <span>Resp. {formatLatency(session.avgLatencyMs)}</span>
+                        <span>Fluidez {session.fluencyScorePct ?? session.iaScorePct}%</span>
+                      </div>
+                    </div>
+
+                    <div className="rounded-[6px] border border-line bg-white px-3 py-2.5">
+                      <div className="flex items-center justify-between text-[12px]">
+                        <span className="font-medium text-muted">Qualidade do pedido</span>
+                        <span className="font-semibold tabular-nums text-ink">
+                          {orderScore}%
+                        </span>
+                      </div>
+                      <Progress
+                        value={orderScore}
+                        tone={
+                          orderScore >= 80 ? "green" : orderScore >= 60 ? "amber" : "red"
+                        }
+                        className="mt-1.5"
+                      />
+                      <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted">
+                        <span>
+                          {session.audioCount} áudio(s) · {session.turnsPerClosure ?? 1} turno/reg
+                        </span>
+                        <span>
+                          {orderScore >= 80 ? "Completo" : "Faltou dado"}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Rodapé do Bloco: clique abre a conversa completa e auditoria */}
+                <div className="mt-3.5 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    {session.lastGravou.slice(0, 3).map((g) => (
+                      <Badge key={g} tone="green">
+                        {TOOL_LABELS[g] ?? g}
+                      </Badge>
+                    ))}
+                    {session.lastGravou.length === 0 && (
+                      <span className="text-[12px] text-muted">
+                        Clique para ler as {session.messages.length} mensagens da conversa
+                      </span>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2">
+                    {session.intervention === "intervencao" && (
+                      <Button
+                        variant="ai"
+                        size="xs"
+                        disabled={busySessionId === session.id}
+                        onClick={() => void handleAutoEvaluate(session)}
+                      >
+                        <Sparkles size={13} />
+                        {busySessionId === session.id ? "Corrigindo..." : "Auto-corrigir"}
+                      </Button>
+                    )}
+                    <Button
+                      variant="outline"
+                      size="xs"
+                      onClick={() => setSelectedSessionId(session.id)}
+                    >
+                      Ver conversa ({session.messages.length})
+                      <ChevronRight size={13} />
+                    </Button>
+                  </div>
+                </div>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+
+      {/* =====================================================================
+          ABA 2: LISTA DE ACESSO & OUTROS CONTATOS (PADRÃO TABELA/LISTA LIMPA)
+         ===================================================================== */}
+      {mainTab === "acesso" && (
+        <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
+          {/* Equipe Autorizada */}
+          <Card className="lg:col-span-6">
+            <CardHeader
+              kicker="Quem pode registrar e consultar o CRM pelo WhatsApp"
+              title={`Equipe na Lista de Acesso (${allowlist.length})`}
+              action={<Badge tone="green">Ativa</Badge>}
+            />
+            <div className="divide-y divide-line border-t border-line">
+              {allowlist.map((member, idx) => {
+                const matchedUser = users.find(
+                  (u) =>
+                    u.id === member.profileId ||
+                    u.name.toLowerCase() === member.name.toLowerCase(),
+                );
                 return (
                   <div
-                    key={session.id}
-                    className={`flex flex-col justify-between rounded-xl border bg-card p-5 shadow-xs transition-all ${meta.border}`}
+                    key={member.profileId ?? `${member.phone}-${idx}`}
+                    className="flex items-center justify-between gap-3 px-4 py-3 hover:bg-soft/40"
                   >
-                    <div className="space-y-4">
-                      {/* Topo do Bloco: Vendedor + Status + Estado da Conversa */}
-                      <div className="flex flex-wrap items-start justify-between gap-3">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white shadow-xs">
-                            {initialsFromName(session.sellerName)}
-                          </div>
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h3 className="text-base font-bold text-fg">
-                                {session.sellerName}
-                              </h3>
-                              <span className="rounded-md bg-surface-2 px-2 py-0.5 text-[11px] font-medium text-fg-2">
-                                {session.modelLabel}
-                              </span>
-                            </div>
-                            <div className="mt-0.5 flex flex-wrap items-center gap-2 text-xs text-muted">
-                              <span>{session.phone}</span>
-                              <span>•</span>
-                              <span>Última msg {formatTimeAgo(session.lastActivityAt)}</span>
-                              <span>•</span>
-                              <span className="font-medium text-fg-2">
-                                {session.attendant}
-                              </span>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex flex-col items-end gap-1.5">
-                          <span
-                            className={`inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-xs font-bold ${meta.badgeBg} ${meta.badgeText}`}
-                          >
-                            <span className={`h-2 w-2 rounded-full ${meta.dot}`} />
-                            {meta.label}
+                    <div className="flex min-w-0 items-center gap-3">
+                      {matchedUser ? (
+                        <UserAvatar userId={matchedUser.id} size={32} />
+                      ) : (
+                        <Avatar
+                          name={member.name}
+                          initials={initialsOf(member.name)}
+                          size={32}
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-[13.5px] font-semibold text-ink">
+                            {member.name}
                           </span>
-                          <span
-                            className={`rounded-md px-2 py-0.5 text-[11px] font-semibold ${
-                              session.pendingOwner === "ia"
-                                ? "bg-err-soft text-err"
-                                : session.pendingOwner === "equipe"
-                                  ? "bg-warn-soft text-warn"
-                                  : "bg-ok-soft text-ok"
-                            }`}
-                          >
-                            {session.pendingOwner === "ia"
-                              ? "⚠️ Pendência da IA"
-                              : session.pendingOwner === "equipe"
-                                ? "⏳ Aguardando Vendedor"
-                                : "✅ Conversa Fechada com Registro"}
-                          </span>
+                          <Badge tone="neutral">{member.role}</Badge>
                         </div>
-                      </div>
-
-                      {/* O QUE ESTÃO TRATANDO + EMPRESAS VINCULADAS */}
-                      <div className="rounded-lg border border-line bg-surface p-3">
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-[11px] font-bold uppercase tracking-wider text-muted">
-                            O que estão tratando neste atendimento
-                          </span>
-                          <span className="text-[11px] font-semibold text-fg-2">
-                            {session.writesCount} gravação(ões) CRM · {session.turnsPerClosure ?? 1} turno(s)/registro
-                          </span>
-                        </div>
-                        <p className="mt-1 text-xs font-semibold text-fg">
-                          {session.topicsSummary ??
-                            `Último assunto: "${session.lastQuestion.slice(0, 80)}"`}
-                        </p>
-                        {companiesMentioned.length > 0 && (
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                            <span className="text-[10px] font-bold uppercase text-muted">
-                              Clientes citados:
-                            </span>
-                            {companiesMentioned.map((company) => (
-                              <span
-                                key={company.id ?? company.nome}
-                                className="inline-flex items-center gap-1 rounded-md border border-line bg-card px-2 py-0.5 text-[11px] font-semibold text-fg"
-                              >
-                                🏢 {company.nome}
-                              </span>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-
-                      {/* AVALIAÇÃO DUPLA: DESEMPENHO DA IA vs QUALIDADE DO PEDIDO DO VENDEDOR */}
-                      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2">
-                        <div className="rounded-lg border border-line bg-surface p-3">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-fg-2">Desempenho da IA</span>
-                            <span
-                              className={`font-bold ${
-                                session.iaScorePct >= 85
-                                  ? "text-ok"
-                                  : session.iaScorePct >= 65
-                                    ? "text-warn"
-                                    : "text-err"
-                              }`}
-                            >
-                              {session.iaScorePct}% · Fluidez {session.fluencyScorePct ?? session.iaScorePct}%
-                            </span>
-                          </div>
-                          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-line">
-                            <div
-                              className={`h-full rounded-full ${
-                                session.iaScorePct >= 85
-                                  ? "bg-ok"
-                                  : session.iaScorePct >= 65
-                                    ? "bg-warn"
-                                    : "bg-err"
-                              }`}
-                              style={{ width: `${session.iaScorePct}%` }}
-                            />
-                          </div>
-                          <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted">
-                            <span>Latência: {formatLatency(session.avgLatencyMs)}</span>
-                            <span>
-                              {(session.disconnectionsCount ?? 0) > 0
-                                ? `${session.disconnectionsCount} falha(s)/queda`
-                                : "Sem desconexões"}
-                            </span>
-                          </div>
-                        </div>
-
-                        <div className="rounded-lg border border-line bg-surface p-3">
-                          <div className="flex items-center justify-between text-xs">
-                            <span className="font-bold text-fg-2">
-                              Qualidade do Pedido ({session.sellerShort})
-                            </span>
-                            <span
-                              className={`font-bold ${
-                                orderScore >= 80
-                                  ? "text-ok"
-                                  : orderScore >= 60
-                                    ? "text-warn"
-                                    : "text-err"
-                              }`}
-                            >
-                              {orderScore}%
-                            </span>
-                          </div>
-                          <div className="mt-1.5 h-2 w-full overflow-hidden rounded-full bg-line">
-                            <div
-                              className={`h-full rounded-full ${
-                                orderScore >= 80
-                                  ? "bg-ok"
-                                  : orderScore >= 60
-                                    ? "bg-warn"
-                                    : "bg-err"
-                              }`}
-                              style={{ width: `${orderScore}%` }}
-                            />
-                          </div>
-                          <div className="mt-1.5 flex items-center justify-between text-[11px] text-muted">
-                            <span>
-                              {(session.goodOrderExamples ?? []).length} completo(s) ·{" "}
-                              {(session.badOrderExamples ?? []).length} incompleto(s)
-                            </span>
-                            <span>{session.audioCount} áudio(s)</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* DIAGNÓSTICO DA IA AVALIADORA (2ª CAMADA) */}
-                      <div
-                        className={`rounded-lg border p-3 text-xs ${
-                          session.intervention === "intervencao"
-                            ? "border-err-line bg-err-soft/50 text-fg"
-                            : autoHealedCount > 0
-                              ? "border-info-line bg-info-soft/50 text-fg"
-                              : session.pendingOwner === "equipe"
-                                ? "border-warn-line bg-warn-soft/50 text-fg"
-                                : "border-ok-line bg-ok-soft/40 text-fg"
-                        }`}
-                      >
-                        <div className="flex flex-wrap items-center justify-between gap-2">
-                          <div className="flex items-center gap-1.5 font-bold">
-                            <span>🤖 Parecer da IA Avaliadora:</span>
-                          </div>
-                          {autoHealedCount > 0 && (
-                            <span className="rounded-full border border-info-line bg-info-soft px-2 py-0.5 text-[10px] font-bold text-info">
-                              ⚡ {autoHealedCount} auto-correção(ões) aplicada(s)
-                            </span>
-                          )}
-                        </div>
-                        <p className="mt-1 text-xs leading-relaxed text-fg-2">
-                          {session.evaluatorSummary?.autoHealSummary ||
-                            session.evaluatorSummary?.iaErrorDetail ||
-                            session.evaluatorSummary?.teamIssueDetail ||
-                            session.evaluatorSummary?.rootCauseLabel ||
-                            "Atendimento auditado sem divergências entre o relato do vendedor e o CRM."}
-                        </p>
-                        {session.interventionReasons.length > 0 && (
-                          <p className="mt-1 text-[11px] font-semibold text-fg">
-                            Motivo de atenção: {session.interventionReasons.join(" · ")}
-                          </p>
-                        )}
-                      </div>
-
-                      {/* CONVERSA COMPLETA VISÍVEL DENTRO DO BLOCO (NÃO APENAS O ÚLTIMO RETORNO!) */}
-                      <div className="rounded-xl border border-line bg-bg p-3.5">
-                        <div className="mb-2.5 flex flex-wrap items-center justify-between gap-2 border-b border-line pb-2">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xs font-bold text-fg">
-                              💬 Diálogo no WhatsApp ({session.messages.length} mensagens trocadas)
-                            </span>
-                          </div>
-                          {session.messages.length > 6 && (
-                            <button
-                              type="button"
-                              onClick={() =>
-                                setExpandedCardChats((prev) => ({
-                                  ...prev,
-                                  [session.id]: !isChatExpanded,
-                                }))
-                              }
-                              className="text-[11px] font-bold text-brand hover:underline"
-                            >
-                              {isChatExpanded
-                                ? "Mostrar últimas 6 mensagens"
-                                : `Ver todas as ${session.messages.length} mensagens aqui`}
-                            </button>
-                          )}
-                        </div>
-
-                        <div className="max-h-80 space-y-2.5 overflow-y-auto pr-1">
-                          {visibleMessages.map((msg) => {
-                            const isInbound = msg.direction === "in";
-                            return (
-                              <div
-                                key={msg.id}
-                                className={`flex flex-col ${
-                                  isInbound ? "items-start" : "items-end"
-                                }`}
-                              >
-                                <div
-                                  className={`max-w-[90%] rounded-xl px-3.5 py-2.5 text-xs leading-relaxed ${
-                                    isInbound
-                                      ? "rounded-tl-xs border border-line bg-card text-fg"
-                                      : msg.fromEvaluator
-                                        ? "rounded-tr-xs border border-ok-line bg-ok-soft text-fg"
-                                        : "rounded-tr-xs border border-info-line bg-info-soft text-fg"
-                                  }`}
-                                >
-                                  <div className="mb-1 flex items-center justify-between gap-3 text-[10px] font-bold text-muted">
-                                    <span>
-                                      {isInbound
-                                        ? `👤 ${session.sellerShort} (${
-                                            msg.audio ? "Áudio transcrito" : "Texto"
-                                          })`
-                                        : msg.fromEvaluator
-                                          ? "⚡ IA Avaliadora (Auto-Correção)"
-                                          : "🤖 IA Tawper (Resposta ao Vendedor)"}
-                                    </span>
-                                    <span>{formatClock(msg.at)}</span>
-                                  </div>
-                                  <p className="whitespace-pre-line text-fg">{msg.body}</p>
-                                  {msg.gravou && msg.gravou.length > 0 && (
-                                    <div className="mt-1.5 flex flex-wrap gap-1">
-                                      {msg.gravou.map((g) => (
-                                        <span
-                                          key={g}
-                                          className="rounded bg-card/80 px-1.5 py-0.5 text-[10px] font-semibold text-ok border border-ok-line"
-                                        >
-                                          ✓ {TOOL_LABELS[g] ?? g}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  )}
-                                </div>
-                              </div>
-                            );
-                          })}
+                        <div className="text-[12px] text-muted">
+                          WhatsApp: <b className="font-medium text-ink">{formatPhone(member.phone)}</b>
                         </div>
                       </div>
                     </div>
 
-                    {/* Rodapé de Ações do Bloco */}
-                    <div className="mt-4 flex flex-wrap items-center justify-between gap-2 border-t border-line pt-3">
-                      <button
-                        type="button"
-                        onClick={() => setSelectedSessionId(session.id)}
-                        className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-surface px-3 py-2 text-xs font-bold text-fg hover:bg-surface-2 transition-colors"
-                      >
-                        🔎 Auditoria Passo a Passo ({session.runs.length} turnos)
-                      </button>
-
-                      <div className="flex flex-wrap items-center gap-2">
-                        <button
-                          type="button"
-                          disabled={busySessionId === session.id}
-                          onClick={() => void handleAutoEvaluate(session)}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3 py-2 text-xs font-bold text-white hover:opacity-95 disabled:opacity-50 transition-opacity"
-                        >
-                          ⚡{" "}
-                          {busySessionId === session.id
-                            ? "Auditando e corrigindo..."
-                            : "Auto-Corrigir com IA Avaliadora"}
-                        </button>
-
-                        {session.intervention === "intervencao" && (
-                          <button
-                            type="button"
-                            disabled={busySessionId === session.id}
-                            onClick={() => void handleResolveIntervention(session)}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-ok-line bg-ok-soft px-3 py-2 text-xs font-bold text-ok hover:opacity-90 disabled:opacity-50 transition-opacity"
-                          >
-                            ✓ Validar Manualmente
-                          </button>
-                        )}
-                      </div>
-                    </div>
+                    <Badge tone="green">Autorizado</Badge>
                   </div>
                 );
               })}
             </div>
-          </div>
-        )}
+          </Card>
 
-        {/* =====================================================================
-            ABA 2: LISTA DE ACESSO (ALLOWLIST) & OUTROS CONTATOS QUE CHAMARAM
-           ===================================================================== */}
-        {mainTab === "acesso" && (
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-            {/* Coluna Esquerda: Lista de Acesso Autorizada da Equipe */}
-            <div className="space-y-4 lg:col-span-6">
-              <div className="rounded-xl border border-line bg-card p-5 shadow-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-base font-bold text-fg">
-                      Lista de Acesso Autorizada (Equipe Tawper)
-                    </h2>
-                    <p className="text-xs text-fg-2">
-                      Apenas os números abaixo têm permissão para gravar registros e consultar o
-                      CRM via IA do WhatsApp.
-                    </p>
-                  </div>
-                  <span className="rounded-full border border-ok-line bg-ok-soft px-3 py-1 text-xs font-bold text-ok">
-                    {allowlist.length} autorizados
-                  </span>
-                </div>
-
-                <div className="mt-4 divide-y divide-line rounded-xl border border-line bg-surface">
-                  {allowlist.map((member, idx) => (
-                    <div
-                      key={member.profileId ?? `${member.phone}-${idx}`}
-                      className="flex flex-wrap items-center justify-between gap-3 p-3.5"
-                    >
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
-                          {initialsFromName(member.name)}
-                        </div>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className="text-sm font-bold text-fg">{member.name}</span>
-                            <span className="rounded bg-card px-2 py-0.5 text-[10px] font-semibold uppercase text-fg-2 border border-line">
-                              {member.role}
-                            </span>
-                          </div>
-                          <div className="text-xs text-muted">
-                            WhatsApp:{" "}
-                            <strong className="text-fg-2">
-                              {member.phone || "Não vinculado"}
-                            </strong>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <span
-                          className={`rounded-full px-2.5 py-0.5 text-[11px] font-bold ${
-                            member.profileId
-                              ? "bg-ok-soft text-ok border border-ok-line"
-                              : "bg-warn-soft text-warn border border-warn-line"
-                          }`}
-                        >
-                          {member.profileId ? "Vinculado ao CRM" : "Pendente vínculo"}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            </div>
-
-            {/* Coluna Direita: Outros Contatos Fora da Lista de Acesso */}
-            <div className="space-y-4 lg:col-span-6">
-              <div className="rounded-xl border border-line bg-card p-5 shadow-xs">
-                <div className="flex items-center justify-between gap-2">
-                  <div>
-                    <h2 className="text-base font-bold text-fg">
-                      Outros Contatos que Chamaram (Fora da Lista de Acesso)
-                    </h2>
-                    <p className="text-xs text-fg-2">
-                      Números externos ou números novos de vendedores que mandaram mensagem para o
-                      WhatsApp da IA. A IA bloqueia gravações no CRM até você autorizar.
-                    </p>
-                  </div>
-                  <span className="rounded-full border border-warn-line bg-warn-soft px-3 py-1 text-xs font-bold text-warn">
-                    {externalCallers.length} bloqueado(s)
-                  </span>
-                </div>
-
-                <div className="mt-4 space-y-3">
-                  {externalCallers.length === 0 ? (
-                    <div className="rounded-xl border border-line bg-surface p-6 text-center text-xs text-muted">
-                      Nenhum número fora da Lista de Acesso chamou o WhatsApp recentemente.
-                    </div>
-                  ) : (
-                    externalCallers.map((caller) => (
-                      <div
-                        key={caller.peer}
-                        className="rounded-xl border border-line bg-surface p-4 space-y-3"
-                      >
-                        <div className="flex flex-wrap items-start justify-between gap-2">
-                          <div>
-                            <div className="flex flex-wrap items-center gap-2">
-                              <span className="text-sm font-bold text-fg">
-                                {caller.contactName}
-                              </span>
-                              <span className="rounded-md border border-line bg-card px-2 py-0.5 text-xs font-semibold text-fg-2">
-                                {caller.peer}
-                              </span>
-                              <span
-                                className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                                  caller.matchedCompanyName
-                                    ? "bg-info-soft text-info border border-info-line"
-                                    : "bg-warn-soft text-warn border border-warn-line"
-                                }`}
-                              >
-                                {caller.matchedCompanyName
-                                  ? `Cliente no CRM: ${caller.matchedCompanyName}`
-                                  : "Fora da Lista de Acesso"}
-                              </span>
-                            </div>
-                            <p className="mt-1 text-[11px] font-semibold text-warn">
-                              🛡️ Bloqueado pela Lista de Acesso (IA não executou ferramentas do CRM)
-                            </p>
-                          </div>
-                          <span className="text-xs text-muted">
-                            {formatTimeAgo(caller.lastMessageAt)}
+          {/* Outros Contatos Fora da Lista */}
+          <Card className="lg:col-span-6">
+            <CardHeader
+              kicker="Números fora da lista que enviaram mensagem ao WhatsApp da IA"
+              title={`Outros Contatos Bloqueados (${externalCallers.length})`}
+              action={<Badge tone="amber">{externalCallers.length} retido(s)</Badge>}
+            />
+            <div className="divide-y divide-line border-t border-line">
+              {externalCallers.length === 0 ? (
+                <Empty
+                  icon={<ShieldCheck size={20} />}
+                  title="Nenhum contato externo"
+                  text="Apenas números autorizados da equipe chamaram o WhatsApp recentemente."
+                />
+              ) : (
+                externalCallers.map((caller) => (
+                  <div key={caller.peer} className="space-y-2.5 px-4 py-3.5">
+                    <div className="flex flex-wrap items-start justify-between gap-2">
+                      <div>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[14px] font-semibold text-ink">
+                            {caller.contactName}
                           </span>
-                        </div>
-
-                        {/* Mensagens enviadas pelo contato externo */}
-                        <div className="space-y-1.5 rounded-lg border border-line bg-card p-3">
-                          {caller.messages.map((m) => (
-                            <div key={m.id} className="text-xs text-fg">
-                              <span className="font-bold text-muted">
-                                [{formatClock(m.at)}]{" "}
-                                {m.direction === "in" ? "Recebida:" : "Resposta:"}
-                              </span>{" "}
-                              {m.body}
-                            </div>
-                          ))}
-                        </div>
-
-                        {/* Ação para autorizar/vincular a um vendedor */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 pt-1">
-                          {authorizingPeer === caller.peer ? (
-                            <div className="flex flex-wrap items-center gap-2 w-full">
-                              <select
-                                value={selectedProfileForCaller}
-                                onChange={(e) => setSelectedProfileForCaller(e.target.value)}
-                                className="rounded-lg border border-line bg-card px-3 py-1.5 text-xs text-fg"
-                              >
-                                <option value="">Vincular a qual membro da equipe?</option>
-                                {allowlist.map((m, i) => (
-                                  <option key={m.profileId ?? i} value={m.profileId ?? ""}>
-                                    {m.name} ({m.role})
-                                  </option>
-                                ))}
-                              </select>
-                              <button
-                                type="button"
-                                onClick={() => void handleAuthorizeCaller(caller)}
-                                className="rounded-lg bg-ok px-3 py-1.5 text-xs font-bold text-white"
-                              >
-                                Confirmar Autorização
-                              </button>
-                              <button
-                                type="button"
-                                onClick={() => setAuthorizingPeer(null)}
-                                className="rounded-lg border border-line bg-card px-2.5 py-1.5 text-xs text-fg-2"
-                              >
-                                Cancelar
-                              </button>
-                            </div>
+                          <Badge tone="outline">{formatPhone(caller.peer)}</Badge>
+                          {caller.matchedCompanyName ? (
+                            <Badge tone="ai">Cliente: {caller.matchedCompanyName}</Badge>
                           ) : (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setAuthorizingPeer(caller.peer);
-                                setSelectedProfileForCaller(allowlist[0]?.profileId ?? "");
-                              }}
-                              className="inline-flex items-center gap-1.5 rounded-lg border border-line bg-card px-3 py-1.5 text-xs font-bold text-fg hover:bg-surface-2"
-                            >
-                              ✓ Autorizar e Vincular a Vendedor da Equipe
-                            </button>
+                            <Badge tone="amber">Fora da lista</Badge>
                           )}
                         </div>
+                        <p className="mt-0.5 text-[12px] text-muted">
+                          A IA não executou ferramentas do CRM para este número.
+                        </p>
                       </div>
-                    ))
-                  )}
-                </div>
-              </div>
-            </div>
-          </div>
-        )}
+                      <span className="text-[12px] text-muted">
+                        {fmtAgo(caller.lastMessageAt)}
+                      </span>
+                    </div>
 
-        {/* =====================================================================
-            ABA 3: TREINAMENTO DA IA (REGRAS NO PROMPT) & QUALIDADE DOS PEDIDOS
-           ===================================================================== */}
-        {mainTab === "treinamento" && (
-          <div className="space-y-6">
-            {/* SEÇÃO A: REGRAS APRENDIDAS E INJETADAS NO PROMPT DA IA */}
-            <div className="rounded-xl border border-line bg-card p-5 shadow-xs space-y-4">
-              <div className="flex flex-wrap items-start justify-between gap-3">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <h2 className="text-base font-bold text-fg">
-                      Regras Aprendidas & Injetadas no Prompt da IA
-                    </h2>
-                    <span className="rounded-full border border-ok-line bg-ok-soft px-2.5 py-0.5 text-xs font-bold text-ok">
-                      {activeRulesCount} ativas no prompt agora
-                    </span>
+                    <div className="space-y-1 rounded-[6px] border border-line bg-soft/50 px-3 py-2 text-[12.5px] text-ink">
+                      {caller.messages.map((m) => (
+                        <div key={m.id}>
+                          <span className="text-[11px] font-medium text-muted">
+                            [{formatClock(m.at)}]{" "}
+                          </span>
+                          {m.body}
+                        </div>
+                      ))}
+                    </div>
+
+                    <div>
+                      {authorizingPeer === caller.peer ? (
+                        <div className="flex flex-wrap items-center gap-2">
+                          <Select
+                            value={selectedProfileForCaller}
+                            onChange={(e) => setSelectedProfileForCaller(e.target.value)}
+                            className="h-8.5 w-auto text-[12.5px]"
+                          >
+                            <option value="">Selecionar vendedor da equipe...</option>
+                            {allowlist.map((m, i) => (
+                              <option key={m.profileId ?? i} value={m.profileId ?? ""}>
+                                {m.name} ({m.role})
+                              </option>
+                            ))}
+                          </Select>
+                          <Button
+                            variant="primary"
+                            size="xs"
+                            onClick={() => void handleAuthorizeCaller(caller)}
+                          >
+                            Confirmar vínculo
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="xs"
+                            onClick={() => setAuthorizingPeer(null)}
+                          >
+                            Cancelar
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          onClick={() => {
+                            setAuthorizingPeer(caller.peer);
+                            setSelectedProfileForCaller(allowlist[0]?.profileId ?? "");
+                          }}
+                        >
+                          Autorizar na Lista de Acesso
+                        </Button>
+                      )}
+                    </div>
                   </div>
-                  <p className="mt-1 text-xs text-fg-2">
-                    Toda vez que a <strong>IA Avaliadora</strong> corrige um erro ou você cadastra
-                    uma diretriz, a regra abaixo entra diretamente no prompt do Agente WhatsApp para
-                    a IA não repetir a falha.
-                  </p>
-                </div>
+                ))
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
 
-                <button
-                  type="button"
+      {/* =====================================================================
+          ABA 3: TREINAMENTO DA IA (REGRAS NO PROMPT) & QUALIDADE DOS PEDIDOS
+         ===================================================================== */}
+      {mainTab === "treinamento" && (
+        <div className="space-y-5">
+          {/* Card 1: Regras Aprendidas no Prompt */}
+          <Card>
+            <CardHeader
+              kicker="Regras geradas pela IA Avaliadora ou pelo gestor · injetadas em tempo real no prompt (gpt-5.6-luna)"
+              title={`Regras Ativas no Prompt (${activeRulesCount} de ${learnedRules.length})`}
+              action={
+                <Button
+                  variant="primary"
+                  size="sm"
                   onClick={() => {
                     setEditingRule(null);
                     setRuleText("");
@@ -1285,275 +1127,444 @@ export function IaSessionsConsole() {
                     setRuleAfterResolution("");
                     setShowNewRuleForm(true);
                   }}
-                  className="inline-flex items-center gap-1.5 rounded-lg bg-brand px-3.5 py-2 text-xs font-bold text-white hover:opacity-95"
                 >
-                  + Nova Regra para o Prompt
-                </button>
-              </div>
+                  <Plus size={14} /> Nova regra
+                </Button>
+              }
+            />
 
-              {(showNewRuleForm || editingRule) && (
-                <div className="rounded-xl border border-brand bg-surface p-4 space-y-3">
-                  <h3 className="text-xs font-bold uppercase tracking-wider text-fg">
-                    {editingRule
-                      ? "Editando Regra do Prompt"
-                      : "Adicionar Nova Regra Operacional ao Prompt da IA"}
-                  </h3>
-                  <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                    <div>
-                      <label className="block text-[11px] font-bold text-fg-2 mb-1">
-                        Exemplo do Pedido / Gatilho (Antes)
-                      </label>
-                      <input
-                        type="text"
-                        value={ruleBeforeQuestion}
-                        onChange={(e) => setRuleBeforeQuestion(e.target.value)}
-                        placeholder="Ex.: Vendedor pede avanço de etapa ou cita usina com nome parecido"
-                        className="w-full rounded-lg border border-line bg-card px-3 py-2 text-xs text-fg"
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-[11px] font-bold text-fg-2 mb-1">
-                        Erro que deve evitar
-                      </label>
-                      <input
-                        type="text"
-                        value={ruleBeforeError}
-                        onChange={(e) => setRuleBeforeError(e.target.value)}
-                        placeholder="Ex.: Vincular empresa errada ou esquecer de criar tarefa"
-                        className="w-full rounded-lg border border-line bg-card px-3 py-2 text-xs text-fg"
-                      />
-                    </div>
-                  </div>
+            {(showNewRuleForm || editingRule) && (
+              <div className="border-t border-line bg-soft/50 px-4 py-4 space-y-3">
+                <div className="text-[13px] font-semibold text-ink">
+                  {editingRule ? "Editar regra do prompt" : "Nova regra para o Agente WhatsApp"}
+                </div>
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
                   <div>
-                    <label className="block text-[11px] font-bold text-fg-2 mb-1">
-                      Instrução Exata Injetada no Prompt do Agente WhatsApp
-                    </label>
-                    <textarea
-                      rows={3}
-                      value={ruleText}
-                      onChange={(e) => setRuleText(e.target.value)}
-                      placeholder="Escreva a ordem direta que a IA deve obedecer durante o atendimento..."
-                      className="w-full rounded-lg border border-line bg-card p-3 text-xs text-fg"
+                    <span className="mb-1 block text-[12px] font-medium text-ink">
+                      Gatilho / Exemplo de pedido do vendedor
+                    </span>
+                    <Input
+                      value={ruleBeforeQuestion}
+                      onChange={(e) => setRuleBeforeQuestion(e.target.value)}
+                      placeholder="Ex.: Vendedor relata visita e já diz o dia do retorno"
                     />
                   </div>
-                  <div className="flex items-center justify-end gap-2">
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setShowNewRuleForm(false);
-                        setEditingRule(null);
-                      }}
-                      className="rounded-lg border border-line bg-card px-3 py-1.5 text-xs font-semibold text-fg-2"
-                    >
-                      Cancelar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => void handleSaveRule()}
-                      className="rounded-lg bg-ok px-4 py-1.5 text-xs font-bold text-white"
-                    >
-                      Salvar e Injetar no Prompt
-                    </button>
+                  <div>
+                    <span className="mb-1 block text-[12px] font-medium text-ink">
+                      Falha que esta regra evita
+                    </span>
+                    <Input
+                      value={ruleBeforeError}
+                      onChange={(e) => setRuleBeforeError(e.target.value)}
+                      placeholder="Ex.: Esquecer de criar a tarefa correspondente"
+                    />
                   </div>
                 </div>
-              )}
-
-              <div className="grid grid-cols-1 gap-3.5 lg:grid-cols-2">
-                {learnedRules.map((rule) => (
-                  <div
-                    key={rule.id}
-                    className={`rounded-xl border p-4 space-y-3 transition-all ${
-                      rule.active
-                        ? "border-line bg-surface"
-                        : "border-line bg-surface/40 opacity-70"
-                    }`}
+                <div>
+                  <span className="mb-1 block text-[12px] font-medium text-ink">
+                    Instrução injetada no prompt da IA
+                  </span>
+                  <Textarea
+                    value={ruleText}
+                    onChange={(e) => setRuleText(e.target.value)}
+                    placeholder="Escreva de forma direta como a IA deve agir..."
+                  />
+                </div>
+                <div className="flex items-center justify-end gap-2">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setShowNewRuleForm(false);
+                      setEditingRule(null);
+                    }}
                   >
-                    <div className="flex flex-wrap items-start justify-between gap-2">
-                      <div>
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
-                              rule.autoGenerated
-                                ? "bg-info-soft text-info border border-info-line"
-                                : "bg-ok-soft text-ok border border-ok-line"
-                            }`}
-                          >
-                            {rule.autoGenerated
-                              ? "Gerada pela IA Avaliadora"
-                              : "Regra do Gestor"}
-                          </span>
-                          <span className="text-[11px] text-muted">
-                            Origem: {rule.originSellerName ?? "Equipe"}
-                          </span>
-                        </div>
-                      </div>
+                    Cancelar
+                  </Button>
+                  <Button variant="primary" size="sm" onClick={() => void handleSaveRule()}>
+                    Salvar no prompt
+                  </Button>
+                </div>
+              </div>
+            )}
 
-                      <div className="flex items-center gap-1.5">
-                        <button
-                          type="button"
-                          onClick={() => void handleToggleRule(rule.id)}
-                          className={`rounded-lg border px-2.5 py-1 text-[11px] font-bold ${
-                            rule.active
-                              ? "border-ok-line bg-ok-soft text-ok"
-                              : "border-line bg-card text-muted"
-                          }`}
-                        >
-                          {rule.active ? "Ativa no Prompt" : "Inativa"}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setEditingRule(rule);
-                            setRuleText(rule.rule);
-                            setRuleBeforeQuestion(rule.beforeQuestion ?? "");
-                            setRuleBeforeError(rule.beforeError ?? "");
-                            setRuleAfterResolution(rule.afterResolution ?? "");
-                            setShowNewRuleForm(false);
-                          }}
-                          className="rounded-lg border border-line bg-card px-2.5 py-1 text-[11px] font-semibold text-fg-2 hover:bg-surface-2"
-                        >
-                          Editar
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => void handleDeleteRule(rule.id)}
-                          className="rounded-lg border border-line bg-card px-2 py-1 text-[11px] text-err hover:bg-err-soft"
-                        >
-                          Excluir
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">
-                      <div className="rounded-lg border border-line bg-card p-2.5">
-                        <span className="block text-[10px] font-bold uppercase text-err">
-                          Antes (Pedido + Erro detectado)
-                        </span>
-                        {rule.beforeQuestion && (
-                          <p className="mt-1 font-semibold text-fg">
-                            &ldquo;{rule.beforeQuestion}&rdquo;
-                          </p>
+            <div className="divide-y divide-line border-t border-line">
+              {learnedRules.map((rule) => (
+                <div
+                  key={rule.id}
+                  className={cn(
+                    "px-4 py-3.5 transition hover:bg-soft/30",
+                    !rule.active && "opacity-60",
+                  )}
+                >
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1 max-w-4xl">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Badge tone={rule.active ? "green" : "muted"}>
+                          {rule.active ? "Ativa no prompt" : "Inativa"}
+                        </Badge>
+                        <Badge tone={rule.autoGenerated ? "ai" : "neutral"}>
+                          {rule.autoGenerated ? "IA Avaliadora" : "Criada pelo gestor"}
+                        </Badge>
+                        {rule.originSellerName && (
+                          <span className="text-[12px] text-muted">
+                            Origem: {rule.originSellerName}
+                          </span>
                         )}
-                        <p className="mt-0.5 text-fg-2">
-                          {rule.beforeError ?? "Falha identificada na auditoria."}
-                        </p>
                       </div>
-                      <div className="rounded-lg border border-line bg-card p-2.5">
-                        <span className="block text-[10px] font-bold uppercase text-ok">
-                          Depois (Correção da IA Avaliadora)
-                        </span>
-                        <p className="mt-1 text-fg-2">
-                          {rule.afterResolution ?? "Corrigido no CRM e transformado em regra."}
+                      <p className="text-[14px] font-medium text-ink">{rule.rule}</p>
+                      {(rule.beforeQuestion || rule.beforeError) && (
+                        <p className="text-[12.5px] text-muted">
+                          {rule.beforeQuestion && (
+                            <span>
+                              Caso real: &ldquo;{rule.beforeQuestion}&rdquo; ·{" "}
+                            </span>
+                          )}
+                          {rule.beforeError && <span>Evita: {rule.beforeError}</span>}
                         </p>
-                      </div>
+                      )}
                     </div>
 
-                    <div className="rounded-lg border border-info-line bg-info-soft/40 p-2.5 text-xs">
-                      <span className="block text-[10px] font-bold uppercase text-info">
-                        Regra Ativa Injetada no System Prompt da IA:
-                      </span>
-                      <p className="mt-1 font-medium text-fg">&ldquo;{rule.rule}&rdquo;</p>
+                    <div className="flex items-center gap-1.5">
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => void handleToggleRule(rule.id)}
+                      >
+                        {rule.active ? "Desativar" : "Ativar"}
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="xs"
+                        onClick={() => {
+                          setEditingRule(rule);
+                          setRuleText(rule.rule);
+                          setRuleBeforeQuestion(rule.beforeQuestion ?? "");
+                          setRuleBeforeError(rule.beforeError ?? "");
+                          setRuleAfterResolution(rule.afterResolution ?? "");
+                          setShowNewRuleForm(false);
+                        }}
+                      >
+                        <Pencil size={12} /> Editar
+                      </Button>
+                      <Button
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => void handleDeleteRule(rule.id)}
+                      >
+                        <Trash2 size={13} />
+                      </Button>
                     </div>
                   </div>
-                ))}
+                </div>
+              ))}
+            </div>
+          </Card>
+
+          {/* Card 2: Qualidade dos Pedidos por Vendedor */}
+          <Card>
+            <CardHeader
+              kicker="Separa quando o vendedor enviou um relato vago (sem cliente ou sem data) de quando enviou completo"
+              title="Qualidade dos Pedidos por Vendedor (Exemplos Reais)"
+            />
+            <div className="grid gap-px border-t border-line bg-line md:grid-cols-2">
+              {sessions.map((s) => {
+                const score = s.sellerOrderScorePct ?? 88;
+                const badExamples = s.badOrderExamples ?? [];
+                const goodExamples = s.goodOrderExamples ?? [];
+                const sellerUser = users.find((u) => u.id === s.sellerId);
+
+                return (
+                  <div key={`qual-${s.id}`} className="bg-white p-4 space-y-3">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-2.5">
+                        {sellerUser ? (
+                          <UserAvatar userId={sellerUser.id} size={32} />
+                        ) : (
+                          <Avatar
+                            name={s.sellerName}
+                            initials={initialsOf(s.sellerName)}
+                            size={32}
+                          />
+                        )}
+                        <div>
+                          <div className="text-[14px] font-semibold text-ink">
+                            {s.sellerName}
+                          </div>
+                          <div className="text-[11.5px] text-muted">
+                            {s.turnsPerClosure ?? 1} turno(s) por registro
+                          </div>
+                        </div>
+                      </div>
+                      <Badge
+                        tone={score >= 80 ? "green" : score >= 60 ? "amber" : "red"}
+                      >
+                        Clareza: {score}%
+                      </Badge>
+                    </div>
+
+                    {badExamples.length > 0 && (
+                      <div className="space-y-1.5">
+                        <div className="text-[11.5px] font-semibold text-warn">
+                          Pedidos incompletos (exigiram pergunta extra da IA):
+                        </div>
+                        {badExamples.map((ex) => (
+                          <div
+                            key={ex.id}
+                            className="rounded-[6px] border border-line bg-warn-soft/45 px-3 py-2 text-[12.5px]"
+                          >
+                            <p className="font-medium text-ink">&ldquo;{ex.question}&rdquo;</p>
+                            <p className="mt-0.5 text-[11.5px] text-warn">
+                              Faltou: {ex.missing.join(", ") || "identificar empresa ou prazo"}
+                            </p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {goodExamples.length > 0 && (
+                      <div className="space-y-1.5">
+                        <div className="text-[11.5px] font-semibold text-ok">
+                          Pedidos completos (gravados de primeira):
+                        </div>
+                        {goodExamples.slice(0, 2).map((ex) => (
+                          <div
+                            key={ex.id}
+                            className="rounded-[6px] border border-line bg-soft/45 px-3 py-2 text-[12.5px]"
+                          >
+                            <p className="text-ink">&ldquo;{ex.question}&rdquo;</p>
+                            <p className="mt-0.5 text-[11.5px] text-ok">{ex.outcome}</p>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </Card>
+        </div>
+      )}
+
+      {/* =====================================================================
+          MODAL DE CONVERSA E AUDITORIA (USANDO O COMPONENTE <Modal> OFICIAL!)
+         ===================================================================== */}
+      {selectedSession && (
+        <Modal
+          size="xl"
+          onClose={() => setSelectedSessionId(null)}
+          title={`Conversa e Auditoria — ${selectedSession.sellerName}`}
+          kicker={`${formatPhone(selectedSession.phone)} · Modelo ${
+            selectedSession.modelLabel || "gpt-5.6-luna"
+          } · ${selectedSession.messages.length} mensagens`}
+          icon={<Bot size={18} />}
+          footer={
+            <div className="flex w-full flex-wrap items-center justify-between gap-2">
+              <span className="text-[12px] text-muted">
+                {selectedSession.topicsSummary}
+              </span>
+              <div className="flex items-center gap-2">
+                <Button
+                  variant="ai"
+                  size="sm"
+                  disabled={busySessionId === selectedSession.id}
+                  onClick={() => void handleAutoEvaluate(selectedSession)}
+                >
+                  <Sparkles size={14} />
+                  {busySessionId === selectedSession.id
+                    ? "Auditando e corrigindo..."
+                    : "Auto-corrigir com IA Avaliadora"}
+                </Button>
+                {selectedSession.intervention === "intervencao" && (
+                  <Button
+                    variant="success"
+                    size="sm"
+                    disabled={busySessionId === selectedSession.id}
+                    onClick={() => void handleResolveIntervention(selectedSession)}
+                  >
+                    <CheckCircle2 size={14} /> Marcar como revisado
+                  </Button>
+                )}
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setSelectedSessionId(null)}
+                >
+                  Fechar
+                </Button>
+              </div>
+            </div>
+          }
+        >
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-12">
+            {/* Coluna Esquerda (7 cols): Conversa Completa no WhatsApp */}
+            <div className="space-y-3 lg:col-span-7">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[13.5px] font-semibold text-ink">
+                  Conversa no WhatsApp ({selectedSession.messages.length} mensagens)
+                </h3>
+                <Badge tone={STATUS_BADGE[selectedSession.intervention].tone}>
+                  {STATUS_BADGE[selectedSession.intervention].label}
+                </Badge>
+              </div>
+
+              <div className="space-y-2.5 rounded-[8px] border border-line bg-soft/50 p-4 max-h-[540px] overflow-y-auto">
+                {selectedSession.messages.map((m) => {
+                  const isInbound = m.direction === "in";
+                  return (
+                    <div
+                      key={m.id}
+                      className={cn(
+                        "flex flex-col",
+                        isInbound ? "items-start" : "items-end",
+                      )}
+                    >
+                      <div
+                        className={cn(
+                          "max-w-[88%] rounded-[8px] border px-3.5 py-2.5 text-[13px] leading-relaxed",
+                          isInbound
+                            ? "border-line bg-white text-ink"
+                            : m.fromEvaluator
+                              ? "border-ok/30 bg-ok-soft text-ink"
+                              : "border-ai/25 bg-ai-soft text-ink",
+                        )}
+                      >
+                        <div className="mb-1 flex items-center justify-between gap-3 text-[11px] font-medium text-muted">
+                          <span className="inline-flex items-center gap-1">
+                            {isInbound ? (
+                              <>
+                                <strong className="text-ink">
+                                  {selectedSession.sellerShort}
+                                </strong>
+                                {m.audio && (
+                                  <span className="inline-flex items-center gap-0.5 rounded bg-soft px-1.5 py-0.5 text-[10.5px] font-semibold text-navy-3">
+                                    <Mic size={10} /> Áudio
+                                  </span>
+                                )}
+                              </>
+                            ) : m.fromEvaluator ? (
+                              <strong className="text-ok">
+                                IA Avaliadora (Auto-correção)
+                              </strong>
+                            ) : (
+                              <strong className="text-ai">Agente IA Tawper</strong>
+                            )}
+                          </span>
+                          <span>{formatClock(m.at)}</span>
+                        </div>
+
+                        <p className="whitespace-pre-wrap text-ink">{m.body}</p>
+
+                        {m.gravou && m.gravou.length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1 border-t border-line/60 pt-1.5">
+                            {m.gravou.map((g) => (
+                              <Badge key={g} tone="green">
+                                {TOOL_LABELS[g] ?? g}
+                              </Badge>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
-            {/* SEÇÃO B: QUALIDADE DOS PEDIDOS DOS VENDEDORES (COM EXEMPLOS REAIS) */}
-            <div className="rounded-xl border border-line bg-card p-5 shadow-xs space-y-4">
-              <div>
-                <h2 className="text-base font-bold text-fg">
-                  Auditoria de Qualidade dos Pedidos por Vendedor (Exemplos Reais)
-                </h2>
-                <p className="text-xs text-fg-2">
-                  Separa claramente quando um atendimento precisou de mais mensagens porque o{" "}
-                  <strong>vendedor mandou um pedido vago/incompleto</strong> (sem empresa, sem
-                  resultado ou sem data de próximo passo) versus quando o pedido foi completo.
-                </p>
-              </div>
+            {/* Coluna Direita (5 cols): Parecer da IA Avaliadora + Turnos & Ferramentas */}
+            <div className="space-y-3 lg:col-span-5">
+              <h3 className="text-[13.5px] font-semibold text-ink">
+                Auditoria dos Turnos e Ferramentas ({selectedSession.runs.length})
+              </h3>
 
-              <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-                {sessions.map((s) => {
-                  const score = s.sellerOrderScorePct ?? 88;
-                  const badExamples = s.badOrderExamples ?? [];
-                  const goodExamples = s.goodOrderExamples ?? [];
+              <div className="space-y-3 max-h-[540px] overflow-y-auto pr-1">
+                {selectedSession.runs.map((run, idx) => {
+                  const isIncompleteTeamOrder =
+                    run.evaluator?.rootCause === "pedido_incompleto_equipe";
+                  const isIaError =
+                    run.evaluator?.rootCause === "erro_ia" && !run.evaluator?.autoHealed;
+
                   return (
                     <div
-                      key={`quality-${s.id}`}
-                      className="rounded-xl border border-line bg-surface p-4 space-y-3"
+                      key={run.id}
+                      className="rounded-[8px] border border-line bg-white p-3.5 space-y-2.5"
                     >
-                      <div className="flex items-center justify-between gap-2">
-                        <div className="flex items-center gap-2.5">
-                          <div className="flex h-8 w-8 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
-                            {initialsFromName(s.sellerName)}
-                          </div>
-                          <div>
-                            <h3 className="text-sm font-bold text-fg">{s.sellerName}</h3>
-                            <p className="text-[11px] text-muted">
-                              {s.turnsPerClosure ?? 1} turno(s) por fechamento ·{" "}
-                              {s.pendingOwner === "equipe"
-                                ? "1 pergunta da IA aguardando resposta dele"
-                                : "Sem perguntas pendentes"}
-                            </p>
-                          </div>
+                      <div className="flex flex-wrap items-center justify-between gap-1.5">
+                        <div className="flex items-center gap-1.5">
+                          <Badge tone="navy">
+                            Turno #{selectedSession.runs.length - idx}
+                          </Badge>
+                          <span className="text-[11.5px] text-muted">
+                            {fmtDateTime(run.at)} · {formatLatency(run.latencyMs)}
+                          </span>
                         </div>
-                        <span
-                          className={`rounded-full px-3 py-1 text-xs font-bold ${
-                            score >= 80
-                              ? "bg-ok-soft text-ok border border-ok-line"
-                              : score >= 60
-                                ? "bg-warn-soft text-warn border border-warn-line"
-                                : "bg-err-soft text-err border border-err-line"
-                          }`}
-                        >
-                          Nota do Vendedor: {score}%
-                        </span>
+
+                        {run.evaluator?.autoHealed ? (
+                          <Badge tone="ai">Auto-corrigido</Badge>
+                        ) : isIncompleteTeamOrder ? (
+                          <Badge tone="amber">Pedido incompleto do vendedor</Badge>
+                        ) : isIaError ? (
+                          <Badge tone="red">Falha da IA</Badge>
+                        ) : (
+                          <Badge tone="green">Concluído</Badge>
+                        )}
                       </div>
 
-                      {/* Exemplos de pedidos incompletos/vagos */}
-                      {badExamples.length > 0 && (
-                        <div className="space-y-2">
-                          <span className="block text-[11px] font-bold uppercase text-warn">
-                            ⚠️ Exemplos de Pedidos Incompletos / Vagos enviados por {s.sellerShort}:
-                          </span>
-                          {badExamples.map((ex) => (
-                            <div
-                              key={ex.id}
-                              className="rounded-lg border border-warn-line bg-card p-3 text-xs space-y-1"
-                            >
-                              <p className="font-semibold text-fg">
-                                &ldquo;{ex.question}&rdquo;
-                              </p>
-                              <div className="flex flex-wrap items-center gap-1.5 text-[11px]">
-                                <span className="font-bold text-err">
-                                  Faltou informar:{" "}
-                                  {ex.missing.join(", ") || "detalhes operacionais"}
-                                </span>
-                                <span>·</span>
-                                <span className="text-fg-2">{ex.outcome}</span>
-                              </div>
-                            </div>
-                          ))}
+                      {run.companyName && (
+                        <div className="flex items-center gap-1.5 text-[12px] font-medium text-navy-3">
+                          <Building2 size={13} />
+                          <span>Cliente: {run.companyName}</span>
                         </div>
                       )}
 
-                      {/* Exemplos de pedidos completos */}
-                      {goodExamples.length > 0 && (
-                        <div className="space-y-2">
-                          <span className="block text-[11px] font-bold uppercase text-ok">
-                            ✅ Exemplos de Pedidos Completos (gravados de primeira):
-                          </span>
-                          {goodExamples.slice(0, 2).map((ex) => (
+                      {run.orderQuality && (
+                        <div className="rounded-[6px] bg-soft/60 px-2.5 py-1.5 text-[12px] text-ink">
+                          <div className="flex items-center justify-between">
+                            <span className="text-muted">Qualidade do pedido:</span>
+                            <span className="font-semibold">
+                              {run.orderQuality.score}% ({run.orderQuality.grade})
+                            </span>
+                          </div>
+                          {run.orderQuality.missing.length > 0 && (
+                            <p className="mt-0.5 text-[11.5px] text-warn">
+                              Faltou: {run.orderQuality.missing.join(", ")}
+                            </p>
+                          )}
+                        </div>
+                      )}
+
+                      {run.steps.length > 0 && (
+                        <div className="space-y-1.5 border-t border-line pt-2">
+                          <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                            Ferramentas executadas
+                          </div>
+                          {run.steps.map((step) => (
                             <div
-                              key={ex.id}
-                              className="rounded-lg border border-ok-line bg-card p-3 text-xs space-y-1"
+                              key={`${run.id}-${step.stepNumber}`}
+                              className="rounded-[6px] border border-line bg-soft/35 px-2.5 py-1.5 text-[12px]"
                             >
-                              <p className="font-semibold text-fg">
-                                &ldquo;{ex.question}&rdquo;
-                              </p>
-                              <p className="text-[11px] text-ok font-medium">
-                                {ex.outcome} ({ex.score}%)
-                              </p>
+                              <div className="flex items-center justify-between gap-2">
+                                <span className="font-medium text-ink">
+                                  {step.toolName
+                                    ? TOOL_LABELS[step.toolName] ?? step.toolName
+                                    : step.kind === "model"
+                                      ? "Análise do modelo (gpt-5.6-luna)"
+                                      : step.kind}
+                                </span>
+                                <span className="text-[11px] text-ok">
+                                  {step.durationMs}ms
+                                </span>
+                              </div>
+                              {step.requestSummary && (
+                                <p className="mt-0.5 text-[11.5px] text-muted">
+                                  Envio: {step.requestSummary}
+                                </p>
+                              )}
+                              {step.responseSummary && (
+                                <p className="text-[11.5px] text-ink/80">
+                                  Retorno: {step.responseSummary}
+                                </p>
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1564,205 +1575,7 @@ export function IaSessionsConsole() {
               </div>
             </div>
           </div>
-        )}
-      </div>
-
-      {/* =====================================================================
-          MODAL / GAVETA DE AUDITORIA PROFUNDA DA CONVERSA E FERRAMENTAS
-         ===================================================================== */}
-      {selectedSession && (
-        <div className="fixed inset-0 z-50 flex items-center justify-end bg-black/60 backdrop-blur-xs">
-          <div className="flex h-full w-full max-w-4xl flex-col bg-card shadow-2xl border-l border-line">
-            {/* Cabeçalho do Modal */}
-            <div className="flex items-center justify-between border-b border-line p-5">
-              <div className="flex items-center gap-3">
-                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-brand text-xs font-bold text-white">
-                  {initialsFromName(selectedSession.sellerName)}
-                </div>
-                <div>
-                  <h2 className="text-base font-bold text-fg">
-                    Auditoria Completa — {selectedSession.sellerName} ({selectedSession.phone})
-                  </h2>
-                  <p className="text-xs text-fg-2">{selectedSession.topicsSummary}</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setSelectedSessionId(null)}
-                className="rounded-lg border border-line bg-surface px-3 py-1.5 text-xs font-bold text-fg hover:bg-surface-2"
-              >
-                Fechar ✕
-              </button>
-            </div>
-
-            {/* Corpo do Modal: Conversa Completa + Execuções de Ferramentas */}
-            <div className="flex-1 overflow-y-auto p-5 space-y-6">
-              {/* Bloco 1: Linha do Tempo Completa de Mensagens */}
-              <div className="rounded-xl border border-line bg-surface p-4 space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-fg">
-                  1. Diálogo Integral no WhatsApp ({selectedSession.messages.length} mensagens)
-                </h3>
-                <div className="space-y-2.5 max-h-96 overflow-y-auto pr-1">
-                  {selectedSession.messages.map((m) => {
-                    const isInbound = m.direction === "in";
-                    return (
-                      <div
-                        key={m.id}
-                        className={`flex flex-col ${
-                          isInbound ? "items-start" : "items-end"
-                        }`}
-                      >
-                        <div
-                          className={`max-w-[88%] rounded-xl px-3.5 py-2.5 text-xs ${
-                            isInbound
-                              ? "border border-line bg-card text-fg"
-                              : "border border-info-line bg-info-soft text-fg"
-                          }`}
-                        >
-                          <div className="mb-1 flex items-center justify-between gap-3 text-[10px] font-bold text-muted">
-                            <span>
-                              {isInbound
-                                ? `👤 ${selectedSession.sellerName} (${
-                                    m.audio ? "Áudio" : "Texto"
-                                  })`
-                                : "🤖 IA Tawper"}
-                            </span>
-                            <span>{formatClock(m.at)}</span>
-                          </div>
-                          <p className="whitespace-pre-line">{m.body}</p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-
-              {/* Bloco 2: Execuções do Agente & Parâmetros Gravados no Banco */}
-              <div className="space-y-3">
-                <h3 className="text-xs font-bold uppercase tracking-wider text-fg">
-                  2. Auditoria Técnica Passo a Passo ({selectedSession.runs.length} turnos processados)
-                </h3>
-
-                {selectedSession.runs.map((run, idx) => (
-                  <div
-                    key={run.id}
-                    className="rounded-xl border border-line bg-surface p-4 space-y-3"
-                  >
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="flex items-center gap-2">
-                        <span className="rounded-md bg-card px-2 py-0.5 text-xs font-bold text-fg border border-line">
-                          Turno #{selectedSession.runs.length - idx}
-                        </span>
-                        <span className="text-xs text-muted">
-                          {formatClock(run.at)} · Latência: {formatLatency(run.latencyMs)}
-                        </span>
-                        {run.companyName && (
-                          <span className="rounded-md border border-line bg-card px-2 py-0.5 text-xs font-semibold text-brand">
-                            🏢 {run.companyName}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        {run.orderQuality && (
-                          <span
-                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                              run.orderQuality.grade === "completo"
-                                ? "bg-ok-soft text-ok"
-                                : "bg-warn-soft text-warn"
-                            }`}
-                          >
-                            Pedido do Vendedor: {run.orderQuality.score}% ({run.orderQuality.grade})
-                          </span>
-                        )}
-                        {run.evaluator && (
-                          <span
-                            className={`rounded-full px-2.5 py-0.5 text-[10px] font-bold ${
-                              run.evaluator.autoHealed
-                                ? "bg-info-soft text-info"
-                                : run.evaluator.rootCause === "erro_ia"
-                                  ? "bg-err-soft text-err"
-                                  : "bg-ok-soft text-ok"
-                            }`}
-                          >
-                            IA Avaliadora:{" "}
-                            {run.evaluator.autoHealed
-                              ? "Auto-Corrigido"
-                              : run.evaluator.rootCause === "erro_ia"
-                                ? "Erro da IA"
-                                : run.evaluator.rootCause === "pedido_incompleto_equipe"
-                                  ? "Pedido Incompleto"
-                                  : "OK"}
-                          </span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="grid grid-cols-1 gap-2.5 md:grid-cols-2 text-xs">
-                      <div className="rounded-lg border border-line bg-card p-3">
-                        <span className="block text-[10px] font-bold uppercase text-muted">
-                          O que o vendedor enviou:
-                        </span>
-                        <p className="mt-1 font-medium text-fg">{run.pergunta}</p>
-                      </div>
-                      <div className="rounded-lg border border-line bg-card p-3">
-                        <span className="block text-[10px] font-bold uppercase text-muted">
-                          O que a IA respondeu:
-                        </span>
-                        <p className="mt-1 text-fg-2">
-                          {run.resposta || "Sem resposta registrada."}
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Ferramentas acionadas no CRM */}
-                    {run.steps.length > 0 && (
-                      <div className="space-y-1.5 pt-1">
-                        <span className="block text-[10px] font-bold uppercase text-muted">
-                          Ações executadas no banco de dados (Ferramentas da IA):
-                        </span>
-                        {run.steps.map((step) => (
-                          <div
-                            key={`${run.id}-step-${step.stepNumber}`}
-                            className="rounded-lg border border-line bg-card px-3 py-2 text-xs"
-                          >
-                            <div className="flex flex-wrap items-center justify-between gap-2">
-                              <span className="font-bold text-fg">
-                                {step.kind === "write" ? "✍️ Gravação:" : "🔎 Ferramenta:"}{" "}
-                                {step.toolName ? TOOL_LABELS[step.toolName] ?? step.toolName : step.kind}
-                              </span>
-                              <span
-                                className={`font-bold ${
-                                  step.status === "completed" || step.status === "ok"
-                                    ? "text-ok"
-                                    : "text-err"
-                                }`}
-                              >
-                                {step.status === "completed" || step.status === "ok"
-                                  ? `Sucesso (${step.durationMs}ms)`
-                                  : `Status: ${step.status}`}
-                              </span>
-                            </div>
-                            {step.requestSummary && (
-                              <p className="mt-1 text-[11px] text-fg-2">
-                                <strong>Parâmetros enviados:</strong> {step.requestSummary}
-                              </p>
-                            )}
-                            {step.responseSummary && (
-                              <p className="mt-0.5 text-[11px] text-muted">
-                                <strong>Retorno do CRM:</strong> {step.responseSummary}
-                              </p>
-                            )}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
+        </Modal>
       )}
     </div>
   );
