@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { buildInitialProposalInput, buildProposalPdfBytes, calcProposalTotals, pdfSafeText } from "./proposal";
+import { buildTawperPresentationDeck } from "./tawper-presentation";
 import type { Company, Contact, Deal, User } from "./types";
 
 describe("proposal PDF generator", () => {
@@ -96,5 +97,20 @@ describe("proposal PDF generator", () => {
     const header = new TextDecoder().decode(bytes.slice(0, 7));
     expect(header).toBe("%PDF-1.");
     expect(pdfSafeText("Atenção — entrega… R$ 100 → OK")).toBe("Atenção - entrega... R$ 100 -> OK");
+  });
+
+  it("gera a apresentação comercial HTML personalizada sem sorteio nos modos executivo e completo", () => {
+    const data = buildInitialProposalInput({ company, contact, owner, deal, now: new Date(2026, 10, 14) });
+    const execDeck = buildTawperPresentationDeck(data, { mode: "executive" });
+    expect(execDeck.slides.length).toBe(14);
+    expect(execDeck.html).toContain("Usina Rio Pardo");
+    expect(execDeck.html).toContain("Fernando Silva");
+    expect(execDeck.html).toContain("Case A8800, John Deere CH570");
+    expect(execDeck.html.toLowerCase()).not.toContain("kit churrasco");
+    expect(execDeck.html.toLowerCase()).not.toContain("sorteio-tawper.svg");
+
+    const fullDeck = buildTawperPresentationDeck(data, { mode: "complete" });
+    expect(fullDeck.slides.length).toBe(35);
+    expect(fullDeck.html.toLowerCase()).not.toContain("kit churrasco");
   });
 });
