@@ -1,6 +1,6 @@
 "use client";
 
-import { ArrowRight, CalendarCheck, CalendarClock, Check, CircleAlert, MapPin, Sparkles, Target } from "lucide-react";
+import { ArrowRight, CalendarCheck, CalendarClock, Check, CircleAlert, Clock, MapPin, MessageCircle, Sparkles, Target } from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { TypeIcon } from "@/components/crm/crm";
@@ -8,6 +8,7 @@ import { Card, CardHeader, Empty, PageHeader, Progress } from "@/components/ui/p
 import { dailyBriefing, type DailyBriefing } from "@/lib/ai";
 import { ALERT_LABEL, alertsOf, byDueAsc, type AlertType } from "@/lib/selectors";
 import { isManager } from "@/lib/constants";
+import { peerOf } from "@/lib/contact-match";
 import { addDays, dayDiff, fmtDateShort, fmtTime, longToday } from "@/lib/dates";
 import { annualGoalOf, periodGoal, periodRange, salesOf, sellersOf, sold } from "@/lib/goals";
 import { useNow } from "@/lib/hooks";
@@ -29,10 +30,27 @@ const TYPE_TONE: Partial<Record<ActivityType, string>> = {
 };
 
 /** Bloco de número do topo: um número grande, um rótulo e, quando faz sentido, uma barra. */
-function Tile({ icon, label, value, sub, tone, progress, onClick }: { icon: React.ReactNode; label: string; value: React.ReactNode; sub?: React.ReactNode; tone?: "bad"; progress?: number; onClick?: () => void }) {
-  const Comp = onClick ? "button" : "div";
-  return (
-    <Comp type={onClick ? "button" : undefined} onClick={onClick} className={cn("rounded-[10px] border border-line bg-white px-4 py-3.5 text-left", onClick && "transition hover:border-navy-3/30")}>
+function Tile({
+  icon,
+  label,
+  value,
+  sub,
+  tone,
+  progress,
+  onClick,
+  href,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  value: React.ReactNode;
+  sub?: React.ReactNode;
+  tone?: "bad";
+  progress?: number;
+  onClick?: () => void;
+  href?: string;
+}) {
+  const content = (
+    <>
       <div className="flex items-center gap-2 text-[12px] text-muted">
         <span className={cn("grid size-7 place-items-center rounded-full", tone === "bad" ? "bg-brand-soft text-brand" : "bg-soft text-navy-3")}>{icon}</span>
         {label}
@@ -40,16 +58,32 @@ function Tile({ icon, label, value, sub, tone, progress, onClick }: { icon: Reac
       <div className={cn("mt-2 text-[30px] leading-none font-semibold tracking-[-0.02em]", tone === "bad" ? "text-brand" : "text-ink")}>{value}</div>
       {progress !== undefined && <Progress value={progress} tone={progress >= 100 ? "green" : "navy"} className="mt-2.5" />}
       {sub && <div className="mt-1.5 truncate text-[12px] text-muted">{sub}</div>}
+    </>
+  );
+  const className = cn("rounded-[10px] border border-line bg-white px-4 py-3.5 text-left block", (onClick || href) && "transition hover:border-navy-3/30 cursor-pointer");
+  if (href) {
+    return (
+      <Link href={href} className={className}>
+        {content}
+      </Link>
+    );
+  }
+  const Comp = onClick ? "button" : "div";
+  return (
+    <Comp type={onClick ? "button" : undefined} onClick={onClick} className={className}>
+      {content}
     </Comp>
   );
 }
 
-/** Linha da agenda: hora, tipo em destaque, cliente e um toque para concluir. */
+/** Linha da agenda: hora, tipo em destaque, cliente, atalho de zap, reagendar e concluir. */
 function AgendaRow({ a, late }: { a: Activity; late?: boolean }) {
   const company = useStore((s) => s.companies.find((c) => c.id === a.companyId));
-  const open = useUI((s) => s.open);
+  const contacts = useStore((s) => s.contacts.filter((c) => c.companyId === a.companyId && c.ativo));
+  const contact = contacts[0];
+  const { open, openInbox } = useUI();
   return (
-    <li className="group flex items-center gap-3 border-b border-line/70 px-4 py-2.5 last:border-b-0 hover:bg-soft/40">
+    <li className="group flex flex-wrap items-center gap-3 border-b border-line/70 px-4 py-2.5 last:border-b-0 hover:bg-soft/40">
       <div className={cn("w-12 shrink-0 text-right text-[12.5px] font-semibold tabular-nums", late ? "text-brand" : "text-ink")}>{late ? fmtDateShort(a.dueAt) : fmtTime(a.dueAt)}</div>
       <span className={cn("grid size-9 shrink-0 place-items-center rounded-full", TYPE_TONE[a.tipo] ?? "bg-soft text-navy-3")} title={a.tipo}>
         <TypeIcon tipo={a.tipo} size={16} />
@@ -66,16 +100,74 @@ function AgendaRow({ a, late }: { a: Activity; late?: boolean }) {
               </Link>
             </>
           )}
+          {contact?.nome && (
+            <>
+              {" · "}
+              <span className="text-ink/70">{contact.nome}</span>
+            </>
+          )}
           {a.prioridade === "Alta" && <span className="text-warn"> · prioridade alta</span>}
         </div>
       </div>
-      <button
-        type="button"
-        onClick={() => open({ kind: "complete", activityId: a.id })}
-        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border border-line bg-white px-2.5 text-[12px] font-medium text-ink transition hover:border-ok hover:bg-ok hover:text-white"
-      >
-        <Check size={13} strokeWidth={3} /> Concluir
-      </button>
+      <div className="flex shrink-0 items-center gap-1.5 ml-auto sm:ml-0">
+        {contact?.whatsapp && (
+          <button
+            type="button"
+            onClick={() => openInbox(peerOf(contact))}
+            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-emerald-300 bg-emerald-50/60 px-2.5 text-[12px] font-medium text-emerald-800 transition hover:border-emerald-500 hover:bg-emerald-100"
+            title={`Abrir WhatsApp com ${contact.nome} (${contact.whatsapp})`}
+          >
+            <MessageCircle size={13} />
+            <span className="hidden sm:inline">WhatsApp</span>
+          </button>
+        )}
+        <button
+          type="button"
+          onClick={() => open({ kind: "reschedule", activityId: a.id })}
+          className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-line bg-white px-2.5 text-[12px] font-medium text-muted transition hover:border-navy-3/40 hover:text-ink"
+          title="Reagendar data ou horário desta tarefa"
+        >
+          <Clock size={13} />
+          <span className="hidden sm:inline">Reagendar</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => open({ kind: "complete", activityId: a.id })}
+          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-[6px] border border-line bg-white px-2.5 text-[12px] font-medium text-ink transition hover:border-ok hover:bg-ok hover:text-white"
+        >
+          <Check size={13} strokeWidth={3} /> Concluir
+        </button>
+      </div>
+    </li>
+  );
+}
+
+/** Linha de tarefa concluída hoje: horário, desfecho e empresa. */
+function ConcluidaRow({ a }: { a: Activity }) {
+  const company = useStore((s) => s.companies.find((c) => c.id === a.companyId));
+  return (
+    <li className="flex items-center gap-3 border-b border-line/70 bg-emerald-50/30 px-4 py-2.5 last:border-b-0">
+      <div className="w-12 shrink-0 text-right text-[12.5px] font-medium text-emerald-700 tabular-nums">
+        {a.completedAt ? fmtTime(a.completedAt) : "—"}
+      </div>
+      <span className="grid size-9 shrink-0 place-items-center rounded-full bg-emerald-100 text-emerald-700">
+        <Check size={16} strokeWidth={2.5} />
+      </span>
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13.5px] font-medium text-ink line-through opacity-75">{a.titulo}</div>
+        <div className="truncate text-[12px] text-muted">
+          {a.resultado ? <span className="font-medium text-ink/90">Desfecho: {a.resultado}</span> : a.tipo}
+          {company && (
+            <>
+              {" · "}
+              <Link href={`/empresas/${company.id}`} className="font-medium text-ink/80 hover:underline">
+                {company.nome}
+              </Link>
+            </>
+          )}
+        </div>
+      </div>
+      <span className="rounded-full bg-emerald-100 px-2.5 py-0.5 text-[11px] font-medium text-emerald-800">Concluída</span>
     </li>
   );
 }
@@ -91,18 +183,31 @@ export default function MeuDiaPage() {
   const mine = useMemo(() => s.activities.filter((a) => a.ownerId === user.id && a.status === "pendente").sort(byDueAsc), [s.activities, user.id]);
   const atrasadas = mine.filter((a) => dayDiff(a.dueAt, now) < 0);
   const hoje = mine.filter((a) => dayDiff(a.dueAt, now) === 0);
-  const feitasHoje = s.activities.filter((a) => a.ownerId === user.id && a.status === "concluida" && a.completedAt && dayDiff(a.completedAt, now) === 0).length;
+  const concluidasHoje = useMemo(
+    () =>
+      s.activities
+        .filter((a) => a.ownerId === user.id && a.status === "concluida" && a.completedAt && dayDiff(a.completedAt, now) === 0)
+        .sort((a, b) => new Date(b.completedAt ?? 0).getTime() - new Date(a.completedAt ?? 0).getTime()),
+    [s.activities, user.id, now],
+  );
+  const feitasHoje = concluidasHoje.length;
   const visitasSemana = mine.filter((a) => a.tipo === "Visita" && dayDiff(a.dueAt, now) >= 0 && dayDiff(a.dueAt, now) <= 7).length;
 
-  // Próximos 5 dias úteis, começando por hoje.
+  // Próximos dias úteis (e finais de semana se tiver tarefa marcada).
   const dias = useMemo(() => {
     const out: { offset: number; date: Date }[] = [];
-    for (let i = 0; out.length < 5 && i < 12; i++) {
+    for (let i = 0; (out.length < 5 || i < 7) && i < 14; i++) {
       const date = addDays(now, i);
-      if (i === 0 || isBusinessDay(date)) out.push({ offset: i, date });
+      const hasTasks = mine.some((a) => dayDiff(a.dueAt, now) === i);
+      if (i === 0 || isBusinessDay(date) || hasTasks) {
+        out.push({ offset: i, date });
+      }
     }
     return out;
-  }, [now]);
+  }, [now, mine]);
+
+  const maxOffset = dias.length ? dias[dias.length - 1].offset : 0;
+  const futuras = useMemo(() => mine.filter((a) => dayDiff(a.dueAt, now) > maxOffset), [mine, now, maxOffset]);
 
   const localBrief = useMemo(() => dailyBriefing(s, user, now), [s, user, now]);
   const briefKey = `${user.id}|${localBrief.resumo}|${localBrief.prioridades.map((p) => p.companyId).join(",")}`;
@@ -167,7 +272,12 @@ export default function MeuDiaPage() {
   }, [goals, s.deals, s.users, user, now]);
 
   const selected = pick ?? (atrasadas.length && !hoje.length ? -1 : 0);
-  const list = selected === -1 ? atrasadas : mine.filter((a) => dayDiff(a.dueAt, now) === selected);
+  const list = useMemo(() => {
+    if (selected === -1) return atrasadas;
+    if (selected === -2) return concluidasHoje;
+    if (selected === -99) return futuras;
+    return mine.filter((a) => dayDiff(a.dueAt, now) === selected);
+  }, [selected, atrasadas, concluidasHoje, futuras, mine, now]);
   const totalHoje = hoje.length + feitasHoje;
 
   return (
@@ -178,13 +288,32 @@ export default function MeuDiaPage() {
         <Tile
           icon={<CalendarCheck size={15} />}
           label="Hoje"
-          value={hoje.length}
+          value={hoje.length === 0 && feitasHoje > 0 ? "0 ✓" : hoje.length}
           progress={totalHoje ? (feitasHoje / totalHoje) * 100 : undefined}
-          sub={totalHoje ? `${feitasHoje} de ${totalHoje} feitas hoje` : "nada marcado para hoje"}
+          sub={
+            totalHoje
+              ? hoje.length === 0
+                ? `Todas as ${feitasHoje} tarefas concluídas!`
+                : `${feitasHoje} de ${totalHoje} feitas hoje (${hoje.length} pendente${hoje.length > 1 ? "s" : ""})`
+              : "nada marcado para hoje"
+          }
           onClick={() => setPick(0)}
         />
-        <Tile icon={<CalendarClock size={15} />} label="Atrasadas" value={atrasadas.length} tone={atrasadas.length ? "bad" : undefined} sub={atrasadas.length ? `a mais antiga é de ${fmtDateShort(atrasadas[0].dueAt)}` : "você está em dia"} onClick={() => setPick(-1)} />
-        <Tile icon={<MapPin size={15} />} label="Visitas nos próximos 7 dias" value={visitasSemana} sub={visitasSemana ? "veja a rota em Rotas" : "nenhuma visita marcada"} />
+        <Tile
+          icon={<CalendarClock size={15} />}
+          label="Atrasadas"
+          value={atrasadas.length}
+          tone={atrasadas.length ? "bad" : undefined}
+          sub={atrasadas.length ? `a mais antiga é de ${fmtDateShort(atrasadas[0].dueAt)}` : "você está em dia"}
+          onClick={() => setPick(-1)}
+        />
+        <Tile
+          icon={<MapPin size={15} />}
+          label="Visitas nos próximos 7 dias"
+          value={visitasSemana}
+          sub={visitasSemana ? "abrir planejamento em Rotas →" : "ver ou planejar em Rotas →"}
+          href="/rotas"
+        />
         {meta ? (
           <Tile
             icon={<Target size={15} />}
@@ -192,6 +321,7 @@ export default function MeuDiaPage() {
             value={`${meta.alvo > 0 ? Math.round((meta.vendido / meta.alvo) * 100) : 0}%`}
             progress={meta.alvo > 0 ? (meta.vendido / meta.alvo) * 100 : 0}
             sub={`${moneyShort(meta.vendido)} de ${moneyShort(meta.alvo)}`}
+            href={isManager(user) ? "/gestao" : undefined}
           />
         ) : (
           <Tile
@@ -237,16 +367,60 @@ export default function MeuDiaPage() {
                 </button>
               );
             })}
+            {futuras.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setPick(-99)}
+                className={cn("min-w-[84px] rounded-[8px] border px-3 py-2 text-left transition", selected === -99 ? "border-navy bg-navy text-white" : "border-line bg-white text-ink hover:border-navy-3/40")}
+              >
+                <div className={cn("text-[11px] font-medium", selected === -99 ? "text-white/80" : "text-muted")}>+ Futuras</div>
+                <div className="flex items-end gap-1.5">
+                  <span className="text-[20px] leading-tight font-semibold">{futuras.length}</span>
+                  <span className={cn("pb-0.5 text-[11px]", selected === -99 ? "text-white/70" : "text-muted")}>{futuras.length === 1 ? "tarefa" : "tarefas"}</span>
+                </div>
+              </button>
+            )}
+            {feitasHoje > 0 && (
+              <button
+                type="button"
+                onClick={() => setPick(-2)}
+                className={cn("min-w-[84px] rounded-[8px] border px-3 py-2 text-left transition", selected === -2 ? "border-emerald-600 bg-emerald-600 text-white" : "border-emerald-200 bg-emerald-50 text-emerald-800 hover:border-emerald-400")}
+              >
+                <div className={cn("text-[11px] font-medium", selected === -2 ? "text-white/80" : "text-emerald-700")}>Feitas hoje</div>
+                <div className="flex items-end gap-1.5">
+                  <span className="text-[20px] leading-tight font-semibold">{feitasHoje}</span>
+                  <span className={cn("pb-0.5 text-[11px]", selected === -2 ? "text-white/70" : "text-emerald-600")}>{feitasHoje === 1 ? "feita" : "feitas"}</span>
+                </div>
+              </button>
+            )}
           </div>
           {list.length === 0 ? (
             <div className="border-t border-line">
-              <Empty icon={<CalendarCheck size={20} />} title={selected === -1 ? "Nenhuma atrasada" : selected === 0 ? "Nada pendente para hoje" : "Nada marcado neste dia"} text="Use Registrar, no topo, para lançar o que aconteceu ou marcar o próximo passo." />
+              <Empty
+                icon={<CalendarCheck size={20} />}
+                title={
+                  selected === -1
+                    ? "Nenhuma atrasada"
+                    : selected === -2
+                    ? "Nenhuma tarefa concluída hoje"
+                    : selected === -99
+                    ? "Nenhuma tarefa futura"
+                    : selected === 0
+                    ? "Nada pendente para hoje"
+                    : "Nada marcado neste dia"
+                }
+                text={
+                  selected === -2
+                    ? "As tarefas concluídas hoje aparecerão aqui para você conferir seus desfechos."
+                    : "Use Registrar, no topo, para lançar o que aconteceu ou marcar o próximo passo."
+                }
+              />
             </div>
           ) : (
             <ul className="border-t border-line">
-              {list.map((a) => (
-                <AgendaRow key={a.id} a={a} late={selected === -1} />
-              ))}
+              {selected === -2
+                ? list.map((a) => <ConcluidaRow key={a.id} a={a} />)
+                : list.map((a) => <AgendaRow key={a.id} a={a} late={selected === -1} />)}
             </ul>
           )}
         </Card>
@@ -263,7 +437,7 @@ export default function MeuDiaPage() {
             ) : (
               <ol className="border-t border-line">
                 {brief.prioridades.slice(0, 3).map((p, i) => (
-                  <li key={p.companyId}>
+                  <li key={`${p.companyId}-${i}`}>
                     <Link href={`/empresas/${p.companyId}`} className="flex items-start gap-3 border-b border-line/70 px-4 py-2.5 last:border-b-0 hover:bg-soft/50">
                       <span className="mt-0.5 grid size-5 shrink-0 place-items-center rounded-full bg-ai-soft text-[11px] font-semibold text-ai">{i + 1}</span>
                       <span className="line-clamp-2 flex-1 text-[13px] leading-snug text-ink">{p.texto}</span>
