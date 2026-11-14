@@ -1,12 +1,12 @@
 "use client";
 
-import { AlertTriangle, GitMerge, GripVertical, Headset, Pause, Trophy } from "lucide-react";
+import { AlertTriangle, GitMerge, GripVertical, Headset, Pause, Search, Sparkles, Trophy, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useMemo, useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
 import { DaysInStage, DueLabel, PeriodFilter, RegionSelect, UserAvatar } from "@/components/crm/crm";
-import { Badge, PageHeader, Segmented, Select } from "@/components/ui/primitives";
+import { Badge, Input, PageHeader, Segmented, Select } from "@/components/ui/primitives";
 import { FUNNELS, isManager, saleLabel, stageIndex } from "@/lib/constants";
 import { stageKeyToUi } from "@/lib/crm-map";
 import { daysSince, fmtDateShort, inPeriod, NO_PERIOD, type Period } from "@/lib/dates";
@@ -16,7 +16,7 @@ import { canSeeCompany, inSupport, isStagnant, missingCriteria, nextStepOf } fro
 import { useCurrentUser, useStore, warnNoBack } from "@/lib/store";
 import type { Deal, FunnelId } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
-import { cn, moneyShort } from "@/lib/utils";
+import { cn, moneyShort, normalize } from "@/lib/utils";
 
 function Kanban() {
   const params = useSearchParams();
@@ -27,6 +27,7 @@ function Kanban() {
   const open = useUI((u) => u.open);
   const toast = useUI((u) => u.toast);
   const [funnel, setFunnel] = useState<FunnelId>((params.get("f") as FunnelId) === "recorrencia" ? "recorrencia" : "aquisicao");
+  const [q, setQ] = useState("");
   const [owner, setOwner] = useState("");
   const [regiao, setRegiao] = useState("");
   const [period, setPeriod] = useState<Period>(NO_PERIOD);
@@ -36,25 +37,42 @@ function Kanban() {
   const [over, setOver] = useState<string | null>(null);
 
   const stages = FUNNELS[funnel].stages;
-  const deals = useMemo(
-    () =>
-      s.deals.filter((d) => {
-        if (d.funnel !== funnel) return false;
-        const c = s.companies.find((x) => x.id === d.companyId);
-        if (!c || !canSeeCompany(user, c)) return false;
-        if (owner && c.ownerId !== owner) return false;
-        if (!matchesRegionFilter(regiao, c.uf)) return false;
-        // Negócio aberto: data em que entrou na etapa atual. Venda: data da venda (sem filtro, os últimos 90 dias).
-        if (d.status === "aberta") return (c.status === "ativa" || c.status === "espera") && inPeriod(d.stageEnteredAt, period);
-        if (d.status === "ganha") return d.closedAt ? (hasPeriod ? inPeriod(d.closedAt, period) : daysSince(d.closedAt, now) <= 90) : false;
-        return false;
-      }),
-    [s.deals, s.companies, funnel, user, owner, regiao, period, hasPeriod, now],
-  );
+  const deals = useMemo(() => {
+    const n = q.trim() ? normalize(q.trim()) : "";
+    return s.deals.filter((d) => {
+      if (d.funnel !== funnel) return false;
+      const c = s.companies.find((x) => x.id === d.companyId);
+      if (!c || !canSeeCompany(user, c)) return false;
+      if (owner && c.ownerId !== owner) return false;
+      if (!matchesRegionFilter(regiao, c.uf)) return false;
+      if (n) {
+        const hay = normalize(`${c.nome} ${c.razaoSocial ?? ""} ${c.cidade ?? ""} ${c.uf ?? ""} ${d.titulo}`);
+        if (!hay.includes(n)) return false;
+      }
+      // Negócio aberto: data em que entrou na etapa atual. Venda: data da venda (sem filtro, os últimos 90 dias).
+      if (d.status === "aberta") return (c.status === "ativa" || c.status === "espera") && inPeriod(d.stageEnteredAt, period);
+      if (d.status === "ganha") return d.closedAt ? (hasPeriod ? inPeriod(d.closedAt, period) : daysSince(d.closedAt, now) <= 90) : false;
+      return false;
+    });
+  }, [s.deals, s.companies, funnel, user, q, owner, regiao, period, hasPeriod, now]);
 
   const risky = (d: Deal) => {
     const next = nextStepOf(s, d.companyId);
     return isStagnant(d, now) || !next || (next && new Date(next.dueAt) < new Date(now.toDateString()));
+  };
+
+  const openDeals = deals.filter((d) => d.status === "aberta");
+  const wonDeals = deals.filter((d) => d.status === "ganha");
+  const openTotal = openDeals.reduce((a, d) => a + (d.valor ?? 0), 0);
+  const wonTotal = wonDeals.reduce((a, d) => a + (d.valorRealizado ?? d.valor ?? 0), 0);
+  const riskCount = openDeals.filter((d) => risky(d)).length;
+  const hasFilters = Boolean(q || owner || regiao || hasPeriod || onlyRisk);
+  const clearFilters = () => {
+    setQ("");
+    setOwner("");
+    setRegiao("");
+    setPeriod(NO_PERIOD);
+    setOnlyRisk(false);
   };
 
   const drop = (stageId: string) => {
@@ -125,7 +143,52 @@ function Kanban() {
           />
         }
       />
+      {/* Resumo rápido do funil */}
+      <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <div className="rounded-[10px] border border-line bg-white px-3.5 py-2.5">
+          <div className="text-[11.5px] font-medium text-muted">Em aberto</div>
+          <div className="mt-0.5 text-[22px] font-bold tracking-tight text-ink">{openDeals.length}</div>
+          <div className="truncate text-[11px] text-muted">negócios no funil</div>
+        </div>
+        <div className="rounded-[10px] border border-line bg-white px-3.5 py-2.5">
+          <div className="text-[11.5px] font-medium text-muted">Pipeline em aberto</div>
+          <div className="mt-0.5 text-[22px] font-bold tracking-tight text-ink">{openTotal ? moneyShort(openTotal) : "—"}</div>
+          <div className="truncate text-[11px] text-muted">soma dos valores estimados</div>
+        </div>
+        <button
+          type="button"
+          onClick={() => setOnlyRisk((v) => !v)}
+          className={cn(
+            "rounded-[10px] border px-3.5 py-2.5 text-left transition hover:border-navy-3/40",
+            onlyRisk
+              ? "border-navy bg-navy text-white shadow-sm"
+              : riskCount > 0
+              ? "border-brand/30 bg-brand-soft/40 text-ink"
+              : "border-line bg-white text-ink",
+          )}
+        >
+          <div className={cn("text-[11.5px] font-medium", onlyRisk ? "text-white/80" : "text-muted")}>Em risco / parados</div>
+          <div className={cn("mt-0.5 text-[22px] font-bold tracking-tight", onlyRisk ? "text-white" : riskCount > 0 ? "text-brand" : "text-ink")}>
+            {riskCount}
+          </div>
+          <div className={cn("truncate text-[11px]", onlyRisk ? "text-white/70" : "text-muted")}>
+            {onlyRisk ? "clique para mostrar todos" : "clique para filtrar"}
+          </div>
+        </button>
+        <div className="rounded-[10px] border border-line bg-white px-3.5 py-2.5">
+          <div className="text-[11.5px] font-medium text-muted">Vendas ganhas</div>
+          <div className="mt-0.5 text-[22px] font-bold tracking-tight text-ok">{wonTotal ? moneyShort(wonTotal) : "—"}</div>
+          <div className="truncate text-[11px] text-muted">
+            {wonDeals.length} {wonDeals.length === 1 ? "venda" : "vendas"} · {hasPeriod ? "no período" : "últimos 90 dias"}
+          </div>
+        </div>
+      </div>
+
       <div className="mb-4 flex flex-wrap items-center gap-2">
+        <div className="relative min-w-[200px] flex-1 max-w-[300px]">
+          <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
+          <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar empresa ou cidade..." className="pl-9" />
+        </div>
         {isManager(user) && (
           <Select value={owner} onChange={(e) => setOwner(e.target.value)} className="w-auto">
             <option value="">Todos os vendedores</option>
@@ -145,7 +208,12 @@ function Kanban() {
         >
           <AlertTriangle size={14} /> Só com risco
         </button>
-        <span className="ml-auto text-[12px] text-muted">{FUNNELS[funnel].subtitulo}</span>
+        {hasFilters && (
+          <button type="button" onClick={clearFilters} className="inline-flex h-10 items-center gap-1 px-2 text-[12.5px] text-muted hover:text-ink">
+            <X size={14} /> limpar
+          </button>
+        )}
+        <span className="ml-auto hidden xl:inline text-[12px] text-muted">{FUNNELS[funnel].subtitulo}</span>
       </div>
 
       <div className="scrollbar-thin -mx-4 overflow-x-auto px-4 pb-4 md:-mx-6 md:px-6 2xl:-mx-8 2xl:px-8">
@@ -189,6 +257,7 @@ function Kanban() {
                     const stagnant = d.status === "aberta" && isStagnant(d, now);
                     const overdue = next && new Date(next.dueAt) < new Date(now.toDateString());
                     const sug = s.suggestions.some((x) => x.companyId === c.id && x.status === "pendente");
+                    const isRisk = d.status === "aberta" && (stagnant || (!next && c.status === "ativa") || Boolean(overdue));
                     return (
                       <article
                         key={d.id}
@@ -201,7 +270,7 @@ function Kanban() {
                         className={cn(
                           "group rounded-[8px] border bg-white p-3 transition hover:border-navy-3/30",
                           d.status === "aberta" && "cursor-grab active:cursor-grabbing",
-                          stagnant || (!next && c.status === "ativa") ? "border-brand/30" : "border-line",
+                          isRisk ? "border-brand/30 border-l-[3px] border-l-brand bg-brand-soft/10" : "border-line",
                           dragId === d.id && "opacity-40",
                         )}
                       >
@@ -254,24 +323,40 @@ function Kanban() {
                                   <DueLabel iso={next.dueAt} className="text-[11px]" />
                                 </>
                               ) : (
-                                <span className="inline-flex items-center gap-1 font-semibold text-brand">
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    open({ kind: "newActivity", companyId: c.id });
+                                  }}
+                                  className="inline-flex items-center gap-1 font-semibold text-brand hover:underline"
+                                  title="Agendar próximo passo"
+                                >
                                   <AlertTriangle size={11} /> Sem próximo passo
-                                </span>
+                                </button>
                               )}
                             </div>
                           </>
                         )}
                         {d.status === "aberta" && (
-                          <div className="mt-1.5 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100">
+                          <div className="mt-1.5 flex gap-1 opacity-100 md:opacity-0 md:group-hover:opacity-100 transition-opacity">
+                            <button
+                              type="button"
+                              onClick={() => open({ kind: "quick", companyId: c.id })}
+                              className="inline-flex flex-1 items-center justify-center gap-1 rounded-[4px] py-1 text-[11px] font-semibold text-navy hover:bg-navy/5"
+                              title="Registrar atividade"
+                            >
+                              <Sparkles size={11} /> Registrar
+                            </button>
                             <button
                               type="button"
                               onClick={() => open({ kind: "viewStage", dealId: d.id })}
                               className="flex-1 rounded-[4px] py-1 text-[11px] font-semibold text-navy-3 hover:bg-soft"
                             >
-                              Ver etapa
+                              Etapa
                             </button>
                             <button type="button" onClick={() => startMove(d)} className="flex-1 rounded-[4px] py-1 text-[11px] font-semibold text-navy-3 hover:bg-soft">
-                              Mover etapa →
+                              Mover →
                             </button>
                           </div>
                         )}
