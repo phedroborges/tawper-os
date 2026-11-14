@@ -2,6 +2,7 @@ import "server-only";
 
 import type { User } from "@/lib/types";
 import type { ChatTurn } from "../openai";
+import { activeLearnedRulesForPrompt } from "../whatsapp/learned-rules";
 import { runAgent } from "./engine";
 import { buscarCliente } from "./tools/buscar-cliente";
 import { adicionarContato, atualizarCliente, atualizarContato, excluirContato } from "./tools/cliente";
@@ -56,8 +57,12 @@ export function calendar(now = new Date()) {
  * e só vira regra aqui se valer para todo pedido. A parte que muda a cada minuto (data e calendário) fica no fim,
  * para o começo ser sempre igual e a OpenAI reaproveitar o cache dele.
  */
-export function agentSystemPrompt(actor: User, now = new Date()) {
+export function agentSystemPrompt(actor: User, now = new Date(), learnedRules: string[] = []) {
   const hoje = new Intl.DateTimeFormat("pt-BR", { timeZone: "America/Sao_Paulo", dateStyle: "full", timeStyle: "short" }).format(now);
+  const rulesBlock =
+    learnedRules.length > 0
+      ? `\n\n## Regras aprendidas em auditoria (não repita estes erros)\n${learnedRules.map((r) => `- ${r}`).join("\n")}`
+      : "";
   return `Você é o assistente comercial da Tawper no WhatsApp. A Tawper fabrica mangueiras hidráulicas para usinas de cana. Você conversa só com a equipe da Tawper (vendedores e gestores), nunca com clientes.
 
 ## Seu trabalho
@@ -130,7 +135,7 @@ Busca e conferência são trabalho interno: não narre ("vou buscar", "não enco
 
 ## Agora
 Você fala com ${actor.short} (${actor.role}). Agora: ${hoje}.
-Calendário: ${calendar(now)}.`;
+Calendário: ${calendar(now)}.${rulesBlock}`;
 }
 
 export async function runToolAgent(input: {
@@ -140,6 +145,7 @@ export async function runToolAgent(input: {
   consultar: AgentContext["consultar"];
   requestId?: string;
 }): Promise<AgentResult | null> {
+  const learnedRules = await activeLearnedRulesForPrompt().catch(() => []);
   const ctx: AgentContext = { actor: input.actor, question: input.question, history: input.history, consultar: input.consultar, requestId: input.requestId };
-  return runAgent({ system: agentSystemPrompt(input.actor), question: input.question, history: input.history, tools: AGENT_TOOLS, ctx });
+  return runAgent({ system: agentSystemPrompt(input.actor, new Date(), learnedRules), question: input.question, history: input.history, tools: AGENT_TOOLS, ctx });
 }

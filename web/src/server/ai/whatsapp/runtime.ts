@@ -13,6 +13,7 @@ import { runUndo } from "../agent/undo";
 import { resolveWhatsAppAgentUser } from "./access";
 import { AUDIO_FAILED, AUDIO_PREFIX } from "./audio";
 import { findWhatsAppAgentIdentity } from "./config";
+import { evaluateSessionById } from "./evaluator";
 import { renderWhatsAppAnswer } from "./render";
 import { sendWhatsAppAgentText } from "./stevo";
 import {
@@ -132,6 +133,9 @@ async function answerJob(job: WhatsAppAgentJob) {
       : "Não achei a resposta anterior para marcar. Me conta o que era para eu ter feito?";
     const sent = await sendWhatsAppAgentText(sender, text);
     await recordWhatsAppAgentReply({ sessionId, outboxEventId: job.id, body: text, externalMessageId: sent.messageId });
+    if (flagged && process.env.DATABASE_URL) {
+      void evaluateSessionById(sessionId).catch(() => null);
+    }
     return;
   }
   const data: Data = { ...snapshot, suggestions: [], conversations: [] };
@@ -189,6 +193,13 @@ async function answerJob(job: WhatsAppAgentJob) {
     inicio: started,
     fim: new Date(),
   });
+  const runMarks = viaFerramentas?.marcas ?? [];
+  if (
+    process.env.DATABASE_URL &&
+    runMarks.some((m) => m === "errou" || m === "comprovante_inventado" || m === "limite_passos")
+  ) {
+    void evaluateSessionById(sessionId).catch(() => null);
+  }
 }
 
 export async function processWhatsAppAgentQueue(limit = 3) {
