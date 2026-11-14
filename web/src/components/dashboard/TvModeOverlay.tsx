@@ -10,21 +10,26 @@ import {
   Handshake,
   Maximize2,
   Minimize2,
+  Moon,
   Pause,
   Play,
+  Sun,
   Target,
   Trophy,
   X,
 } from "lucide-react";
+import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { ColumnChart } from "@/components/charts/Charts";
 import { UserAvatar } from "@/components/crm/crm";
 import { BrandLogo } from "@/components/ui/BrandLogo";
-import { Badge, Button, Card, CardHeader, Empty, Progress, Segmented, Stat } from "@/components/ui/primitives";
+import { Badge, Button, Card, Empty, Progress, Segmented } from "@/components/ui/primitives";
 import { saleLabel } from "@/lib/constants";
 import type { salesByMonth, SellerDetail } from "@/lib/dashboard";
 import { fmtDateShort } from "@/lib/dates";
+import { useMounted } from "@/lib/hooks";
 import { dealValue, type Metric } from "@/lib/selectors";
+import { useTheme } from "@/lib/theme";
 import type { Company, Deal, User } from "@/lib/types";
 import { cn, money, moneyShort } from "@/lib/utils";
 
@@ -44,6 +49,57 @@ interface TvModeOverlayProps {
   bottleneck: { stageName: string; count: number; valor: number; overLimit?: { name: string; media: number; limite: number } } | null;
 }
 
+function TvCardHeader({
+  title,
+  kicker,
+  action,
+}: {
+  title: ReactNode;
+  kicker?: ReactNode;
+  action?: ReactNode;
+}) {
+  return (
+    <div className="flex items-center justify-between gap-4 border-b border-line/70 px-5 py-4">
+      <div className="min-w-0">
+        <h3 className="truncate text-[18px] font-bold tracking-[-0.01em] text-ink xl:text-[21px]">{title}</h3>
+        {kicker && <div className="mt-0.5 truncate text-[12.5px] font-medium uppercase tracking-wide text-muted xl:text-[13px]">{kicker}</div>}
+      </div>
+      {action}
+    </div>
+  );
+}
+
+function TvStat({
+  label,
+  value,
+  sub,
+  tone = "neutral",
+  icon,
+}: {
+  label: string;
+  value: ReactNode;
+  sub?: ReactNode;
+  tone?: "neutral" | "bad" | "good" | "warn";
+  icon?: ReactNode;
+}) {
+  const valueColor =
+    tone === "bad" ? "text-brand" : tone === "warn" ? "text-warn" : tone === "good" ? "text-ok" : "text-ink";
+  return (
+    <div className="flex flex-col justify-between rounded-[8px] border border-line bg-white px-5 py-4 text-left">
+      <div className="flex items-center gap-2">
+        {icon && <span className={cn("text-muted", tone === "bad" && "text-brand", tone === "warn" && "text-warn", tone === "good" && "text-ok")}>{icon}</span>}
+        <span className="line-clamp-2 text-[12.5px] leading-snug font-semibold uppercase tracking-wide text-muted xl:text-[13.5px]">
+          {label}
+        </span>
+      </div>
+      <div className={cn("mt-2 text-[34px] leading-none font-bold tracking-[-0.02em] tabular-nums xl:text-[42px]", valueColor)}>
+        {value}
+      </div>
+      {sub && <div className="mt-2 truncate text-[13px] text-muted xl:text-[14.5px]">{sub}</div>}
+    </div>
+  );
+}
+
 export function TvModeOverlay({
   open,
   onClose,
@@ -59,6 +115,9 @@ export function TvModeOverlay({
   users,
   bottleneck,
 }: TvModeOverlayProps) {
+  const mounted = useMounted();
+  const { isDark, toggleTheme } = useTheme();
+  const dark = mounted && isDark;
   const [clock, setClock] = useState(() => new Date());
   const [slide, setSlide] = useState<"geral" | "evolucao">("geral");
   const [autoRotate, setAutoRotate] = useState(true);
@@ -131,20 +190,20 @@ export function TvModeOverlay({
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col overflow-hidden bg-paper text-ink">
-      {/* Topbar idêntica ao Design System da Tawper */}
-      <header className="flex h-16 shrink-0 items-center justify-between border-b border-line bg-white px-6">
-        <div className="flex items-center gap-4">
-          <BrandLogo width={293} height={83} className="h-auto w-[116px]" priority />
-          <span className="h-6 w-px bg-line" />
+      {/* Topbar idêntica ao Design System da Tawper, em escala de TV */}
+      <header className="flex h-20 shrink-0 items-center justify-between border-b border-line bg-white px-7">
+        <div className="flex items-center gap-5">
+          <BrandLogo width={293} height={83} className="h-auto w-[144px]" priority />
+          <span className="h-8 w-px bg-line" />
           <div>
-            <div className="flex items-center gap-2">
-              <span className="text-[15px] font-bold text-ink">Painel Comercial</span>
-              <Badge tone="green">
-                <span className="size-1.5 animate-pulse rounded-full bg-ok" />
+            <div className="flex items-center gap-2.5">
+              <span className="text-[19px] font-bold tracking-[-0.01em] text-ink xl:text-[21px]">Painel Comercial</span>
+              <Badge tone="green" className="px-2.5 py-0.5 text-[13px]">
+                <span className="size-2 animate-pulse rounded-full bg-ok" />
                 Ao vivo
               </Badge>
             </div>
-            <div className="text-[11.5px] capitalize text-muted">{dateStr}</div>
+            <div className="text-[13px] capitalize text-muted xl:text-[14px]">{dateStr}</div>
           </div>
         </div>
 
@@ -163,74 +222,86 @@ export function TvModeOverlay({
             size="sm"
             onClick={() => setAutoRotate((v) => !v)}
             title={autoRotate ? "Pausar alternância automática" : "Ativar alternância automática"}
-            className="border border-line bg-white"
+            className="h-10 border border-line bg-white px-3 text-[13.5px]"
           >
-            {autoRotate ? <Pause size={14} /> : <Play size={14} />}
+            {autoRotate ? <Pause size={16} /> : <Play size={16} />}
             <span className="hidden sm:inline">{autoRotate ? "Auto" : "Pausado"}</span>
           </Button>
 
-          <div className="rounded-[6px] border border-line bg-soft px-3 py-1.5 text-[16px] font-bold tabular-nums text-ink">
+          <div className="rounded-[6px] border border-line bg-soft px-4 py-2 text-[20px] font-bold leading-none tabular-nums text-ink xl:text-[22px]">
             {timeStr}
           </div>
 
           <Button
             variant="ghost"
             size="sm"
-            onClick={toggleFs}
-            title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
-            className="border border-line bg-white px-2.5"
+            onClick={toggleTheme}
+            title={dark ? "Modo claro" : "Modo escuro"}
+            className="h-10 border border-line bg-white px-3"
           >
-            {isFullscreen ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
+            {dark ? <Sun size={17} /> : <Moon size={17} />}
           </Button>
 
-          <Button variant="outline" size="sm" onClick={onClose}>
-            <X size={15} />
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={toggleFs}
+            title={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
+            className="h-10 border border-line bg-white px-3"
+          >
+            {isFullscreen ? <Minimize2 size={17} /> : <Maximize2 size={17} />}
+          </Button>
+
+          <Button variant="outline" size="sm" onClick={onClose} className="h-10 px-3.5 text-[13.5px]">
+            <X size={16} />
             Sair (Esc)
           </Button>
         </div>
       </header>
 
-      {/* Corpo do Modo TV seguindo os componentes do sistema */}
-      <div className="flex min-h-0 flex-1 flex-col gap-4 p-6">
+      {/* Corpo do Modo TV em escala de exibição para TV */}
+      <div className="flex min-h-0 flex-1 flex-col gap-5 p-6 xl:p-7">
         {/* Linha 1: Ritmo da Meta + 4 Stats do sistema */}
-        <div className="grid shrink-0 gap-3.5 xl:grid-cols-[1.45fr_repeat(4,minmax(0,1fr))]">
-          <Card className="flex flex-col justify-between p-4">
-            <div className="flex items-start justify-between gap-2">
+        <div className="grid shrink-0 gap-4 xl:grid-cols-[1.5fr_repeat(4,minmax(0,1fr))]">
+          <Card className="flex flex-col justify-between p-5">
+            <div className="flex items-start justify-between gap-3">
               <div>
-                <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                  <Target size={13} className="text-brand" />
+                <div className="flex items-center gap-2 text-[12.5px] font-semibold uppercase tracking-wide text-muted xl:text-[13.5px]">
+                  <Target size={16} className="text-brand" />
                   Ritmo da Meta · Mês atual
                 </div>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-[26px] font-bold leading-none tabular-nums text-ink">{moneyShort(monthSold)}</span>
-                  {monthGoal > 0 && <span className="text-[13px] text-muted">de {moneyShort(monthGoal)}</span>}
+                <div className="mt-2 flex items-baseline gap-2.5">
+                  <span className="text-[36px] font-bold leading-none tracking-[-0.02em] tabular-nums text-ink xl:text-[42px]">
+                    {moneyShort(monthSold)}
+                  </span>
+                  {monthGoal > 0 && <span className="text-[15px] font-medium text-muted xl:text-[17px]">de {moneyShort(monthGoal)}</span>}
                 </div>
               </div>
               {monthGoal > 0 && (
-                <Badge tone={goalPct >= 100 ? "green" : onPace ? "navy" : "red"}>
+                <Badge tone={goalPct >= 100 ? "green" : onPace ? "navy" : "red"} className="px-2.5 py-1 text-[13px]">
                   {goalPct >= 100
                     ? "Meta batida"
                     : onPace
-                      ? `+${moneyShort(paceDiff)} acima do ritmo`
-                      : `${moneyShort(Math.abs(paceDiff))} abaixo do ritmo`}
+                      ? `+${moneyShort(paceDiff)} acima`
+                      : `${moneyShort(Math.abs(paceDiff))} abaixo`}
                 </Badge>
               )}
             </div>
 
             {monthGoal > 0 ? (
-              <div className="mt-3">
-                <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-soft">
+              <div className="mt-4">
+                <div className="relative h-3.5 w-full overflow-hidden rounded-full bg-soft">
                   <div
                     className={cn("h-full rounded-full transition-all duration-500", goalPct >= 100 ? "bg-ok" : onPace ? "bg-navy" : "bg-brand")}
                     style={{ width: `${Math.min(100, goalPct)}%` }}
                   />
                   <div
                     title={`Ritmo esperado hoje (${monthElapsedPct}%)`}
-                    className="absolute top-0 bottom-0 w-0.5 bg-ink/70"
+                    className="absolute top-0 bottom-0 w-1 bg-ink/75"
                     style={{ left: `${Math.min(99, Math.max(1, monthElapsedPct))}%` }}
                   />
                 </div>
-                <div className="mt-1.5 flex justify-between text-[11.5px] text-muted">
+                <div className="mt-2 flex justify-between text-[13px] text-muted xl:text-[14px]">
                   <span>
                     <b className="text-ink">{goalPct}%</b> da meta atingida
                   </span>
@@ -240,41 +311,41 @@ export function TvModeOverlay({
                 </div>
               </div>
             ) : (
-              <div className="mt-2 text-[12px] text-muted">Meta mensal não configurada.</div>
+              <div className="mt-3 text-[14px] text-muted">Meta mensal não configurada.</div>
             )}
           </Card>
 
-          <Stat label="Em negociação" value={metrics.negociacao.value} sub={metrics.negociacao.sub} icon={<Handshake size={15} />} />
-          <Stat label="Propostas abertas" value={metrics.propostas.value} sub={metrics.propostas.sub} icon={<FileText size={15} />} />
-          <Stat label="Ganhos (30d)" value={metrics.ganhos.value} sub={metrics.ganhos.sub} tone="good" icon={<Trophy size={15} />} />
-          <Stat
+          <TvStat label="Em negociação" value={metrics.negociacao.value} sub={metrics.negociacao.sub} icon={<Handshake size={18} />} />
+          <TvStat label="Propostas abertas" value={metrics.propostas.value} sub={metrics.propostas.sub} icon={<FileText size={18} />} />
+          <TvStat label="Ganhos (30d)" value={metrics.ganhos.value} sub={metrics.ganhos.sub} tone="good" icon={<Trophy size={18} />} />
+          <TvStat
             label="Execução no prazo"
             value={`${avgExec}%`}
             sub={`${metrics.feitas.value} concluídas · ${metrics.atrasadas.value} atrasadas`}
             tone={avgExec >= 80 ? "good" : avgExec >= 60 ? "warn" : "bad"}
-            icon={<CheckCircle2 size={15} />}
+            icon={<CheckCircle2 size={18} />}
           />
         </div>
 
         {/* Painel principal alternável */}
         {slide === "geral" ? (
-          <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-[1.45fr_1fr]">
+          <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-[1.45fr_1fr]">
             {/* Esquerda: Placar da Equipe */}
             <Card className="flex min-h-0 flex-col">
-              <CardHeader
+              <TvCardHeader
                 kicker="Incentivo e compromisso · ordenado por resultado e avanço"
                 title="Placar da equipe"
-                action={<span className="text-[11.5px] text-muted">{leaderboard.length} vendedores ativos</span>}
+                action={<span className="text-[13.5px] font-medium text-muted xl:text-[14.5px]">{leaderboard.length} vendedores ativos</span>}
               />
               <div className="scrollbar-thin min-h-0 flex-1 divide-y divide-line/70 overflow-y-auto">
                 {leaderboard.map((r, idx) => {
                   const late = r.atrasadas.reduce((a, b) => a + b, 0);
                   const exec = r.noPrazo ?? 100;
                   return (
-                    <div key={r.user.id} className="flex items-center gap-3.5 px-4 py-3">
+                    <div key={r.user.id} className="flex items-center gap-4 px-5 py-4">
                       <span
                         className={cn(
-                          "grid size-7 shrink-0 place-items-center rounded-full border text-[12px] font-bold tabular-nums",
+                          "grid size-10 shrink-0 place-items-center rounded-full border text-[15px] font-bold tabular-nums",
                           idx === 0
                             ? "border-amber-300 bg-amber-50 text-amber-800"
                             : idx === 1
@@ -286,30 +357,30 @@ export function TvModeOverlay({
                       >
                         {idx + 1}º
                       </span>
-                      <UserAvatar userId={r.user.id} size={34} />
+                      <UserAvatar userId={r.user.id} size={46} />
                       <div className="min-w-0 flex-1">
-                        <div className="flex items-baseline justify-between gap-2">
-                          <span className="truncate text-[14px] font-semibold text-ink">{r.user.name}</span>
-                          <span className="text-[15px] font-bold tabular-nums text-ink">
+                        <div className="flex items-baseline justify-between gap-3">
+                          <span className="truncate text-[17px] font-bold text-ink xl:text-[20px]">{r.user.name}</span>
+                          <span className="text-[19px] font-bold tabular-nums text-ink xl:text-[22px]">
                             {r.vendido > 0 ? moneyShort(r.vendido) : "R$ 0"}
                           </span>
                         </div>
-                        <div className="mt-1 flex items-center gap-3">
+                        <div className="mt-2 flex items-center gap-3.5">
                           <Progress
                             value={exec}
                             tone={exec >= 80 ? "green" : exec >= 60 ? "amber" : "red"}
-                            className="flex-1"
+                            className="h-3 flex-1"
                           />
                           <span
                             className={cn(
-                              "w-24 text-right text-[11.5px] font-semibold tabular-nums",
+                              "w-32 text-right text-[13.5px] font-semibold tabular-nums xl:w-36 xl:text-[14.5px]",
                               exec >= 80 ? "text-ok" : exec >= 60 ? "text-warn" : "text-brand",
                             )}
                           >
                             {r.noPrazo === null ? "—" : `${exec}% no prazo`}
                           </span>
                         </div>
-                        <div className="mt-1 flex flex-wrap gap-x-4 text-[11.5px] text-muted">
+                        <div className="mt-2 flex flex-wrap gap-x-5 text-[13.5px] text-muted xl:text-[14.5px]">
                           <span>{r.concluidas} feitas</span>
                           <span>{r.avancos} avanços de etapa</span>
                           <span>{r.registros} registros</span>
@@ -327,26 +398,26 @@ export function TvModeOverlay({
             </Card>
 
             {/* Direita: Últimos ganhos + Saúde operacional */}
-            <div className="flex min-h-0 flex-col gap-4">
+            <div className="flex min-h-0 flex-col gap-5">
               <Card className="flex min-h-0 flex-1 flex-col">
-                <CardHeader kicker="Fechamentos recentes" title="Últimos ganhos" action={<Trophy size={15} className="text-ok" />} />
+                <TvCardHeader kicker="Fechamentos recentes" title="Últimos ganhos" action={<Trophy size={20} className="text-ok" />} />
                 <div className="scrollbar-thin min-h-0 flex-1 divide-y divide-line/70 overflow-y-auto">
                   {wonDeals.length === 0 && <Empty title="Nenhum fechamento neste período" />}
                   {wonDeals.map((d) => {
                     const comp = companies.find((c) => c.id === d.companyId);
                     const seller = users.find((u) => u.id === d.ownerId);
                     return (
-                      <div key={d.id} className="flex items-center gap-3 px-4 py-2.5">
-                        <span className="grid size-7 shrink-0 place-items-center rounded-full bg-ok text-white">
-                          <Trophy size={13} />
+                      <div key={d.id} className="flex items-center gap-3.5 px-5 py-3.5">
+                        <span className="grid size-10 shrink-0 place-items-center rounded-full bg-ok text-white">
+                          <Trophy size={18} />
                         </span>
                         <div className="min-w-0 flex-1">
-                          <div className="truncate text-[13px] font-semibold text-ink">{comp?.nome ?? "Cliente"}</div>
-                          <div className="truncate text-[11.5px] text-muted">
+                          <div className="truncate text-[16px] font-semibold text-ink xl:text-[17.5px]">{comp?.nome ?? "Cliente"}</div>
+                          <div className="truncate text-[13.5px] text-muted xl:text-[14px]">
                             {seller?.short ?? "Equipe"} · {saleLabel(d)} · {fmtDateShort(d.closedAt)}
                           </div>
                         </div>
-                        <div className="shrink-0 text-[13.5px] font-bold tabular-nums text-ink">{moneyShort(dealValue(d))}</div>
+                        <div className="shrink-0 text-[17px] font-bold tabular-nums text-ink xl:text-[19px]">{moneyShort(dealValue(d))}</div>
                       </div>
                     );
                   })}
@@ -354,28 +425,28 @@ export function TvModeOverlay({
               </Card>
 
               <Card className="shrink-0">
-                <CardHeader kicker="Onde agir agora" title="Saúde e cobrança" />
-                <div className="grid grid-cols-3 divide-x divide-line/80 p-3.5">
-                  <div className="pr-3">
-                    <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-brand">
-                      <CalendarClock size={12} /> Atrasos
+                <TvCardHeader kicker="Onde agir agora" title="Saúde e cobrança" />
+                <div className="grid grid-cols-3 divide-x divide-line/80 p-5">
+                  <div className="pr-4">
+                    <div className="flex items-center gap-1.5 text-[12.5px] font-semibold uppercase tracking-wide text-brand xl:text-[13.5px]">
+                      <CalendarClock size={15} /> Atrasos
                     </div>
-                    <div className="mt-1 text-[22px] font-bold tabular-nums text-brand">{metrics.atrasadas.value}</div>
-                    <div className="text-[11px] text-muted">tarefas vencidas</div>
+                    <div className="mt-1.5 text-[32px] font-bold leading-none tabular-nums text-brand xl:text-[38px]">{metrics.atrasadas.value}</div>
+                    <div className="mt-1 text-[13px] text-muted xl:text-[14px]">tarefas vencidas</div>
                   </div>
-                  <div className="px-3">
-                    <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                      <CircleAlert size={12} className="text-brand" /> Sem próximo passo
+                  <div className="px-4">
+                    <div className="flex items-center gap-1.5 text-[12.5px] font-semibold uppercase tracking-wide text-muted xl:text-[13.5px]">
+                      <CircleAlert size={15} className="text-brand" /> Sem próximo passo
                     </div>
-                    <div className="mt-1 text-[22px] font-bold tabular-nums text-ink">{metrics.semProximo.value}</div>
-                    <div className="text-[11px] text-muted">contas ativas</div>
+                    <div className="mt-1.5 text-[32px] font-bold leading-none tabular-nums text-ink xl:text-[38px]">{metrics.semProximo.value}</div>
+                    <div className="mt-1 text-[13px] text-muted xl:text-[14px]">contas ativas</div>
                   </div>
-                  <div className="pl-3">
-                    <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
-                      <AlertTriangle size={12} className="text-warn" /> Estagnadas
+                  <div className="pl-4">
+                    <div className="flex items-center gap-1.5 text-[12.5px] font-semibold uppercase tracking-wide text-muted xl:text-[13.5px]">
+                      <AlertTriangle size={15} className="text-warn" /> Estagnadas
                     </div>
-                    <div className="mt-1 text-[22px] font-bold tabular-nums text-ink">{metrics.estagnadas.value}</div>
-                    <div className="truncate text-[11px] text-muted">
+                    <div className="mt-1.5 text-[32px] font-bold leading-none tabular-nums text-ink xl:text-[38px]">{metrics.estagnadas.value}</div>
+                    <div className="mt-1 truncate text-[13px] text-muted xl:text-[14px]">
                       {bottleneck ? `Foco: ${bottleneck.stageName}` : "Dentro do prazo"}
                     </div>
                   </div>
@@ -384,11 +455,12 @@ export function TvModeOverlay({
             </div>
           </div>
         ) : (
-          <div className="grid min-h-0 flex-1 gap-4 lg:grid-cols-2">
+          <div className="grid min-h-0 flex-1 gap-5 lg:grid-cols-2">
             <Card className="flex min-h-0 flex-col">
-              <CardHeader kicker="Últimos 6 meses" title="Vendas por mês" />
-              <div className="flex flex-1 flex-col justify-center px-4 py-4">
+              <TvCardHeader kicker="Últimos 6 meses" title="Vendas por mês" />
+              <div className="flex flex-1 flex-col justify-center px-6 py-5">
                 <ColumnChart
+                  height={320}
                   target={monthGoal > 0 ? monthGoal : undefined}
                   targetLabel={monthGoal > 0 ? `meta do mês ${moneyShort(monthGoal)}` : undefined}
                   rows={months.map((mo) => ({
@@ -408,31 +480,31 @@ export function TvModeOverlay({
 
             <Card className="flex min-h-0 flex-col justify-between">
               <div>
-                <CardHeader
+                <TvCardHeader
                   kicker="Inteligência comercial"
                   title="Onde o funil concentra valor e tempo"
-                  action={<Activity size={15} className="text-muted" />}
+                  action={<Activity size={20} className="text-muted" />}
                 />
-                <div className="space-y-3 p-4">
+                <div className="space-y-4 p-5">
                   {bottleneck ? (
                     <>
-                      <div className="rounded-[8px] border border-line bg-soft/40 p-4">
-                        <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+                      <div className="rounded-[8px] border border-line bg-soft/40 p-5">
+                        <div className="text-[13px] font-semibold uppercase tracking-wide text-muted xl:text-[14px]">
                           Maior concentração financeira no funil
                         </div>
-                        <div className="mt-1 text-[20px] font-bold text-ink">{bottleneck.stageName}</div>
-                        <div className="mt-0.5 text-[13px] font-semibold text-navy">
+                        <div className="mt-1.5 text-[24px] font-bold text-ink xl:text-[28px]">{bottleneck.stageName}</div>
+                        <div className="mt-1 text-[16px] font-semibold text-navy xl:text-[18px]">
                           {bottleneck.count} contas · {money(bottleneck.valor)} em aberto
                         </div>
                       </div>
 
                       {bottleneck.overLimit && (
-                        <div className="rounded-[8px] border border-brand/30 bg-brand-soft/40 p-4">
-                          <div className="text-[11px] font-semibold uppercase tracking-wide text-brand">
+                        <div className="rounded-[8px] border border-brand/30 bg-brand-soft/40 p-5">
+                          <div className="text-[13px] font-semibold uppercase tracking-wide text-brand xl:text-[14px]">
                             Etapa demorando acima do limite
                           </div>
-                          <div className="mt-1 text-[20px] font-bold text-ink">{bottleneck.overLimit.name}</div>
-                          <div className="mt-0.5 text-[13px] text-ink">
+                          <div className="mt-1.5 text-[24px] font-bold text-ink xl:text-[28px]">{bottleneck.overLimit.name}</div>
+                          <div className="mt-1 text-[16px] text-ink xl:text-[17.5px]">
                             Tempo médio de <b>{bottleneck.overLimit.media} dias</b> (limite da etapa: {bottleneck.overLimit.limite}d)
                           </div>
                         </div>
@@ -444,7 +516,7 @@ export function TvModeOverlay({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line px-4 py-3 text-[12.5px]">
+              <div className="flex flex-wrap items-center justify-between gap-4 border-t border-line px-5 py-4 text-[15px] xl:text-[16px]">
                 <span>
                   Conversão: <b className="text-ink">{metrics.conversao.value}</b>
                 </span>
