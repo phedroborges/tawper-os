@@ -1,6 +1,6 @@
 "use client";
 
-import { ChevronDown, ChevronUp, Loader2, Maximize2, MessageCircle, Minus, Search, UserRound, X } from "lucide-react";
+import { Bot, ChevronDown, ChevronUp, Loader2, Maximize2, MessageCircle, Minus, Search, UserRound, X } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
@@ -55,27 +55,24 @@ export function InboxUnreadSync() {
   return null;
 }
 
-/** Botão do topo: abre (ou recolhe) a lista de conversas no canto da tela. */
+/** Botão do topo: abre a central de gerenciamento e auditoria dos atendimentos da IA no WhatsApp. */
 export function InboxButton() {
-  const list = useUI((s) => s.dock.list);
-  const setDockList = useUI((s) => s.setDockList);
   const unread = useUI((s) => s.liveUnread);
   return (
-    <button
-      type="button"
-      onClick={() => setDockList(list === "open" ? "min" : "open")}
+    <Link
+      href="/conversas"
       className="relative inline-flex h-10 items-center gap-2 rounded-[6px] px-2.5 text-[13.5px] text-muted transition-colors hover:bg-soft hover:text-ink"
-      title="Conversas do WhatsApp"
-      aria-label={unread ? `WhatsApp, ${unread} conversa(s) não lida(s)` : "WhatsApp"}
+      title="Gerenciamento e auditoria da IA no WhatsApp"
+      aria-label={unread ? `Atendimento IA WhatsApp, ${unread} pendência(s)` : "Atendimento IA WhatsApp"}
     >
-      <MessageCircle size={18} className="text-ok" />
-      <span className="hidden xl:inline">WhatsApp</span>
+      <Bot size={18} className="text-ok" />
+      <span className="hidden xl:inline">WhatsApp IA</span>
       {Boolean(unread) && (
         <span className="absolute top-1 left-6 min-w-[18px] rounded-full bg-ok px-1 text-center text-[10.5px] leading-[18px] font-semibold text-white xl:static xl:ml-0.5">
           {unread! > 99 ? "99+" : unread}
         </span>
       )}
-    </button>
+    </Link>
   );
 }
 

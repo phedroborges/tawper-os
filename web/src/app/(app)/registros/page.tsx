@@ -185,7 +185,7 @@ export default function RegistrosPage() {
               Atualizar
             </Button>
             <LinkButton href="/conversas" variant="outline" size="sm">
-              <MessageCircle size={15} /> Conversas da empresa
+              <MessageCircle size={15} /> Gerenciar IA (WhatsApp)
             </LinkButton>
           </div>
         }

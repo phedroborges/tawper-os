@@ -26,6 +26,15 @@ export interface ActivityTarget {
   por: "dia" | "semana" | "mes";
 }
 
+export interface RecordGoalConfig {
+  /** Quantidade padrão de registros esperada por vendedor na janela base. */
+  meta: number;
+  /** Janela base configurada pelo gestor. */
+  por: "dia" | "semana" | "mes";
+  /** Meta individual opcional por vendedor (userId → quantidade na janela base). */
+  porVendedor?: Record<string, number>;
+}
+
 export interface Goals {
   ano: number;
   /** Meta anual da empresa, em reais. */
@@ -35,6 +44,8 @@ export interface Goals {
   /** Administradores e gestores que também vendem (ex.: o diretor): entram nas metas e no pódio. */
   participantes?: string[];
   atividades: ActivityTarget[];
+  /** Meta de registros comerciais por vendedor (base da regressão para bater a meta financeira). */
+  registros?: RecordGoalConfig;
 }
 
 export interface AppConfig {
@@ -88,12 +99,30 @@ export function applyStageRules(rules: Record<string, StageRule> = {}) {
 export function parseConfig(raw: Partial<Record<keyof AppConfig, unknown>>): AppConfig {
   const obj = (v: unknown) => (v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : {});
   const goals = obj(raw.goals);
+  const rawReg = obj(goals.registros);
+  const regPor: RecordGoalConfig["por"] = rawReg.por === "dia" || rawReg.por === "semana" || rawReg.por === "mes" ? rawReg.por : "mes";
+  const regPorVendedorRaw = obj(rawReg.porVendedor);
+  const regPorVendedor: Record<string, number> = {};
+  for (const [k, v] of Object.entries(regPorVendedorRaw)) {
+    if (typeof v === "number" && v > 0) regPorVendedor[k] = v;
+  }
+  const registros: RecordGoalConfig | undefined =
+    typeof rawReg.meta === "number" && rawReg.meta > 0
+      ? { meta: Math.round(rawReg.meta), por: regPor, porVendedor: regPorVendedor }
+      : undefined;
   return {
     stageRules: obj(raw.stageRules) as AppConfig["stageRules"],
     activityRules: obj(raw.activityRules) as AppConfig["activityRules"],
     goals:
       typeof goals.anual === "number" && typeof goals.ano === "number"
-        ? { ano: goals.ano, anual: goals.anual, porVendedor: obj(goals.porVendedor) as Record<string, number>, participantes: Array.isArray(goals.participantes) ? goals.participantes.filter((x): x is string => typeof x === "string") : [], atividades: Array.isArray(goals.atividades) ? (goals.atividades as ActivityTarget[]) : [] }
+        ? {
+            ano: goals.ano,
+            anual: goals.anual,
+            porVendedor: obj(goals.porVendedor) as Record<string, number>,
+            participantes: Array.isArray(goals.participantes) ? goals.participantes.filter((x): x is string => typeof x === "string") : [],
+            atividades: Array.isArray(goals.atividades) ? (goals.atividades as ActivityTarget[]) : [],
+            ...(registros ? { registros } : {}),
+          }
         : null,
     remindersOff: Array.isArray(raw.remindersOff) ? raw.remindersOff.filter((x): x is string => typeof x === "string") : [],
   };

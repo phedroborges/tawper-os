@@ -4,9 +4,9 @@ import { Plus, Save, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { UserAvatar } from "@/components/crm/crm";
 import { Button, Card, CardHeader, Checkbox, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
-import type { ActivityTarget, Goals } from "@/lib/config";
+import type { ActivityTarget, Goals, RecordGoalConfig } from "@/lib/config";
 import { ACTIVITY_TYPES } from "@/lib/constants";
-import { annualGoalOf, periodGoal, salesOf, sellersOf, TARGET_UNIT } from "@/lib/goals";
+import { annualGoalOf, DEFAULT_RECORD_GOAL, periodGoal, salesOf, sellersOf, TARGET_UNIT } from "@/lib/goals";
 import { useNow } from "@/lib/hooks";
 import { useStore } from "@/lib/store";
 import type { ActivityType } from "@/lib/types";
@@ -31,7 +31,18 @@ export default function MetasConfigPage() {
   const saveConfig = useStore((s) => s.saveConfig);
   const toast = useUI((s) => s.toast);
   const action = useAction();
-  const [g, setG] = useState<Goals>(saved ?? { ano: now.getFullYear(), anual: 0, porVendedor: {}, participantes: [], atividades: SUGESTAO });
+  const [g, setG] = useState<Goals>(
+    saved ?? {
+      ano: now.getFullYear(),
+      anual: 0,
+      porVendedor: {},
+      participantes: [],
+      atividades: SUGESTAO,
+      registros: DEFAULT_RECORD_GOAL,
+    },
+  );
+  const regCfg: RecordGoalConfig = g.registros ?? DEFAULT_RECORD_GOAL;
+  const setRegCfg = (patch: Partial<RecordGoalConfig>) => setG({ ...g, registros: { ...regCfg, ...patch } });
   const sellers = useMemo(() => sellersOf(users, g.participantes), [users, g.participantes]);
   const gestores = useMemo(() => users.filter((u) => u.role === "admin" || u.role === "gestor"), [users]);
   const sales = useMemo(() => salesOf(deals), [deals]);
@@ -140,6 +151,70 @@ export default function MetasConfigPage() {
         </ul>
         {g.anual > 0 && Math.abs(somaVendedores - g.anual) > 1 && sellers.length > 0 && (
           <div className="border-t border-line bg-amber-50 px-4 py-2.5 text-[12.5px] text-amber-950">A soma dos vendedores ({money(somaVendedores)}) está diferente da meta da empresa ({money(g.anual)}). Campo vazio recebe uma parte igual do que sobra.</div>
+        )}
+      </Card>
+
+      <Card className="mb-5">
+        <CardHeader title="Meta de registros da equipe" kicker="Constância diária de registros que sustenta a regressão e garante o fechamento da meta" />
+        <div className="grid gap-3 px-4 pb-4 sm:grid-cols-[140px_180px_minmax(0,1fr)]">
+          <Field label="Quantidade padrão">
+            <Input
+              type="number"
+              min={1}
+              max={1000}
+              value={regCfg.meta}
+              onChange={(e) => setRegCfg({ meta: Math.max(1, Math.min(1000, Number(e.target.value) || 1)) })}
+            />
+          </Field>
+          <Field label="Janela base">
+            <Select
+              value={regCfg.por}
+              onChange={(e) => setRegCfg({ por: e.target.value as RecordGoalConfig["por"] })}
+            >
+              {(Object.keys(TARGET_UNIT) as RecordGoalConfig["por"][]).map((p) => (
+                <option key={p} value={p}>
+                  {TARGET_UNIT[p]}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <div className="flex items-end pb-1 text-[12px] text-muted">
+            O painel calcula automaticamente quantos registros por dia útil cada vendedor precisa fazer para bater a meta do período.
+          </div>
+        </div>
+        {sellers.length > 0 && (
+          <ul className="border-t border-line">
+            {sellers.map((u) => {
+              const individual = regCfg.porVendedor?.[u.id];
+              return (
+                <li key={u.id} className="flex flex-wrap items-center gap-3 border-t border-line/70 px-4 py-2 first:border-t-0">
+                  <UserAvatar userId={u.id} size={26} />
+                  <div className="min-w-0 flex-1">
+                    <div className="truncate text-[13px] font-medium text-ink">{u.name}</div>
+                    <div className="text-[11px] text-muted">
+                      {individual ? `Meta individual: ${individual} ${TARGET_UNIT[regCfg.por]}` : `Usando padrão da equipe: ${regCfg.meta} ${TARGET_UNIT[regCfg.por]}`}
+                    </div>
+                  </div>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={1000}
+                    className="h-8 w-28 text-right text-[13px]"
+                    value={individual ?? ""}
+                    placeholder={String(regCfg.meta)}
+                    onChange={(e) => {
+                      const v = Math.max(0, Math.round(Number(e.target.value) || 0));
+                      const next = { ...(regCfg.porVendedor ?? {}) };
+                      if (v > 0) next[u.id] = v;
+                      else delete next[u.id];
+                      setRegCfg({ porVendedor: next });
+                    }}
+                    aria-label={`Meta de registros de ${u.name}`}
+                  />
+                </li>
+              );
+            })}
+          </ul>
         )}
       </Card>
 

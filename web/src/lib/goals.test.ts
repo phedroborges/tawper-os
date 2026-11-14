@@ -1,7 +1,22 @@
 import { describe, expect, it } from "vitest";
 import type { Goals } from "./config";
-import { annualGoalOf, elapsed, periodGoal, periodRange, ranking, salesPath, sellersOf, sold, targetDone, type Sale } from "./goals";
-import type { Activity, Deal, User } from "./types";
+import {
+  annualGoalOf,
+  elapsed,
+  periodGoal,
+  periodRange,
+  ranking,
+  recordGoalForSeller,
+  recordRegressionPace,
+  salesPath,
+  sellerRecordsDone,
+  sellersOf,
+  sold,
+  targetDone,
+  workdaysInRange,
+  type Sale,
+} from "./goals";
+import type { Activity, Deal, Interaction, User } from "./types";
 
 const user = (id: string, role: User["role"] = "vendedor"): User => ({ id, name: id, short: id, role, title: "", initials: "X", color: "#000", phone: "", regions: [] });
 const users = [user("a"), user("b"), user("c"), user("chefe", "admin")];
@@ -68,5 +83,32 @@ describe("metas", () => {
     const acts = [act("2026-11-12T10:00:00"), act("2026-11-11T10:00:00"), act("2026-11-12T11:00:00", { ownerId: "b" }), act("2026-11-12T11:00:00", { tipo: "Visita" })];
     expect(targetDone({ tipo: "Ligação", quantidade: 10, por: "dia" }, acts, "a", new Date(2026, 10, 12, 15))).toBe(1);
     expect(targetDone({ tipo: "Ligação", quantidade: 10, por: "semana" }, acts, "a", new Date(2026, 10, 12, 15))).toBe(2);
+  });
+
+  it("meta de registros por vendedor calcula proporção por período, conta registros e faz regressão nos dias úteis restantes", () => {
+    const withRec: Goals = { ...goals, registros: { meta: 40, por: "mes", porVendedor: { a: 60 } } };
+    expect(recordGoalForSeller(withRec, "a", "mes", now).meta).toBe(60);
+    expect(recordGoalForSeller(withRec, "b", "mes", now).meta).toBe(40);
+    expect(recordGoalForSeller(withRec, "b", "trimestre", now).meta).toBe(120);
+
+    const weekCfg: Goals = { ...goals, registros: { meta: 10, por: "semana" } };
+    const workdays = workdaysInRange(periodRange("mes", now).from, periodRange("mes", now).to);
+    expect(recordGoalForSeller(weekCfg, "b", "mes", now).meta).toBe(Math.round(10 * (workdays / 5)));
+
+    const acts = [
+      { ownerId: "a", status: "concluida", completedAt: "2026-11-05T10:00:00" } as Activity,
+      { ownerId: "a", status: "pendente", dueAt: "2026-11-05T10:00:00" } as Activity,
+    ];
+    const ints = [
+      { id: "i1", companyId: "c1", canal: "Nota", autorId: "a", titulo: "Nota", kind: "note", at: "2026-11-10T10:00:00" } as Interaction,
+      { id: "i2", companyId: "c1", canal: "Sistema", autorId: "a", titulo: "Cobrança", kind: "cobranca", at: "2026-11-10T10:00:00" } as Interaction,
+    ];
+    expect(sellerRecordsDone(acts, ints, "a", periodRange("mes", now))).toBe(2);
+
+    const pace = recordRegressionPace(10, 42, periodRange("mes", now), now);
+    expect(pace.missing).toBe(32);
+    expect(pace.remainingWorkdays).toBeGreaterThan(0);
+    expect(pace.neededPerWorkday).toBeGreaterThan(pace.basePerWorkday);
+    expect(pace.status).toBe("atrasado");
   });
 });

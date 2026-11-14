@@ -1,7 +1,7 @@
 // Metas: da meta anual sai o que falta por mês, trimestre e semestre, o ranking e o caminho em atividades.
 
-import type { ActivityTarget, Goals } from "./config";
-import type { Activity, Deal, User } from "./types";
+import type { ActivityTarget, Goals, RecordGoalConfig } from "./config";
+import type { Activity, Deal, Interaction, User } from "./types";
 
 export type GoalPeriod = "mes" | "trimestre" | "semestre" | "ano";
 
@@ -136,3 +136,99 @@ export function targetDone(target: ActivityTarget, activities: Activity[], owner
 
 export const TARGET_UNIT: Record<ActivityTarget["por"], string> = { dia: "por dia", semana: "por semana", mes: "por mês" };
 export const TARGET_WINDOW: Record<ActivityTarget["por"], string> = { dia: "hoje", semana: "nesta semana", mes: "neste mês" };
+
+export const DEFAULT_RECORD_GOAL: RecordGoalConfig = { meta: 40, por: "mes" };
+
+/** Conta dias úteis (segunda a sexta) em [from, to). */
+export function workdaysInRange(from: Date, to: Date): number {
+  const cur = new Date(from.getFullYear(), from.getMonth(), from.getDate());
+  const end = new Date(to.getFullYear(), to.getMonth(), to.getDate());
+  let count = 0;
+  while (cur < end) {
+    const day = cur.getDay();
+    if (day !== 0 && day !== 6) count++;
+    cur.setDate(cur.getDate() + 1);
+  }
+  return count;
+}
+
+/** Meta de registros convertida para o período selecionado (`mes`, `trimestre`, `semestre`, `ano`). */
+export function recordGoalForSeller(goals: Goals | null | undefined, sellerId: string, period: GoalPeriod, now: Date): { meta: number; custom: boolean; cfg: RecordGoalConfig } {
+  const cfg = goals?.registros && goals.registros.meta > 0 ? goals.registros : DEFAULT_RECORD_GOAL;
+  const override = cfg.porVendedor?.[sellerId];
+  const base = typeof override === "number" && override > 0 ? override : cfg.meta;
+  const range = periodRange(period, now);
+  const workdays = Math.max(1, workdaysInRange(range.from, range.to));
+  const size = MONTHS_IN[period];
+  let meta = base;
+  if (cfg.por === "dia") meta = Math.round(base * workdays);
+  else if (cfg.por === "semana") meta = Math.round(base * (workdays / 5));
+  else meta = Math.round(base * size);
+  return { meta: Math.max(1, meta), custom: typeof override === "number" && override > 0, cfg };
+}
+
+/** Registros comerciais realizados por um vendedor no período (atividades concluídas + relatos no histórico, excluindo cobrança de gestor). */
+export function sellerRecordsDone(activities: Activity[], interactions: Interaction[], sellerId: string, range: { from: Date; to: Date }): number {
+  const fromMs = range.from.getTime();
+  const toMs = range.to.getTime();
+  const actCount = activities.filter((a) => {
+    if (a.ownerId !== sellerId || a.status !== "concluida") return false;
+    const stamp = a.completedAt ?? a.dueAt;
+    const t = new Date(stamp).getTime();
+    return t >= fromMs && t < toMs;
+  }).length;
+  const intCount = interactions.filter((i) => {
+    if (i.autorId !== sellerId || i.kind === "cobranca") return false;
+    const t = new Date(i.at).getTime();
+    return t >= fromMs && t < toMs;
+  }).length;
+  return actCount + intCount;
+}
+
+export interface RecordRegressionPace {
+  done: number;
+  target: number;
+  pct: number;
+  expectedToday: number;
+  paceGap: number;
+  missing: number;
+  remainingWorkdays: number;
+  basePerWorkday: number;
+  neededPerWorkday: number;
+  status: "batida" | "no_ritmo" | "atrasado";
+}
+
+/**
+ * Regressão da meta de registros: compara o realizado até hoje com o ritmo esperado nos dias úteis
+ * decorridos e recalcula quantos registros por dia útil restante são necessários para fechar o período.
+ */
+export function recordRegressionPace(done: number, target: number, range: { from: Date; to: Date }, now: Date): RecordRegressionPace {
+  const totalWorkdays = Math.max(1, workdaysInRange(range.from, range.to));
+  const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  const elapsedEnd = todayStart < range.from ? range.from : todayStart > range.to ? range.to : new Date(todayStart.getFullYear(), todayStart.getMonth(), todayStart.getDate() + 1);
+  const elapsedWorkdays = Math.min(totalWorkdays, workdaysInRange(range.from, elapsedEnd));
+  const remainingStart = todayStart < range.from ? range.from : todayStart;
+  const remainingWorkdays = Math.max(1, workdaysInRange(remainingStart, range.to));
+
+  const safeTarget = Math.max(1, target);
+  const pct = (done / safeTarget) * 100;
+  const expectedToday = Math.round((safeTarget * elapsedWorkdays) / totalWorkdays);
+  const paceGap = done - expectedToday;
+  const missing = Math.max(0, safeTarget - done);
+  const basePerWorkday = Number((safeTarget / totalWorkdays).toFixed(1));
+  const neededPerWorkday = Number((missing / remainingWorkdays).toFixed(1));
+  const status: RecordRegressionPace["status"] = done >= safeTarget ? "batida" : done >= expectedToday ? "no_ritmo" : "atrasado";
+
+  return {
+    done,
+    target: safeTarget,
+    pct,
+    expectedToday,
+    paceGap,
+    missing,
+    remainingWorkdays,
+    basePerWorkday,
+    neededPerWorkday,
+    status,
+  };
+}

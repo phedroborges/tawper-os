@@ -1,11 +1,30 @@
 "use client";
 
-import { AlertTriangle, ArrowRight, Check, Flame, Medal, Target, TrendingDown, TrendingUp } from "lucide-react";
+import { AlertTriangle, ArrowRight, Check, ClipboardCheck, Flame, Medal, Target, TrendingDown, TrendingUp } from "lucide-react";
 import { useMemo, useState } from "react";
 import { TypeIcon, UserAvatar } from "@/components/crm/crm";
-import { Card, CardHeader, Empty, LinkButton, PageHeader, Progress, Segmented, Select } from "@/components/ui/primitives";
+import { Badge, Card, CardHeader, Empty, LinkButton, PageHeader, Progress, Segmented, Select } from "@/components/ui/primitives";
 import { isManager } from "@/lib/constants";
-import { annualGoalOf, basePeriodGoal, elapsed, PERIOD_LABEL, periodGoal, periodRange, ranking, salesOf, salesPath, sellersOf, sold, TARGET_UNIT, TARGET_WINDOW, targetDone, type GoalPeriod } from "@/lib/goals";
+import {
+  annualGoalOf,
+  basePeriodGoal,
+  elapsed,
+  PERIOD_LABEL,
+  periodGoal,
+  periodRange,
+  ranking,
+  recordGoalForSeller,
+  recordRegressionPace,
+  salesOf,
+  salesPath,
+  sellerRecordsDone,
+  sellersOf,
+  sold,
+  TARGET_UNIT,
+  TARGET_WINDOW,
+  targetDone,
+  type GoalPeriod,
+} from "@/lib/goals";
 import { useNow } from "@/lib/hooks";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { cn, money, moneyShort } from "@/lib/utils";
@@ -44,6 +63,7 @@ export default function MetasPage() {
   const users = useStore((s) => s.users);
   const deals = useStore((s) => s.deals);
   const activities = useStore((s) => s.activities);
+  const interactions = useStore((s) => s.interactions);
   const [period, setPeriod] = useState<GoalPeriod>("mes");
   const manager = isManager(user);
   const sellers = useMemo(() => sellersOf(users, goals?.participantes), [users, goals?.participantes]);
@@ -88,6 +108,20 @@ export default function MetasPage() {
   const pipelineFoco = openDealsFoco.reduce((sum, d) => sum + (d.valor ?? 0), 0);
   const path = salesPath(faltaMes, deals, foco.id);
   const vendasMes = sales.filter((s) => s.ownerId === foco.id && s.at >= mes.from && s.at < mes.to).length;
+
+  const sellerRecordRows = sellers.map((seller) => {
+    const recGoal = recordGoalForSeller(goals, seller.id, period, now);
+    const done = sellerRecordsDone(activities, interactions, seller.id, range);
+    const pace = recordRegressionPace(done, recGoal.meta, range, now);
+    return { seller, pace, custom: recGoal.custom };
+  });
+  const teamRegDone = sellerRecordRows.reduce((sum, r) => sum + r.pace.done, 0);
+  const teamRegGoal = sellerRecordRows.reduce((sum, r) => sum + r.pace.target, 0);
+  const teamRegPace = recordRegressionPace(teamRegDone, Math.max(1, teamRegGoal), range, now);
+
+  const focoRecGoal = recordGoalForSeller(goals, foco.id, "mes", now);
+  const focoRecDone = sellerRecordsDone(activities, interactions, foco.id, mes);
+  const focoRecPace = recordRegressionPace(focoRecDone, focoRecGoal.meta, mes, now);
 
   return (
     <div>
@@ -186,6 +220,103 @@ export default function MetasPage() {
               })}
             </ul>
           </Card>
+
+          <Card>
+            <CardHeader
+              kicker={`Base e regressão da meta · ${PERIOD_LABEL[period].toLowerCase()} atual`}
+              title="Meta de registros por vendedor"
+              action={
+                <div className="flex items-center gap-2">
+                  <Badge tone={teamRegPace.status === "batida" || teamRegPace.status === "no_ritmo" ? "green" : "red"}>
+                    {teamRegDone} de {teamRegGoal} ({Math.round(teamRegPace.pct)}%)
+                  </Badge>
+                  {user.role === "admin" && !goals.registros && (
+                    <LinkButton href="/configuracoes/metas" size="xs" variant="outline">
+                      Personalizar
+                    </LinkButton>
+                  )}
+                </div>
+              }
+            />
+            <div className="border-t border-line/70 px-4 py-3">
+              <div className="flex items-center justify-between gap-2 text-[12.5px]">
+                <span className="flex items-center gap-1.5 font-medium text-ink">
+                  <ClipboardCheck size={14} className="text-navy-3" />
+                  Ritmo coletivo da equipe
+                </span>
+                <span className="text-muted">
+                  Esperado hoje: <b className="text-ink">{teamRegPace.expectedToday}</b> · Restam{" "}
+                  <b className="text-ink">{teamRegPace.remainingWorkdays}d úteis</b> ({teamRegPace.neededPerWorkday}/dia útil)
+                </span>
+              </div>
+              <Progress
+                value={Math.min(100, teamRegPace.pct)}
+                tone={teamRegPace.status === "atrasado" ? "amber" : "green"}
+                className="mt-2 h-2"
+              />
+            </div>
+            <ul className="border-t border-line">
+              {sellerRecordRows.length === 0 && (
+                <li className="px-4 py-4 text-[12.5px] text-muted">Nenhum vendedor ativo para medir registros.</li>
+              )}
+              {sellerRecordRows.map(({ seller, pace }) => {
+                const selected = seller.id === focoId;
+                const overloaded = pace.neededPerWorkday > pace.basePerWorkday * 1.15;
+                return (
+                  <li
+                    key={seller.id}
+                    onClick={() => manager && setWho(seller.id)}
+                    className={cn(
+                      "border-b border-line/70 px-4 py-3 last:border-b-0 transition",
+                      manager && "cursor-pointer hover:bg-soft/50",
+                      selected && "bg-navy/[0.04] ring-1 ring-inset ring-navy/20",
+                    )}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <UserAvatar userId={seller.id} size={26} />
+                      <div className="min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center justify-between gap-2 text-[13px]">
+                          <span className="truncate font-semibold text-ink">
+                            {seller.name}
+                            <span className="ml-1.5 text-[11px] font-medium text-muted">({Math.round(pace.pct)}%)</span>
+                          </span>
+                          <div className="flex items-center gap-2">
+                            <span className="text-[12.5px] tabular-nums text-ink">
+                              <b>{pace.done}</b> <span className="text-muted">/ {pace.target} registros</span>
+                            </span>
+                            <Badge tone={pace.status === "atrasado" ? "red" : "green"}>
+                              {pace.status === "batida"
+                                ? "Batida"
+                                : pace.status === "no_ritmo"
+                                  ? "No ritmo"
+                                  : `${Math.abs(pace.paceGap)} abaixo do ritmo`}
+                            </Badge>
+                          </div>
+                        </div>
+                        <Progress
+                          value={Math.min(100, pace.pct)}
+                          tone={pace.status === "atrasado" ? "red" : "green"}
+                          className="mt-1.5"
+                        />
+                        <div className="mt-1.5 flex flex-wrap items-center justify-between gap-x-4 text-[11.5px] text-muted">
+                          <span>
+                            Ritmo base: <b className="text-ink">{pace.basePerWorkday}/dia útil</b>
+                          </span>
+                          {pace.missing > 0 ? (
+                            <span className={cn("font-medium", overloaded ? "text-brand" : "text-ink")}>
+                              Regressão p/ fechar: <b>{pace.neededPerWorkday}/dia útil</b> ({pace.remainingWorkdays}d úteis)
+                            </span>
+                          ) : (
+                            <span className="font-medium text-ok">Meta de registros do período cumprida</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </Card>
         </div>
 
         <div className="min-w-0 space-y-5">
@@ -264,6 +395,30 @@ export default function MetasPage() {
                       </div>
                     );
                   })}
+                </div>
+
+                <div className="mt-3 rounded-[6px] border border-line bg-soft/40 px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-2 text-[12px]">
+                    <span className="font-semibold text-ink">Meta de registros (mês)</span>
+                    <span className="tabular-nums text-ink">
+                      <b>{focoRecPace.done}</b> de {focoRecPace.target} ({Math.round(focoRecPace.pct)}%)
+                    </span>
+                  </div>
+                  <Progress
+                    value={Math.min(100, focoRecPace.pct)}
+                    tone={focoRecPace.status === "atrasado" ? "amber" : "green"}
+                    className="mt-1.5"
+                  />
+                  <div className="mt-1.5 flex items-center justify-between text-[11.5px] text-muted">
+                    <span>Esperado até hoje: <b className="text-ink">{focoRecPace.expectedToday}</b></span>
+                    {focoRecPace.missing > 0 ? (
+                      <span className={cn(focoRecPace.status === "atrasado" ? "font-medium text-brand" : "text-ink")}>
+                        Exigido agora: <b>{focoRecPace.neededPerWorkday}/dia útil</b>
+                      </span>
+                    ) : (
+                      <span className="font-medium text-ok">Meta cumprida!</span>
+                    )}
+                  </div>
                 </div>
               </div>
             )}

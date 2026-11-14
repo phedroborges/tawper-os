@@ -2,6 +2,7 @@
 
 import {
   Bell,
+  Bot,
   Building2,
   ChevronDown,
   ClipboardCheck,
@@ -38,7 +39,7 @@ import { useUI } from "@/lib/ui-store";
 import { digitsQueryMatch } from "@/lib/br-ids";
 import { cn, normalize } from "@/lib/utils";
 import { ConversasLoading } from "@/components/chat/ConversasLoading";
-import { ChatDock, InboxButton, InboxUnreadSync } from "@/components/chat/ChatDock";
+import { InboxButton, InboxUnreadSync } from "@/components/chat/ChatDock";
 import { CrmSync, DbStatus, SupabaseBridge } from "./SupabaseBridge";
 import { Toaster } from "./Toaster";
 
@@ -54,7 +55,7 @@ interface NavItem {
 }
 
 /** Telas de dados que aproveitam toda a largura do monitor. */
-const FLUID_ROUTES = ["/funis", "/carteira", "/configuracoes/auditoria", "/dashboard", "/propostas", "/registros", "/gestao"];
+const FLUID_ROUTES = ["/funis", "/carteira", "/configuracoes/auditoria", "/dashboard", "/propostas", "/registros", "/gestao", "/conversas"];
 const COCKPIT_ROUTES = ["/gestao", "/funis"];
 
 function useNav(): NavItem[] {
@@ -81,7 +82,8 @@ function useNav(): NavItem[] {
     { href: "/metas", label: "Metas", icon: <Target size={18} /> },
     { href: "/gestao", label: "Gestão", icon: <ShieldCheck size={18} />, badge: exceptions, manager: true },
     { href: "/dashboard", label: "Painel", icon: <LayoutDashboard size={18} />, manager: true },
-    // Registros: auditoria do que cada vendedor informou pelo WhatsApp. Só gestor.
+    // Atendimento IA & Registros: gerenciamento da IA no WhatsApp e auditoria do que a equipe reportou. Só gestor.
+    { href: "/conversas", label: "Atendimento IA", icon: <Bot size={18} />, manager: true },
     { href: "/registros", label: "Registros", icon: <ClipboardCheck size={18} />, manager: true },
   ];
 }
@@ -94,7 +96,7 @@ function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavig
   const manager = isManager(user);
 
   const item = (n: NavItem) => {
-    const active = pathname === n.href || pathname.startsWith(`${n.href}/`) || (n.href === "/carteira" && pathname.startsWith("/empresas")) || (n.href === "/registros" && pathname.startsWith("/conversas"));
+    const active = pathname === n.href || pathname.startsWith(`${n.href}/`) || (n.href === "/carteira" && pathname.startsWith("/empresas"));
     return (
       <Link
         key={n.href}
@@ -462,7 +464,6 @@ export function AppShell({ children }: { children: ReactNode }) {
   const assistantOpen = useUI((s) => s.assistantOpen);
   const [extras, setExtras] = useState(false);
   const conversasLoading = useUI((s) => s.conversasLoading);
-  const manager = isManager(useCurrentUser());
   const beginConversasLoad = useUI((s) => s.beginConversasLoad);
   const endConversasLoad = useUI((s) => s.endConversasLoad);
   useEffect(() => {
@@ -510,13 +511,11 @@ export function AppShell({ children }: { children: ReactNode }) {
             <main
               className={cn(
                 "mx-auto w-full",
-                // Conversas ocupa a tela toda. Telas de dados (quadro, tabelas, painel) usam toda a largura;
-                // as de leitura crescem até 1680px para a linha não ficar longa demais.
-                pathname.startsWith("/conversas")
-                  ? "px-3 pt-3 pb-20 md:px-4 md:pb-3"
-                  : COCKPIT_ROUTES.some((r) => pathname.startsWith(r))
-                    ? "px-4 pt-3 pb-24 md:px-6 md:pt-4 md:pb-4 2xl:px-8 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden"
-                    : cn("px-4 pt-6 pb-28 md:px-6 md:pt-7 md:pb-14 2xl:px-8", !FLUID_ROUTES.some((r) => pathname.startsWith(r)) && "max-w-[1680px]"),
+                // Telas de cockpit ocupam a viewport inteira; telas de dados usam largura fluida;
+                // telas de leitura crescem até 1680px para a linha não ficar longa demais.
+                COCKPIT_ROUTES.some((r) => pathname.startsWith(r))
+                  ? "px-4 pt-3 pb-24 md:px-6 md:pt-4 md:pb-4 2xl:px-8 lg:flex lg:min-h-0 lg:flex-1 lg:flex-col lg:overflow-hidden"
+                  : cn("px-4 pt-6 pb-28 md:px-6 md:pt-7 md:pb-14 2xl:px-8", !FLUID_ROUTES.some((r) => pathname.startsWith(r)) && "max-w-[1680px]"),
               )}
             >
               {children}
@@ -524,7 +523,6 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
           <MobileTabBar onConversasIntent={onConversasIntent} />
           {conversasLoading && <ConversasLoading />}
-          {manager && <ChatDock />}
           {(extras || flow) && <FlowHost />}
           {(extras || assistantOpen) && <AssistantPanel />}
           <Toaster />
