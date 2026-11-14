@@ -1,16 +1,34 @@
 "use client";
 
-import { AlertTriangle, Building2, CalendarClock, CircleAlert, ClipboardCheck, Handshake, Table2, Trophy, X, XCircle } from "lucide-react";
+import {
+  Activity,
+  AlertTriangle,
+  Building2,
+  CalendarClock,
+  CheckCircle2,
+  CircleAlert,
+  ClipboardCheck,
+  FileText,
+  Handshake,
+  Table2,
+  Target,
+  TrendingUp,
+  Trophy,
+  Tv,
+  X,
+  XCircle,
+} from "lucide-react";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { CATEGORY_COLORS, ColumnChart, DonutChart, LineChart } from "@/components/charts/Charts";
 import { HBarChart } from "@/components/charts/HBar";
 import { PeriodFilter, UserAvatar } from "@/components/crm/crm";
-import { Card, CardHeader, Empty, PageHeader, Segmented, Select, Stat } from "@/components/ui/primitives";
+import { TvModeOverlay } from "@/components/dashboard/TvModeOverlay";
+import { Button, Card, CardHeader, Empty, PageHeader, Segmented, Select, Stat } from "@/components/ui/primitives";
 import { FUNNELS, isManager, saleLabel } from "@/lib/constants";
 import { activitiesByType, cumulativeSales, lossesByReason, MONTH_LABELS, salesByMonth, scopeData, sellerDetail, type SellerDetail } from "@/lib/dashboard";
 import { fmtDateShort, inPeriod, presetPeriod, type Period } from "@/lib/dates";
-import { annualGoalOf, sellersOf } from "@/lib/goals";
+import { annualGoalOf, elapsed, periodGoal, periodRange, salesOf, sellersOf, sold } from "@/lib/goals";
 import { useNow } from "@/lib/hooks";
 import { recordResult, type AgentRecord } from "@/lib/registros";
 import { avgTimeByStage, computeMetrics, dealValue, stageDistribution, type Metric } from "@/lib/selectors";
@@ -57,20 +75,31 @@ export default function DashboardPage() {
   const [table, setTable] = useState(false);
   const [sort, setSort] = useState<SortKey>("concluidas");
   const [records, setRecords] = useState<AgentRecord[]>([]);
+  const [tvMode, setTvMode] = useState(false);
   const ownerId = manager ? owner || undefined : user.id;
 
-  // Registros pelo WhatsApp (só gestor enxerga): alimenta a coluna "Pelo WhatsApp".
+  // Registros pelo WhatsApp (só gestor enxerga): alimenta a coluna "Pelo WhatsApp" e atualiza no Modo TV.
   useEffect(() => {
     if (!manager) return;
     let off = false;
-    fetch("/api/registros", { cache: "no-store" })
-      .then((res) => (res.ok ? res.json() : { records: [] }))
-      .then((data: { records?: AgentRecord[] }) => !off && setRecords(data.records ?? []))
-      .catch(() => undefined);
+    const load = () => {
+      fetch("/api/registros", { cache: "no-store" })
+        .then((res) => (res.ok ? res.json() : { records: [] }))
+        .then((data: { records?: AgentRecord[] }) => !off && setRecords(data.records ?? []))
+        .catch(() => undefined);
+    };
+    load();
+    if (!tvMode) {
+      return () => {
+        off = true;
+      };
+    }
+    const t = setInterval(load, 30_000);
     return () => {
       off = true;
+      clearInterval(t);
     };
-  }, [manager]);
+  }, [manager, tvMode]);
 
   // Um recorte só: todos os números e gráficos leem os mesmos filtros.
   const d = useMemo(() => scopeData(s, { ownerId, companyId: companyId || undefined, valorMin: FAIXAS[faixa][1], valorMax: FAIXAS[faixa][2] }), [s, ownerId, companyId, faixa]);
@@ -85,48 +114,134 @@ export default function DashboardPage() {
     () => d.deals.filter((x) => (x.status === "ganha" || x.status === "perdida") && inPeriod(x.closedAt, period)).sort((a, b) => b.closedAt!.localeCompare(a.closedAt!)),
     [d.deals, period],
   );
+
+  // Filtra apenas quem atua no comercial (vendedores/representantes ou usuários com conta/atividade) para não sujar a tabela com admins ociosos.
   const detail = useMemo(() => {
     const whatsapp = (id: string) => records.filter((r) => r.userId === id && recordResult(r) === "gravado" && inPeriod(r.at, period)).length;
-    const users = s.users.filter((u) => !ownerId || u.id === ownerId);
-    const value = (r: SellerDetail & { whatsapp: number }) => (sort === "atrasadas" ? r.atrasadas.reduce((a, b) => a + b, 0) : sort === "noPrazo" ? (r.noPrazo ?? -1) : sort === "diasParado" ? (r.diasParado ?? 9999) : r[sort]);
-    return sellerDetail(d, users, period, now)
+    const activeUsers = s.users.filter((u) => {
+      if (ownerId && u.id !== ownerId) return false;
+      if (u.role === "vendedor" || u.role === "representante") return true;
+      return (
+        d.companies.some((c) => c.ownerId === u.id) ||
+        d.activities.some((a) => a.ownerId === u.id && inPeriod(a.completedAt, period)) ||
+        d.deals.some((x) => x.ownerId === u.id && x.status === "ganha" && inPeriod(x.closedAt, period))
+      );
+    });
+    const value = (r: SellerDetail & { whatsapp: number }) =>
+      sort === "atrasadas" ? r.atrasadas.reduce((a, b) => a + b, 0) : sort === "noPrazo" ? (r.noPrazo ?? -1) : sort === "diasParado" ? (r.diasParado ?? 9999) : r[sort];
+    return sellerDetail(d, activeUsers, period, now)
       .map((r) => ({ ...r, whatsapp: whatsapp(r.user.id) }))
       .sort((a, b) => value(b) - value(a));
   }, [d, s.users, ownerId, period, now, records, sort]);
 
-  // Meta do ano no mesmo recorte de vendedor (a meta não se divide por cliente nem por faixa de valor).
+  // Meta do ano e ritmo do mês atual no mesmo recorte de vendedor.
   const goals = s.config.goals;
   const metaAnual = goals && !companyId && faixa === 0 ? (ownerId ? annualGoalOf(goals, sellersOf(s.users, goals.participantes), ownerId) : goals.anual) : 0;
+
+  const pace = useMemo(() => {
+    const monthRange = periodRange("mes", now);
+    const sales = salesOf(d.deals);
+    const monthSold = sold(sales, monthRange, ownerId);
+    const monthGoal = metaAnual > 0 ? periodGoal(metaAnual, sales, "mes", now, ownerId) : 0;
+    const elapsedFrac = Math.max(0.03, elapsed(monthRange, now));
+    const elapsedPct = Math.round(elapsedFrac * 100);
+    const expectedNow = monthGoal * elapsedFrac;
+    const projected = monthSold / elapsedFrac;
+    const pct = monthGoal > 0 ? Math.round((monthSold / monthGoal) * 100) : 0;
+    return { monthSold, monthGoal, elapsedPct, expectedNow, projected, pct };
+  }, [d.deals, metaAnual, now, ownerId]);
+
+  // Inteligência empresarial: Forecast ponderado, Ticket médio, Ciclo médio e Maior gargalo do funil.
+  const insights = useMemo(() => {
+    const openDeals = d.deals.filter((x) => x.status === "aberta");
+    const wonInPeriod = closed.filter((x) => x.status === "ganha");
+    const allClosed = d.deals.filter((x) => x.status === "ganha" || x.status === "perdida");
+    const allWon = allClosed.filter((x) => x.status === "ganha");
+    const baseWinRate = allClosed.length > 0 ? allWon.length / allClosed.length : 0.25;
+
+    const forecast = openDeals.reduce((sum, x) => {
+      const prob = typeof x.probabilidade === "number" ? x.probabilidade / 100 : baseWinRate;
+      return sum + dealValue(x) * prob;
+    }, 0);
+
+    const wonTotal = wonInPeriod.reduce((sum, x) => sum + dealValue(x), 0);
+    const ticketMedio = wonInPeriod.length > 0 ? wonTotal / wonInPeriod.length : 0;
+
+    const cycleDays = wonInPeriod
+      .map((x) => {
+        if (!x.closedAt || !x.createdAt) return null;
+        const diff = (new Date(x.closedAt).getTime() - new Date(x.createdAt).getTime()) / 86_400_000;
+        return Number.isFinite(diff) && diff >= 0 ? diff : null;
+      })
+      .filter((v): v is number => v !== null);
+    const avgCycle = cycleDays.length > 0 ? Math.round(cycleDays.reduce((a, b) => a + b, 0) / cycleDays.length) : null;
+
+    const topValueStage = [...dist].sort((a, b) => b.valor - a.valor || b.count - a.count)[0];
+    const overLimitStage = [...avg].filter((a) => a.amostras > 0 && a.media > a.stage.limiteDias).sort((a, b) => b.media - b.stage.limiteDias - (a.media - a.stage.limiteDias))[0];
+    const bottleneck = topValueStage
+      ? {
+          stageName: topValueStage.stage.nome,
+          count: topValueStage.count,
+          valor: topValueStage.valor,
+          overLimit: overLimitStage ? { name: overLimitStage.stage.nome, media: overLimitStage.media, limite: overLimitStage.stage.limiteDias } : undefined,
+        }
+      : null;
+
+    return { forecast, openCount: openDeals.length, ticketMedio, wonCount: wonInPeriod.length, avgCycle, bottleneck };
+  }, [d.deals, closed, dist, avg]);
 
   const drill = (mt: Metric) => open({ kind: "drill", title: mt.label, subtitle: `${mt.value}${mt.sub ? ` · ${mt.sub}` : ""}`, companyIds: mt.companyIds });
   const ICONS: Record<string, React.ReactNode> = {
     ativas: <Building2 size={15} />,
-    semProximo: <CircleAlert size={15} />,
-    atrasadas: <CalendarClock size={15} />,
-    estagnadas: <AlertTriangle size={15} />,
     ganhos: <Trophy size={15} />,
+    propostas: <FileText size={15} />,
+    execucao: <CheckCircle2 size={15} />,
+    atrasadas: <CalendarClock size={15} />,
   };
   const tile = (key: string) => {
     const mt = m[key];
     return <Stat key={key} label={mt.label} value={mt.value} sub={mt.sub} tone={mt.tone} icon={ICONS[key]} onClick={mt.companyIds.length ? () => drill(mt) : undefined} />;
   };
+
   const filtered = Boolean((manager && owner) || companyId || faixa);
   const clientes = useMemo(() => [...s.companies].filter((c) => !ownerId || c.ownerId === ownerId).sort((a, b) => a.nome.localeCompare(b.nome, "pt-BR")), [s.companies, ownerId]);
 
+  const paceDiff = pace.monthSold - pace.expectedNow;
+  const onPace = pace.monthGoal <= 0 ? true : paceDiff >= 0;
+
   return (
     <div>
-      <PageHeader title="Painel" subtitle="Do resultado ao detalhe: quanto vendeu, onde o funil trava e quem está executando. Todo número abre a lista de clientes que o formou." />
+      <PageHeader
+        title="Painel"
+        subtitle="Do resultado ao detalhe: ritmo da meta, previsão de receita, onde o funil trava e quem está executando."
+        actions={
+          <Button variant="primary" size="sm" onClick={() => setTvMode(true)}>
+            <Tv size={15} />
+            Modo TV
+          </Button>
+        }
+      />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <PeriodFilter value={period} onChange={setPeriod} />
         {manager && (
-          <Select value={owner} onChange={(e) => { setOwner(e.target.value); setCompanyId(""); }} className="w-auto min-w-[170px]" aria-label="Vendedor">
+          <Select
+            value={owner}
+            onChange={(e) => {
+              setOwner(e.target.value);
+              setCompanyId("");
+            }}
+            className="w-auto min-w-[170px]"
+            aria-label="Vendedor"
+          >
             <option value="">Todos os vendedores</option>
-            {s.users.map((u) => (
-              <option key={u.id} value={u.id}>
-                {u.name}
-              </option>
-            ))}
+            {s.users
+              .filter((u) => u.role === "vendedor" || u.role === "representante" || s.companies.some((c) => c.ownerId === u.id))
+              .map((u) => (
+                <option key={u.id} value={u.id}>
+                  {u.name}
+                </option>
+              ))}
           </Select>
         )}
         <Select value={companyId} onChange={(e) => setCompanyId(e.target.value)} className="w-auto max-w-[240px] min-w-[170px]" aria-label="Cliente">
@@ -145,23 +260,148 @@ export default function DashboardPage() {
           ))}
         </Select>
         {filtered && (
-          <button type="button" onClick={() => { setOwner(manager ? "" : user.id); setCompanyId(""); setFaixa(0); }} className="inline-flex h-10 items-center gap-1 rounded-[6px] px-2 text-[12.5px] text-muted hover:text-ink">
+          <button
+            type="button"
+            onClick={() => {
+              setOwner(manager ? "" : user.id);
+              setCompanyId("");
+              setFaixa(0);
+            }}
+            className="inline-flex h-10 items-center gap-1 rounded-[6px] px-2 text-[12.5px] text-muted hover:text-ink"
+          >
             <X size={14} /> limpar
           </button>
         )}
       </div>
 
-      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1500px]:grid-cols-6">
-        <Stat label="Em negociação" value={m.negociacao.value} sub={m.negociacao.sub} icon={<Handshake size={15} />} onClick={() => drill(m.negociacao)} className="col-span-2 lg:col-span-1" />
-        {["ativas", "semProximo", "atrasadas", "estagnadas", "ganhos"].map(tile)}
+      {/* Psicologia de avanço + Inteligência empresarial */}
+      <div className="mb-4 grid gap-3 xl:grid-cols-[1.35fr_1fr]">
+        <Card className="p-4">
+          <div className="flex flex-wrap items-start justify-between gap-2">
+            <div>
+              <div className="flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-wide text-muted">
+                <Target size={13} className="text-brand" />
+                Ritmo da meta · Mês atual
+              </div>
+              <div className="mt-1 flex items-baseline gap-2">
+                <span className="text-[24px] font-bold leading-none tabular-nums text-ink">{moneyShort(pace.monthSold)}</span>
+                {pace.monthGoal > 0 ? (
+                  <span className="text-[13px] text-muted">de {moneyShort(pace.monthGoal)}</span>
+                ) : (
+                  <span className="text-[12.5px] text-muted">vendido no mês</span>
+                )}
+              </div>
+            </div>
+
+            {pace.monthGoal > 0 ? (
+              <span
+                className={cn(
+                  "rounded-full px-2.5 py-1 text-[11.5px] font-semibold",
+                  pace.pct >= 100
+                    ? "bg-ok/15 text-ok"
+                    : onPace
+                      ? "bg-navy/10 text-navy"
+                      : "bg-brand-soft text-brand",
+                )}
+              >
+                {pace.pct >= 100
+                  ? "Meta do mês batida"
+                  : onPace
+                    ? `+${moneyShort(paceDiff)} acima do ritmo`
+                    : `${moneyShort(Math.abs(paceDiff))} abaixo do ritmo`}
+              </span>
+            ) : (
+              <Link href="/metas" className="text-[12px] font-semibold text-navy-3 hover:text-brand">
+                Configurar metas →
+              </Link>
+            )}
+          </div>
+
+          {pace.monthGoal > 0 && (
+            <div className="mt-3">
+              <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-soft">
+                <div
+                  className={cn("h-full rounded-full transition-all", pace.pct >= 100 ? "bg-ok" : onPace ? "bg-navy" : "bg-brand")}
+                  style={{ width: `${Math.min(100, pace.pct)}%` }}
+                />
+                <div
+                  title={`Ritmo esperado hoje (${pace.elapsedPct}%)`}
+                  className="absolute top-0 bottom-0 w-0.5 bg-ink/70"
+                  style={{ left: `${Math.min(99, Math.max(1, pace.elapsedPct))}%` }}
+                />
+              </div>
+              <div className="mt-1.5 flex flex-wrap items-center justify-between gap-2 text-[11.5px] text-muted">
+                <span>
+                  <b className="text-ink">{pace.pct}%</b> da meta · esperado hoje <b className="text-ink">{pace.elapsedPct}%</b>
+                </span>
+                <span>
+                  Projeção no ritmo atual: <b className={cn(pace.projected >= pace.monthGoal ? "text-ok" : "text-ink")}>{moneyShort(pace.projected)}</b>
+                </span>
+              </div>
+            </div>
+          )}
+        </Card>
+
+        <Card className="grid grid-cols-3 divide-x divide-line/80 p-3.5">
+          <div className="pr-3">
+            <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+              <TrendingUp size={12} className="text-navy-3" /> Forecast
+            </div>
+            <div className="mt-1 text-[18px] font-bold tabular-nums text-ink">{moneyShort(insights.forecast)}</div>
+            <div className="mt-0.5 text-[11px] text-muted">{insights.openCount} negócios ponderados</div>
+          </div>
+
+          <div className="px-3">
+            <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Ticket & Ciclo</div>
+            <div className="mt-1 text-[18px] font-bold tabular-nums text-ink">{insights.ticketMedio > 0 ? moneyShort(insights.ticketMedio) : "—"}</div>
+            <div className="mt-0.5 text-[11px] text-muted">
+              {insights.avgCycle !== null ? `Ciclo médio ${insights.avgCycle}d` : `${insights.wonCount} vendas no período`}
+            </div>
+          </div>
+
+          <div className="pl-3">
+            <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
+              <Activity size={12} className="text-brand" /> Gargalo
+            </div>
+            <div className="mt-1 truncate text-[14px] font-bold text-ink" title={insights.bottleneck?.stageName}>
+              {insights.bottleneck ? insights.bottleneck.stageName : "Funil limpo"}
+            </div>
+            <div className="mt-0.5 truncate text-[11px] text-muted">
+              {insights.bottleneck
+                ? `${insights.bottleneck.count} contas · ${moneyShort(insights.bottleneck.valor)}`
+                : "Sem concentração crítica"}
+            </div>
+          </div>
+        </Card>
       </div>
-      <div className="mb-6 flex flex-wrap items-center gap-x-6 gap-y-2 rounded-[8px] border border-line bg-white px-4 py-3 text-[12.5px]">
-        {["propostas", "conversao", "execucao", "feitas", "recorrencia", "dados", "perdas"].map((k) => (
-          <button key={k} type="button" onClick={() => m[k].companyIds.length && drill(m[k])} className={cn("flex items-baseline gap-2 text-left", m[k].companyIds.length > 0 && "hover:underline")}>
-            <span className="text-muted">{m[k].label}</span>
-            <span className={cn("text-[15px] font-semibold", m[k].tone === "bad" ? "text-brand" : m[k].tone === "warn" ? "text-warn" : "text-ink")}>{m[k].value}</span>
-          </button>
-        ))}
+
+      {/* 6 Cards principais alinhados: Avanço + Saúde */}
+      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1500px]:grid-cols-6">
+        <Stat label="Em negociação" value={m.negociacao.value} sub={m.negociacao.sub} icon={<Handshake size={15} />} onClick={() => drill(m.negociacao)} />
+        {["ativas", "ganhos", "propostas", "execucao", "atrasadas"].map(tile)}
+      </div>
+
+      {/* Faixa secundária dividida entre Avanço e Risco/Saúde */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-[8px] border border-line bg-white px-4 py-2.5 text-[12.5px]">
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+          <span className="text-[10.5px] font-bold uppercase tracking-wider text-muted">Avanço</span>
+          {["conversao", "feitas", "recorrencia"].map((k) => (
+            <button key={k} type="button" onClick={() => m[k].companyIds.length && drill(m[k])} className={cn("flex items-baseline gap-1.5 text-left", m[k].companyIds.length > 0 && "hover:underline")}>
+              <span className="text-muted">{m[k].label}</span>
+              <span className="text-[14px] font-semibold text-ink">{m[k].value}</span>
+            </button>
+          ))}
+        </div>
+
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
+          <span className="text-[10.5px] font-bold uppercase tracking-wider text-brand">Risco & Saúde</span>
+          {["semProximo", "estagnadas", "dados", "perdas"].map((k) => (
+            <button key={k} type="button" onClick={() => m[k].companyIds.length && drill(m[k])} className={cn("flex items-baseline gap-1.5 text-left", m[k].companyIds.length > 0 && "hover:underline")}>
+              <span className="text-muted">{m[k].label}</span>
+              <span className={cn("text-[14px] font-semibold", m[k].tone === "bad" ? "text-brand" : m[k].tone === "warn" ? "text-warn" : "text-ink")}>{m[k].value}</span>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="mb-5 grid gap-5 xl:grid-cols-2">
@@ -306,8 +546,8 @@ export default function DashboardPage() {
             {[
               { k: "atrasadas", icon: <CalendarClock size={16} />, label: "Atraso" },
               { k: "estagnadas", icon: <AlertTriangle size={16} />, label: "Estagnação" },
-              { k: "dados", icon: <ClipboardCheck size={16} />, label: "Dado" },
-              { k: "recorrencia", icon: <Handshake size={16} />, label: "Recorrência" },
+              { k: "semProximo", icon: <CircleAlert size={16} />, label: "Sem próximo passo" },
+              { k: "dados", icon: <ClipboardCheck size={16} />, label: "Dados pendentes" },
             ].map(({ k, icon, label }) => (
               <button key={k} type="button" onClick={() => drill(m[k])} className="flex items-center gap-3 rounded-[6px] border border-line px-3 py-2 text-left hover:border-navy/30 hover:bg-soft/40">
                 <span className="grid size-8 place-items-center rounded-[5px] bg-brand-soft text-brand">{icon}</span>
@@ -330,7 +570,7 @@ export default function DashboardPage() {
             <tr className="border-y border-line text-left text-[11.5px] text-muted">
               <th className="px-4 py-2 font-medium">Pessoa</th>
               {COLUNAS.filter((c) => manager || c.key !== "whatsapp").map((c) => (
-                <th key={c.key} className="px-2 py-2 text-right font-medium" aria-sort={sort === c.key ? "descending" : undefined}>
+                <th key={c.key} className="px-3 py-2 text-right font-medium" aria-sort={sort === c.key ? "descending" : undefined}>
                   <button type="button" title={c.hint} onClick={() => setSort(c.key)} className={cn("whitespace-nowrap hover:text-ink", sort === c.key && "font-semibold text-ink underline underline-offset-4")}>
                     {c.label}
                   </button>
@@ -341,7 +581,7 @@ export default function DashboardPage() {
           <tbody>
             {detail.length === 0 && (
               <tr>
-                <td colSpan={11} className="px-4 py-6 text-center text-muted">
+                <td colSpan={manager ? 11 : 10} className="px-4 py-6 text-center text-muted">
                   Ninguém com atividade neste recorte.
                 </td>
               </tr>
@@ -355,9 +595,9 @@ export default function DashboardPage() {
                       <UserAvatar userId={r.user.id} size={24} /> {r.user.short}
                     </span>
                   </td>
-                  <td className="px-2 py-2.5 text-right font-semibold text-ink">{r.concluidas}</td>
-                  <td className={cn("px-2 py-2.5 text-right", r.noPrazo !== null && r.noPrazo < 60 ? "font-semibold text-brand" : "text-ink")}>{r.noPrazo === null ? "—" : `${r.noPrazo}%`}</td>
-                  <td className="px-2 py-2.5 text-right">
+                  <td className="px-3 py-2.5 text-right font-semibold text-ink">{r.concluidas}</td>
+                  <td className={cn("px-3 py-2.5 text-right", r.noPrazo !== null && r.noPrazo < 60 ? "font-semibold text-brand" : "text-ink")}>{r.noPrazo === null ? "—" : `${r.noPrazo}%`}</td>
+                  <td className="px-3 py-2.5 text-right">
                     {late === 0 ? (
                       <span className="text-muted">0</span>
                     ) : (
@@ -371,11 +611,11 @@ export default function DashboardPage() {
                       </span>
                     )}
                   </td>
-                  <td className="px-2 py-2.5 text-right text-ink">{r.atrasoMedio ? `${r.atrasoMedio} d` : "—"}</td>
-                  <td className="px-2 py-2.5 text-right text-ink">{r.registros}</td>
-                  {manager && <td className="px-2 py-2.5 text-right text-ink">{r.whatsapp}</td>}
-                  <td className={cn("px-2 py-2.5 text-right", r.diasParado === null || r.diasParado >= 3 ? "font-semibold text-brand" : "text-ink")}>{r.diasParado === null ? "nunca agiu" : r.diasParado === 0 ? "hoje" : `${r.diasParado} d`}</td>
-                  <td className="px-2 py-2.5 text-right">
+                  <td className="px-3 py-2.5 text-right text-ink">{r.atrasoMedio ? `${r.atrasoMedio} d` : "—"}</td>
+                  <td className="px-3 py-2.5 text-right text-ink">{r.registros}</td>
+                  {manager && <td className="px-3 py-2.5 text-right text-ink">{r.whatsapp}</td>}
+                  <td className={cn("px-3 py-2.5 text-right", r.diasParado === null || r.diasParado >= 3 ? "font-semibold text-brand" : "text-ink")}>{r.diasParado === null ? "nunca agiu" : r.diasParado === 0 ? "hoje" : `${r.diasParado} d`}</td>
+                  <td className="px-3 py-2.5 text-right">
                     <span className="inline-flex items-center justify-end gap-2">
                       <span className="hidden h-1.5 w-14 overflow-hidden rounded-full bg-soft sm:block">
                         <span className="block h-full rounded-full bg-navy-3" style={{ width: `${r.participacao}%` }} />
@@ -383,8 +623,8 @@ export default function DashboardPage() {
                       {r.participacao}%
                     </span>
                   </td>
-                  <td className="px-2 py-2.5 text-right text-ink">{r.avancos}</td>
-                  <td className="px-4 py-2.5 text-right font-semibold text-ink">{r.vendido ? moneyShort(r.vendido) : "—"}</td>
+                  <td className="px-3 py-2.5 text-right text-ink">{r.avancos}</td>
+                  <td className="px-3 py-2.5 text-right font-semibold text-ink">{r.vendido ? moneyShort(r.vendido) : "—"}</td>
                 </tr>
               );
             })}
@@ -422,6 +662,22 @@ export default function DashboardPage() {
           })}
         </ul>
       </Card>
+
+      <TvModeOverlay
+        open={tvMode}
+        onClose={() => setTvMode(false)}
+        now={now}
+        monthSold={pace.monthSold}
+        monthGoal={pace.monthGoal}
+        monthElapsedPct={pace.elapsedPct}
+        metrics={m}
+        sellers={detail}
+        months={months}
+        closedDeals={closed}
+        companies={s.companies}
+        users={s.users}
+        bottleneck={insights.bottleneck}
+      />
     </div>
   );
 }
