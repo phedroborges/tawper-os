@@ -642,51 +642,71 @@ export async function buildProposalPdfBytes(
     pages.push(inst);
     let iy = drawHeader(inst, true);
 
-    inst.drawText("POR QUE A TAWPER MANGUEIRAS E CONEXOES", { x: M, y: iy, size: 13, font: bold, color: C.navy });
+    inst.drawRectangle({ x: M, y: iy - 2, width: 28, height: 3.5, color: C.brand });
+    inst.drawText("DIFERENCIAIS TAWPER · TECNOLOGIA, RASTREABILIDADE E CONFIABILIDADE", {
+      x: M + 36,
+      y: iy - 3,
+      size: 8.5,
+      font: bold,
+      color: C.navy2,
+    });
+    iy -= 22;
+    inst.drawText("A solucao comeca antes da instalacao: da bancada ao campo.", {
+      x: M,
+      y: iy,
+      size: 14,
+      font: bold,
+      color: C.navy,
+    });
     iy -= 18;
     const intro = wrapLines(
-      "A Tawper e especialista em conducao de fluidos de alta pressao para operacoes agroindustriais, colhedoras de cana, linhas pesadas e industria. Nosso foco e eliminar tempo de maquina parada com atendimento tecnico em campo, prensagem certificada e estoque dimensionado pela frota real do cliente.",
+      "Com mais de 8 anos de confiabilidade tecnica e mais de 400 empresas atendidas no Brasil, a Tawper une origem tecnica inglesa, producao dedicada e fornecimento direto sem intermediacao para proteger a disponibilidade da sua frente de colheita.",
       font,
-      9.5,
+      9.2,
       CW,
     );
     for (const l of intro) {
-      inst.drawText(l, { x: M, y: iy, size: 9.5, font, color: C.ink });
-      iy -= 14;
+      inst.drawText(l, { x: M, y: iy, size: 9.2, font, color: C.ink });
+      iy -= 13;
     }
-    iy -= 12;
+    iy -= 10;
 
     const pillars = [
       {
-        title: "1. Prensagem In-Loco e Agilidade na Safra",
-        desc: "Instalacao de prensa e bancada tecnica na oficina do cliente ou atendimento emergencial em campo, reduzindo paradas nao programadas.",
+        title: "01 · Mangueiras de Tecnologia Europeia (ISO · MSHA · CCS) e Terminais Crimpados",
+        desc: "Origem tecnica inglesa para aplicacoes severas. Compatibilidade dimensional entre mangueira, terminal e capa conforme a pressao e o raio de curvatura de cada circuito.",
       },
       {
-        title: "2. Mapeamento e Taggeamento por Maquina",
-        desc: "Cada mangueira da colhedora e identificada com codigo e especificacao tecnica, garantindo reposicao exata em minutos.",
+        title: "02 · Prensagem Padronizada com Final de Curso e Sistema Visual de Cores",
+        desc: "A identificacao da mangueira corresponde a cor da castanha da prensa (vermelha, verde, amarela e roxa), dispensando ajustes por micrometro e reduzindo retrabalho na oficina.",
       },
       {
-        title: "3. Rastreabilidade e Normas Internacionais",
-        desc: "Mangueiras SAE 100R12, 4SH e 4SP com terminais prensados conforme especificacao de engenharia para maxima seguranca operacional.",
+        title: "03 · Preparacao Completa: Maquina de Corte, Pistola de Descontaminacao e Lacre Retratil",
+        desc: "Corte no comprimento exato, limpeza interna por projetil para remover residuos antes da instalacao e lacre termorretratil azul que protege a extremidade no transporte.",
       },
       {
-        title: "4. Estoque Consignado Sob Medida",
-        desc: "Curva A mantida disponivel conforme o parque de colhedoras do cliente, sem imobilizacao desnecessaria de capital.",
+        title: "04 · Inteligencia HydraSense + Gravacao a Laser Customizada (O DNA de cada mangueira)",
+        desc: "Lacre numerado e gravacao a laser no terminal (equipamento, posicao, data e codigo), registrando quem montou, componentes, horimetro e historico de substituicao.",
+      },
+      {
+        title: "05 · Fornecimento Direto, Tawper Academy e Suporte Tecnico Presencial",
+        desc: "Importacao e fornecimento direto com menos intermediacao, catalogos customizados para a sua frota e treinamento teorico e pratico da sua equipe de manutencao.",
       },
     ];
 
     for (const pil of pillars) {
-      const cardH = 68;
-      inst.drawRectangle({ x: M, y: iy - cardH, width: CW, height: cardH, color: C.paper, borderColor: C.line, borderWidth: 1 });
+      const cardH = 62;
+      inst.drawRectangle({ x: M, y: iy - cardH, width: CW, height: cardH, color: C.soft, borderColor: C.line, borderWidth: 1 });
+      inst.drawRectangle({ x: M, y: iy, width: CW, height: 2, color: C.navy2 });
       inst.drawRectangle({ x: M, y: iy - cardH, width: 4, height: cardH, color: C.brand });
-      inst.drawText(pdfSafeText(pil.title), { x: M + 14, y: iy - 20, size: 10, font: bold, color: C.navy });
-      const lines = wrapLines(pil.desc, font, 8.8, CW - 28);
-      let py = iy - 36;
+      inst.drawText(pdfSafeText(pil.title), { x: M + 14, y: iy - 18, size: 9.5, font: bold, color: C.navy });
+      const lines = wrapLines(pil.desc, font, 8.5, CW - 28);
+      let py = iy - 33;
       for (const pl of lines) {
-        inst.drawText(pl, { x: M + 14, y: py, size: 8.8, font, color: C.ink });
-        py -= 12;
+        inst.drawText(pl, { x: M + 14, y: py, size: 8.5, font, color: C.ink });
+        py -= 11.5;
       }
-      iy -= cardH + 12;
+      iy -= cardH + 10;
     }
   }
 
