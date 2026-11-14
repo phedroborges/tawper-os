@@ -1,6 +1,6 @@
 "use client";
 
-import { AlertTriangle, ArrowUpDown, Check, LayoutGrid, List, MessageCircle, Plus, Search, SlidersHorizontal, X } from "lucide-react";
+import { AlertTriangle, ArrowUpDown, LayoutGrid, List, Plus, Search, SlidersHorizontal, Sparkles, X } from "lucide-react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
@@ -12,7 +12,6 @@ import { dayDiff, fmtAgo } from "@/lib/dates";
 import { useNow } from "@/lib/hooks";
 import { alertsOf, currentDealOf, isStagnant, lastInteractionAt, nextStepOf, visibleCompanies, inSupport } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
-import { peerOf } from "@/lib/contact-match";
 import { useUI } from "@/lib/ui-store";
 import { digitsQueryMatch } from "@/lib/br-ids";
 import { cn, normalize } from "@/lib/utils";
@@ -59,7 +58,7 @@ export default function CarteiraPage() {
   const user = useCurrentUser();
   const now = useNow();
   const router = useRouter();
-  const { open, openInbox } = useUI();
+  const { open } = useUI();
   const manager = isManager(user);
   const [view, setView] = useState<"tabela" | "cartoes">("tabela");
   const [q, setQ] = useState("");
@@ -101,7 +100,6 @@ export default function CarteiraPage() {
         deal: currentDealOf(s, c.id),
         next: nextStepOf(s, c.id),
         last: lastInteractionAt(s, c.id),
-        primaryContact: s.contacts.find((ct) => ct.companyId === c.id && ct.ativo && ct.whatsapp),
       }))
       .filter(({ c, deal, next }) => {
         if (status === "so_ativas" && c.status !== "ativa") return false;
@@ -335,7 +333,7 @@ export default function CarteiraPage() {
                 </tr>
               </thead>
               <tbody>
-                {rows.map(({ c, deal, next, last, primaryContact }) => {
+                {rows.map(({ c, deal, next, last }) => {
                   const risk = riskIds.has(c.id);
                   const daysAgo = last ? dayDiff(last, now) : null;
                   return (
@@ -390,9 +388,17 @@ export default function CarteiraPage() {
                             <DueLabel iso={next.dueAt} />
                           </>
                         ) : c.status === "ativa" ? (
-                          <span className="inline-flex items-center gap-1 font-semibold text-brand">
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              open({ kind: "newActivity", companyId: c.id });
+                            }}
+                            className="inline-flex items-center gap-1 font-semibold text-brand hover:underline"
+                            title="Agendar próximo passo"
+                          >
                             <AlertTriangle size={13} /> Sem próximo passo
-                          </span>
+                          </button>
                         ) : (
                           <span className="text-muted">—</span>
                         )}
@@ -415,40 +421,16 @@ export default function CarteiraPage() {
                         )}
                       </td>
                       <td className="px-4 py-3 text-right" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-center justify-end gap-1.5">
-                          {primaryContact?.whatsapp && (
-                            <button
-                              type="button"
-                              onClick={() => openInbox(peerOf(primaryContact))}
-                              className="inline-flex h-8 items-center gap-1 rounded-[6px] border border-emerald-300 bg-emerald-50 px-2 text-[12px] font-medium text-emerald-800 transition hover:border-emerald-500 hover:bg-emerald-100"
-                              title={`Abrir WhatsApp com ${primaryContact.nome} (${primaryContact.whatsapp})`}
-                            >
-                              <MessageCircle size={13} />
-                              <span className="hidden xl:inline">WhatsApp</span>
-                            </button>
-                          )}
-                          {!next && c.status === "ativa" && (
-                            <button
-                              type="button"
-                              onClick={() => open({ kind: "newActivity", companyId: c.id })}
-                              className="inline-flex h-8 items-center gap-1 rounded-[6px] border border-brand/40 bg-brand-soft px-2.5 text-[12px] font-medium text-brand transition hover:border-brand hover:bg-brand hover:text-white"
-                              title="Definir próximo passo agora"
-                            >
-                              <Plus size={13} />
-                              <span className="hidden sm:inline">Próximo passo</span>
-                            </button>
-                          )}
-                          {next && (
-                            <button
-                              type="button"
-                              onClick={() => open({ kind: "complete", activityId: next.id })}
-                              className="inline-flex h-8 items-center gap-1 rounded-[6px] border border-line bg-white px-2.5 text-[12px] font-medium text-ink transition hover:border-ok hover:bg-ok hover:text-white"
-                              title="Concluir tarefa atual"
-                            >
-                              <Check size={13} strokeWidth={2.5} />
-                              <span className="hidden xl:inline">Concluir</span>
-                            </button>
-                          )}
+                        <div className="flex items-center justify-end">
+                          <button
+                            type="button"
+                            onClick={() => open({ kind: "quick", companyId: c.id })}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-navy/20 bg-navy/5 px-2.5 text-[12px] font-medium text-navy transition hover:border-navy hover:bg-navy hover:text-white"
+                            title={`Registrar atividade com ${c.nome}`}
+                          >
+                            <Sparkles size={13} />
+                            <span>Registrar atividade</span>
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -461,7 +443,7 @@ export default function CarteiraPage() {
         </Card>
       ) : (
         <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
-          {rows.map(({ c, deal, next, last, primaryContact }) => (
+          {rows.map(({ c, deal, next, last }) => (
             <Link
               key={c.id}
               href={`/empresas/${c.id}`}
@@ -504,31 +486,31 @@ export default function CarteiraPage() {
                 ) : c.status === "espera" ? (
                   <span className="text-warn">Em espera · {c.standby?.motivo ?? "pausada"}</span>
                 ) : (
-                  <span className="font-semibold text-brand">Sem próximo passo</span>
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      open({ kind: "newActivity", companyId: c.id });
+                    }}
+                    className="inline-flex items-center gap-1 font-semibold text-brand hover:underline"
+                    title="Agendar próximo passo"
+                  >
+                    <AlertTriangle size={12} /> Sem próximo passo
+                  </button>
                 )}
               </div>
               <div className="mt-3 flex items-center justify-between border-t border-line/70 pt-2.5 text-[12px] text-muted">
                 <span>{last ? `Contato: ${fmtAgo(last, now)}` : "Sem contato"}</span>
                 <div className="flex items-center gap-1.5" onClick={(e) => e.preventDefault()}>
-                  {primaryContact?.whatsapp && (
-                    <button
-                      type="button"
-                      onClick={() => openInbox(peerOf(primaryContact))}
-                      className="inline-flex h-7 items-center gap-1 rounded-[5px] border border-emerald-300 bg-emerald-50 px-2 text-[11.5px] font-medium text-emerald-800 hover:bg-emerald-100"
-                      title={`WhatsApp com ${primaryContact.nome}`}
-                    >
-                      <MessageCircle size={12} /> WhatsApp
-                    </button>
-                  )}
-                  {!next && c.status === "ativa" && (
-                    <button
-                      type="button"
-                      onClick={() => open({ kind: "newActivity", companyId: c.id })}
-                      className="inline-flex h-7 items-center gap-1 rounded-[5px] border border-brand/40 bg-brand-soft px-2 text-[11.5px] font-medium text-brand hover:border-brand"
-                    >
-                      <Plus size={12} /> Tarefa
-                    </button>
-                  )}
+                  <button
+                    type="button"
+                    onClick={() => open({ kind: "quick", companyId: c.id })}
+                    className="inline-flex h-7 items-center gap-1.5 rounded-[5px] border border-navy/20 bg-navy/5 px-2.5 text-[11.5px] font-medium text-navy hover:border-navy hover:bg-navy hover:text-white"
+                    title={`Registrar atividade com ${c.nome}`}
+                  >
+                    <Sparkles size={12} /> Registrar atividade
+                  </button>
                 </div>
               </div>
             </Link>
