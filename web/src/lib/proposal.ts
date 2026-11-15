@@ -446,8 +446,6 @@ export async function buildProposalPdfBytes(
   const logoImg = await tryEmbedImage(doc, assets?.logoPngBytes);
   const capaImg = await tryEmbedImage(doc, assets?.capaHeroBytes ?? assets?.workshopPhotoBytes);
   const relImg = await tryEmbedImage(doc, assets?.reliabilityBytes);
-  const terminaisImg = await tryEmbedImage(doc, assets?.terminaisBytes ?? assets?.workshopPhotoBytes);
-  const prensaImg = await tryEmbedImage(doc, assets?.prensaBytes);
   const hydraImg = await tryEmbedImage(doc, assets?.hydrasenseBytes ?? assets?.academyBytes);
 
   let erpDoc: PDFDocument | null = null;
@@ -552,14 +550,14 @@ export async function buildProposalPdfBytes(
       totalSlides: TAWPER_SLIDES,
     });
 
-    drawKicker(s2, fonts, 42, 82, "CENÁRIO OPERACIONAL MAPEADO", C.ink);
+    drawKicker(s2, fonts, 42, 76, "CENÁRIO OPERACIONAL MAPEADO", C.ink);
     drawLines(s2, `A operação da ${nomeCliente} no centro da proposta.`, {
       x: 42,
-      yTop: 104,
+      yTop: 96,
       font: bold,
-      size: 30,
-      maxWidth: 430,
-      lineHeight: 34,
+      size: 24,
+      maxWidth: W - 84,
+      lineHeight: 28,
       color: C.ink,
       maxLines: 2,
     });
@@ -755,142 +753,205 @@ export async function buildProposalPdfBytes(
   }
 
   // ------------------------------------------------------------------
-  // SLIDE 05 — MANGUEIRAS DE TECNOLOGIA EUROPEIA (ISO · MSHA · CCS)
+  // SLIDE 05 — PORTFÓLIO COMPLETO TAWPER (1/2): PRODUTOS, TERMINAIS E BANCADA
   // ------------------------------------------------------------------
   {
     const s5 = doc.addPage([W, H]);
     rectTop(s5, 0, 0, W, H, C.white);
     drawTopbarAndFooter(s5, fonts, {
-      topic: "DIFERENCIAIS TAWPER",
-      footerLeft: "TAWPER · ENGENHARIA DE PRODUTO",
+      topic: "PORTFÓLIO COMPLETO TAWPER · PARTE 1 DE 2",
+      footerLeft: "TAWPER · PORTFÓLIO DE PRODUTOS E EQUIPAMENTOS (1/2)",
       slideNum: 5,
       totalSlides: TAWPER_SLIDES,
     });
 
-    drawKicker(s5, fonts, 42, 82, "ALTA PERFORMANCE HIDRÁULICA", C.ink);
-    drawLines(s5, "Mangueiras de tecnologia europeia.", {
+    drawKicker(s5, fonts, 42, 74, "DA ESCOLHA DO COMPONENTE À MONTAGEM NA BANCADA (ITENS 01 A 06)", C.ink);
+    drawLines(s5, "Produtos, conexões e equipamentos de oficina Tawper.", {
       x: 42,
-      yTop: 104,
+      yTop: 94,
       font: bold,
-      size: 32,
-      maxWidth: 380,
-      lineHeight: 36,
+      size: 24,
+      maxWidth: W - 84,
+      lineHeight: 28,
       color: C.ink,
+      maxLines: 1,
     });
 
-    drawLines(
-      s5,
-      "Projetadas para resistir a picos severos de pressão, temperatura elevada e abrasão contínua em colhedoras de cana e linha pesada.",
+    const p1Items = [
       {
-        x: 42,
-        yTop: 190,
-        font: regular,
-        size: 13,
-        maxWidth: 360,
-        lineHeight: 18,
-        color: C.ink,
-      }
-    );
+        num: "01",
+        tag: "ALTA PRESSÃO · ISO · MSHA · CCS",
+        title: "Mangueiras de tecnologia europeia",
+        desc: "Origem técnica inglesa para aplicações agrícolas, industriais, florestais e mineração (4SH, 4SP, R13, R15, 2SN e R17).",
+        accent: C.red,
+      },
+      {
+        num: "02",
+        tag: "COMPONENTES DO CONJUNTO",
+        title: "Terminais crimpados, adaptadores e conexões",
+        desc: "Terminais retos, curvos e adaptadores definidos em conjunto com a mangueira e a capa para compatibilidade exata.",
+        accent: C.blue,
+      },
+      {
+        num: "03",
+        tag: "IDENTIFICAR -> CONFERIR -> MONTAR",
+        title: "Sistema de cores Tawper (Mangueira + Castanha)",
+        desc: "A cor da identificação na mangueira corresponde à cor da castanha da prensa (vermelho, verde, amarelo e roxo).",
+        accent: C.red,
+      },
+      {
+        num: "04",
+        tag: "PREPARAÇÃO DA MANGUEIRA",
+        title: "Máquina de corte Tawper",
+        desc: "Equipamento próprio de bancada para corte preciso da mangueira no comprimento definido para cada conjunto.",
+        accent: C.blue,
+      },
+      {
+        num: "05",
+        tag: "PRENSA COM FINAL DE CURSO",
+        title: "Prensagem padronizada sem micrômetro",
+        desc: "Prensa hidráulica com final de curso que dispensa ajustes por micrômetro: processo repetível, ágil e sem retrabalho.",
+        accent: C.red,
+      },
+      {
+        num: "06",
+        tag: "MONTAGEM -> LIMPEZA INTERNA -> PROTEÇÃO",
+        title: "Pistola de descontaminação interna",
+        desc: "Remove resíduos internos de corte e borracha da mangueira antes da instalação, protegendo bombas e válvulas.",
+        accent: C.blue,
+      },
+    ];
 
-    rectTop(s5, 42, 268, 360, 1, C.line);
-    s5.drawText("Resistência comprovada em teste de impulso", { x: 42, y: H - 292, font: bold, size: 13.5, color: C.ink });
-    drawLines(
-      s5,
-      "Linha de 2 tramas de aço testada com até 15 vezes mais ciclos que o exigido pela norma ISO, além das linhas espiraladas 4SH e R13.",
-      {
-        x: 42,
-        yTop: 302,
+    for (let i = 0; i < p1Items.length; i++) {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const cx = 42 + col * 384;
+      const cy = 142 + row * 116;
+      rectTop(s5, cx, cy, 372, 104, C.paper, { color: C.line, width: 0.75 });
+      rectTop(s5, cx, cy, 372, 3, p1Items[i].accent);
+      rectTop(s5, cx + 12, cy + 14, 26, 22, p1Items[i].accent);
+      s5.drawText(p1Items[i].num, { x: cx + 18, y: H - (cy + 29), font: bold, size: 10, color: C.white });
+      s5.drawText(pdfSafeText(p1Items[i].tag), { x: cx + 46, y: H - (cy + 24), font: bold, size: 7.5, color: p1Items[i].accent });
+      s5.drawText(pdfSafeText(p1Items[i].title), { x: cx + 46, y: H - (cy + 40), font: bold, size: 12, color: C.ink });
+      drawLines(s5, p1Items[i].desc, {
+        x: cx + 12,
+        yTop: cy + 50,
         font: regular,
-        size: 11,
-        maxWidth: 360,
-        lineHeight: 15.5,
+        size: 9.2,
+        maxWidth: 348,
+        lineHeight: 12.5,
         color: C.muted,
-      }
-    );
-
-    rectTop(s5, 42, 378, 4, 68, C.red);
-    s5.drawText("CERTIFICAÇÕES INTERNACIONAIS", { x: 58, y: H - 392, font: regular, size: 9, color: C.muted });
-    s5.drawText("ISO  ·  MSHA  ·  CCS", { x: 58, y: H - 418, font: bold, size: 22, color: C.blue });
-    s5.drawText("Padrão global de segurança e capa antichama.", { x: 58, y: H - 438, font: regular, size: 10.5, color: C.ink });
-
-    if (terminaisImg) {
-      drawCoverImage(s5, terminaisImg, 430, 110, 370, 400);
+        maxLines: 3,
+      });
     }
+
+    rectTop(s5, 42, 496, W - 84, 30, C.ink);
+    rectTop(s5, 42, 496, 4, 30, C.red);
+    s5.drawText(
+      pdfSafeText("Fluxo de Bancada Tawper: Especificação ISO/MSHA/CCS -> Corte preciso -> Seleção por cor -> Prensagem com final de curso -> Descontaminação."),
+      { x: 56, y: H - 515, font: bold, size: 9, color: C.white }
+    );
   }
 
   // ------------------------------------------------------------------
-  // SLIDE 06 — PRENSAGEM PADRONIZADA & SISTEMA DE CORES
+  // SLIDE 06 — PORTFÓLIO COMPLETO TAWPER (2/2): PROTEÇÃO, HYDRASENSE E SUPORTE
   // ------------------------------------------------------------------
   {
     const s6 = doc.addPage([W, H]);
-    rectTop(s6, 0, 0, W, H, C.blue);
+    rectTop(s6, 0, 0, W, H, C.white);
     drawTopbarAndFooter(s6, fonts, {
-      topic: "A SOLUÇÃO NA OFICINA",
-      footerLeft: "TAWPER · PRENSAGEM PADRONIZADA & SISTEMA DE CORES",
+      topic: "PORTFÓLIO COMPLETO TAWPER · PARTE 2 DE 2",
+      footerLeft: "TAWPER · PROTEÇÃO, INTELIGÊNCIA E SUPORTE TÉCNICO (2/2)",
       slideNum: 6,
       totalSlides: TAWPER_SLIDES,
-      dark: true,
-      logoImg,
     });
 
-    if (prensaImg) {
-      drawCoverImage(s6, prensaImg, 42, 85, 410, 260);
-    }
-
-    drawKicker(s6, fonts, 480, 88, "OFICINA PADRONIZADA", C.white);
-    drawLines(s6, "Prensagem padronizada.", {
-      x: 480,
-      yTop: 110,
+    drawKicker(s6, fonts, 42, 74, "PROTEÇÃO, RASTREABILIDADE, CAPACITAÇÃO E FORNECIMENTO DIRETO (ITENS 07 A 12)", C.ink);
+    drawLines(s6, "Identificação, HydraSense, Academy e suporte em campo.", {
+      x: 42,
+      yTop: 94,
       font: bold,
-      size: 30,
-      maxWidth: 320,
-      lineHeight: 34,
-      color: C.white,
-    });
-
-    const details = [
-      {
-        t: "Sensor de final de curso",
-        d: "Interrompe a prensagem automaticamente na medida exata calibrada para cada terminal.",
-      },
-      {
-        t: "Pistola de descontaminação & Lacre",
-        d: "Limpeza interna do tubo após o corte e selagem termoencolhível contra contaminação.",
-      },
-      {
-        t: "Capacitação Tawper Academy",
-        d: "Treinamento prático da equipe mecânica na própria oficina da usina.",
-      },
-    ];
-    for (let i = 0; i < details.length; i++) {
-      const dy = 195 + i * 82;
-      rectTop(s6, 480, dy, 320, 0.75, rgb(95 / 255, 110 / 255, 170 / 255));
-      s6.drawText(pdfSafeText(details[i].t), { x: 480, y: H - (dy + 20), font: bold, size: 13, color: C.white });
-      drawLines(s6, details[i].d, { x: 480, yTop: dy + 28, font: regular, size: 10.5, maxWidth: 320, lineHeight: 14, color: C.lightMuted, maxLines: 2 });
-    }
-
-    // White color-coding strip (.press-color-guide)
-    rectTop(s6, 42, 376, 410, 74, C.white);
-    rectTop(s6, 54, 390, 3, 46, C.red);
-    drawLines(s6, "A cor da mangueira indica a cor da castanha da prensa:", {
-      x: 66,
-      yTop: 392,
-      font: bold,
-      size: 11,
-      maxWidth: 190,
-      lineHeight: 14.5,
+      size: 24,
+      maxWidth: W - 84,
+      lineHeight: 28,
       color: C.ink,
+      maxLines: 1,
     });
-    const dieColors = [
-      rgb(227 / 255, 28 / 255, 63 / 255),
-      rgb(37 / 255, 99 / 255, 235 / 255),
-      rgb(22 / 255, 163 / 255, 74 / 255),
-      rgb(234 / 255, 179 / 255, 8 / 255),
-      rgb(147 / 255, 51 / 255, 234 / 255),
+
+    const p2Items = [
+      {
+        num: "07",
+        tag: "ARMAZENAMENTO · TRANSPORTE · INSTALAÇÃO",
+        title: "Lacre retrátil para proteção da extremidade",
+        desc: "O lacre termoencolhível se ajusta ao terminal após a limpeza e protege a abertura da mangueira até a instalação.",
+        accent: C.blue,
+      },
+      {
+        num: "08",
+        tag: "EQUIPAMENTO · POSIÇÃO · DATA",
+        title: "Gravação a laser customizada no terminal",
+        desc: "Identificação permanente gravada na capa metálica com os dados da operação e código individual do conjunto.",
+        accent: C.red,
+      },
+      {
+        num: "09",
+        tag: "HYDRASENSE · IDENTIDADE INDIVIDUAL",
+        title: "Lacre numerado & registro do conjunto",
+        desc: "O número do lacre conecta a mangueira ao seu histórico: montador, terminais, comprimento, máquina e horímetro.",
+        accent: C.orange,
+      },
+      {
+        num: "10",
+        tag: "HYDRASENSE · GESTÃO DA INFORMAÇÃO",
+        title: "Painel de indicadores, recorrências e custos",
+        desc: "Transforma ocorrências em decisões: compara motivos de substituição, organiza custos e apoia a manutenção.",
+        accent: C.orange,
+      },
+      {
+        num: "11",
+        tag: "CAPACITAÇÃO DA EQUIPE & ENGENHARIA",
+        title: "Tawper Academy & Catálogos customizados",
+        desc: "Escola própria com treinamento teórico e prático para a equipe + catálogos personalizados para cada equipamento.",
+        accent: C.blue,
+      },
+      {
+        num: "12",
+        tag: "IMPORTAÇÃO DIRETA · SP & ALAGOAS",
+        title: "Suporte técnico presencial & Fornecimento direto",
+        desc: "Orientação presencial nas unidades e no campo + importação e fornecimento direto sem intermediação.",
+        accent: C.red,
+      },
     ];
-    for (let i = 0; i < dieColors.length; i++) {
-      rectTop(s6, 272 + i * 32, 401, 22, 22, dieColors[i]);
+
+    for (let i = 0; i < p2Items.length; i++) {
+      const col = i % 2;
+      const row = Math.floor(i / 2);
+      const cx = 42 + col * 384;
+      const cy = 142 + row * 116;
+      rectTop(s6, cx, cy, 372, 104, C.paper, { color: C.line, width: 0.75 });
+      rectTop(s6, cx, cy, 372, 3, p2Items[i].accent);
+      rectTop(s6, cx + 12, cy + 14, 26, 22, p2Items[i].accent);
+      s6.drawText(p2Items[i].num, { x: cx + 18, y: H - (cy + 29), font: bold, size: 10, color: C.white });
+      s6.drawText(pdfSafeText(p2Items[i].tag), { x: cx + 46, y: H - (cy + 24), font: bold, size: 7.5, color: p2Items[i].accent });
+      s6.drawText(pdfSafeText(p2Items[i].title), { x: cx + 46, y: H - (cy + 40), font: bold, size: 12, color: C.ink });
+      drawLines(s6, p2Items[i].desc, {
+        x: cx + 12,
+        yTop: cy + 50,
+        font: regular,
+        size: 9.2,
+        maxWidth: 348,
+        lineHeight: 12.5,
+        color: C.muted,
+        maxLines: 3,
+      });
     }
+
+    rectTop(s6, 42, 496, W - 84, 30, C.ink);
+    rectTop(s6, 42, 496, 4, 30, C.orange);
+    s6.drawText(
+      pdfSafeText("Ecossistema Integrado Tawper: Lacre retrátil + Gravação a laser -> Rastreabilidade HydraSense -> Tawper Academy -> Fornecimento direto."),
+      { x: 56, y: H - 515, font: bold, size: 9, color: C.white }
+    );
   }
 
   // ------------------------------------------------------------------
