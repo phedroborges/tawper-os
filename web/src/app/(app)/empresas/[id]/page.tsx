@@ -447,6 +447,8 @@ function EmpresaView() {
             ))}
           </div>
 
+          {/* A chave troca com a aba: o conteúdo novo entra com um fade curto em vez de piscar. */}
+          <div key={tab} className="animate-fade-in">
           {tab === "timeline" && (
             <div>
               <div className="flex flex-wrap items-center gap-2 border-b border-line/70 px-4 py-3">
@@ -602,6 +604,7 @@ function EmpresaView() {
               </table>
             </div>
           )}
+          </div>
         </Card>
 
         <aside className="min-w-0 space-y-4">

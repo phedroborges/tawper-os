@@ -32,7 +32,8 @@ export default function ConfiguracoesLayout({ children }: { children: ReactNode 
   const groups = [...new Set(items.map((i) => i.group))];
   return (
     <div className="grid gap-6 lg:grid-cols-[220px_minmax(0,1fr)]">
-      <nav aria-label="Configurações" className="lg:sticky lg:top-20 lg:self-start">
+      {/* min-w-0: sem ele a fila de abas empurrava a página para 1300px de largura no celular. */}
+      <nav aria-label="Configurações" className="min-w-0 lg:sticky lg:top-20 lg:self-start">
         <div className="mb-3 hidden text-[18px] font-semibold text-ink lg:block">Configurações</div>
         <div className="no-scrollbar flex gap-1 overflow-x-auto lg:block lg:space-y-4">
           {groups.map((group) => (

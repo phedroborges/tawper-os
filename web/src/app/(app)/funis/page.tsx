@@ -168,7 +168,8 @@ function Kanban() {
   }, [drag, dropDeal]);
 
   const startPointerDrag = (e: React.PointerEvent<HTMLElement>, d: Deal) => {
-    if (d.status !== "aberta" || e.button !== 0) return;
+    // No toque o dedo rola o quadro; arrastar cartão é do mouse. No celular a troca de etapa é pelo botão Mover.
+    if (d.status !== "aberta" || e.button !== 0 || e.pointerType === "touch") return;
     if ((e.target as HTMLElement).closest("a, button, input, select, textarea")) return;
     const rect = e.currentTarget.getBoundingClientRect();
     overRef.current = stageKeyToUi(d.stageId);
@@ -268,7 +269,7 @@ function Kanban() {
         </div>
       </div>
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="filter-strip mb-4 flex flex-wrap items-center gap-2">
         <div className="relative min-w-[200px] flex-1 max-w-[300px]">
           <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
           <Input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Buscar empresa ou cidade..." className="pl-9" />
@@ -366,7 +367,7 @@ function Kanban() {
                         onPointerDown={(e) => startPointerDrag(e, d)}
                         className={cn(
                           "group rounded-[8px] border bg-white p-3 transition-all duration-150 hover:border-navy-3/30",
-                          d.status === "aberta" && "cursor-grab touch-none",
+                          d.status === "aberta" && "cursor-grab",
                           isRisk ? "border-brand/35 bg-brand-soft/10" : "border-line",
                           isDragging && "border-dashed border-navy/35 bg-navy/[0.03] opacity-35 scale-[0.98]",
                         )}

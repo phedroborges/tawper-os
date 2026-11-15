@@ -11,7 +11,7 @@ export function ConversasLoading() {
       <div className="flex flex-col items-center gap-4">
         <BrandLogo width={293} height={83} className="h-auto w-[132px]" priority />
         <div className="h-0.5 w-36 overflow-hidden rounded bg-soft-2">
-          <div className="h-full w-1/2 animate-pulse bg-navy" />
+          <div className="h-full w-1/2 rounded bg-navy animate-loading-bar" />
         </div>
         <div className="text-center">
           <p className="text-[14px] font-semibold text-ink">Abrindo conversas…</p>

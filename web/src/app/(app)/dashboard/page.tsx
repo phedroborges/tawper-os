@@ -222,7 +222,7 @@ export default function DashboardPage() {
         }
       />
 
-      <div className="mb-4 flex flex-wrap items-center gap-2">
+      <div className="filter-strip mb-4 flex flex-wrap items-center gap-2">
         <PeriodFilter value={period} onChange={setPeriod} />
         {manager && (
           <Select
@@ -321,7 +321,7 @@ export default function DashboardPage() {
             <div className="mt-3">
               <div className="relative h-2.5 w-full overflow-hidden rounded-full bg-soft">
                 <div
-                  className={cn("h-full rounded-full transition-all", pace.pct >= 100 ? "bg-ok" : onPace ? "bg-navy" : "bg-brand")}
+                  className={cn("h-full origin-left rounded-full transition-[width] duration-500 animate-grow-x", pace.pct >= 100 ? "bg-ok" : onPace ? "bg-navy" : "bg-brand")}
                   style={{ width: `${Math.min(100, pace.pct)}%` }}
                 />
                 <div
@@ -347,13 +347,13 @@ export default function DashboardPage() {
             <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
               <TrendingUp size={12} className="text-navy-3" /> Forecast
             </div>
-            <div className="mt-1 text-[18px] font-bold tabular-nums text-ink">{moneyShort(insights.forecast)}</div>
+            <div className="mt-1 text-[15px] font-bold tabular-nums text-ink sm:text-[18px]">{moneyShort(insights.forecast)}</div>
             <div className="mt-0.5 text-[11px] text-muted">{insights.openCount} negócios ponderados</div>
           </div>
 
           <div className="px-3">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Ticket & Ciclo</div>
-            <div className="mt-1 text-[18px] font-bold tabular-nums text-ink">{insights.ticketMedio > 0 ? moneyShort(insights.ticketMedio) : "—"}</div>
+            <div className="mt-1 text-[15px] font-bold tabular-nums text-ink sm:text-[18px]">{insights.ticketMedio > 0 ? moneyShort(insights.ticketMedio) : "—"}</div>
             <div className="mt-0.5 text-[11px] text-muted">
               {insights.avgCycle !== null ? `Ciclo médio ${insights.avgCycle}d` : `${insights.wonCount} vendas no período`}
             </div>

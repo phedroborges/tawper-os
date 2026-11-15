@@ -1,7 +1,7 @@
 "use client";
 
 import { X } from "lucide-react";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 function useEscape(onClose: () => void) {
@@ -12,6 +12,47 @@ function useEscape(onClose: () => void) {
     window.addEventListener("keydown", h);
     return () => window.removeEventListener("keydown", h);
   }, [onClose]);
+}
+
+let locks = 0;
+/** Trava a rolagem da página enquanto há janela aberta (no celular o fundo rolava por baixo). */
+export function useScrollLock(active = true) {
+  useEffect(() => {
+    if (!active) return;
+    locks += 1;
+    document.documentElement.style.overflow = "hidden";
+    return () => {
+      locks -= 1;
+      if (locks === 0) document.documentElement.style.overflow = "";
+    };
+  }, [active]);
+}
+
+const EXIT_MS = 140;
+
+/**
+ * Comportamento comum de janela: fecha com animação (X, Esc e clique fora), trava a rolagem do fundo,
+ * leva o foco para dentro e devolve o foco a quem abriu.
+ */
+export function useOverlay(onClose: () => void) {
+  const [closing, setClosing] = useState(false);
+  const panel = useRef<HTMLDivElement>(null);
+  const latest = useRef(onClose);
+  useEffect(() => {
+    latest.current = onClose;
+  });
+  const close = useCallback(() => {
+    setClosing(true);
+    window.setTimeout(() => latest.current(), EXIT_MS);
+  }, []);
+  useEscape(close);
+  useScrollLock();
+  useEffect(() => {
+    const before = document.activeElement as HTMLElement | null;
+    if (!panel.current?.contains(document.activeElement)) panel.current?.focus({ preventScroll: true });
+    return () => before?.focus?.({ preventScroll: true });
+  }, []);
+  return { closing, close, panel };
 }
 
 export function Modal({
@@ -31,39 +72,55 @@ export function Modal({
   size?: "sm" | "md" | "lg" | "xl";
   icon?: ReactNode;
 }) {
-  useEscape(onClose);
+  const { closing, close, panel } = useOverlay(onClose);
   const width = { sm: "max-w-md", md: "max-w-xl", lg: "max-w-3xl", xl: "max-w-5xl" }[size];
   return (
-    <div className="fixed inset-0 z-[80] flex items-end justify-center bg-ink/35 p-0 animate-fade-in sm:items-center sm:p-6" onMouseDown={onClose}>
+    <div
+      className={cn("fixed inset-0 z-[80] flex items-end justify-center bg-ink/40 p-0 backdrop-blur-[2px] sm:items-center sm:p-6", closing ? "animate-fade-out" : "animate-fade-in")}
+      onMouseDown={close}
+    >
       <div
+        ref={panel}
+        tabIndex={-1}
         role="dialog"
         aria-modal="true"
-        className={cn("flex max-h-[92vh] w-full flex-col overflow-hidden rounded-t-[12px] bg-white shadow-pop animate-slide-up sm:rounded-[10px]", width)}
+        className={cn(
+          // No celular é uma folha que sobe do rodapé; no computador, uma janela no centro.
+          "flex max-h-[92dvh] w-full flex-col overflow-hidden rounded-t-[14px] bg-white shadow-pop outline-none animate-sheet-up sm:rounded-[10px] sm:animate-slide-up",
+          width,
+        )}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <div className="flex items-start gap-3 border-b border-line px-5 py-4">
+        <div className="mx-auto mt-2 h-1 w-9 shrink-0 rounded-full bg-soft-2 sm:hidden" aria-hidden />
+        <div className="flex items-start gap-3 border-b border-line px-5 py-4 max-sm:pt-3">
           {icon && <div className="mt-0.5 grid size-9 shrink-0 place-items-center rounded-full bg-soft text-navy">{icon}</div>}
           <div className="min-w-0 flex-1">
             <h2 className="text-[16.5px] leading-snug font-semibold text-ink">{title}</h2>
             {kicker && <div className="label mt-0.5">{kicker}</div>}
           </div>
-          <button type="button" onClick={onClose} className="grid size-8 place-items-center rounded-[5px] text-muted hover:bg-soft hover:text-ink" aria-label="Fechar">
+          <button type="button" onClick={close} className="grid size-8 place-items-center rounded-[5px] text-muted transition-colors hover:bg-soft hover:text-ink" aria-label="Fechar">
             <X size={18} />
           </button>
         </div>
-        <div className="scrollbar-thin flex-1 overflow-y-auto px-5 py-4">{children}</div>
-        {footer && <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-soft/30 px-5 py-3">{footer}</div>}
+        <div className="scrollbar-thin flex-1 overflow-y-auto overscroll-contain px-5 py-4">{children}</div>
+        {footer && (
+          <div className="flex flex-wrap items-center justify-end gap-2 border-t border-line bg-soft/30 px-5 py-3 max-sm:pb-[max(0.75rem,env(safe-area-inset-bottom))]">{footer}</div>
+        )}
       </div>
     </div>
   );
 }
 
 export function Drawer({ onClose, title, kicker, children, width = 420, dark }: { onClose: () => void; title: ReactNode; kicker?: ReactNode; children: ReactNode; width?: number; dark?: boolean }) {
-  useEscape(onClose);
+  const { closing, close, panel } = useOverlay(onClose);
   return (
-    <div className="fixed inset-0 z-[70] flex justify-end bg-ink/25 animate-fade-in" onMouseDown={onClose}>
+    <div className={cn("fixed inset-0 z-[70] flex justify-end bg-ink/30 backdrop-blur-[2px]", closing ? "animate-fade-out" : "animate-fade-in")} onMouseDown={close}>
       <aside
-        className={cn("flex h-full w-full flex-col shadow-pop animate-slide-left", dark ? "navy-flat text-white" : "bg-white")}
+        ref={panel}
+        tabIndex={-1}
+        role="dialog"
+        aria-modal="true"
+        className={cn("flex h-full w-full flex-col shadow-pop outline-none animate-slide-left", dark ? "navy-flat text-white" : "bg-white")}
         style={{ maxWidth: width }}
         onMouseDown={(e) => e.stopPropagation()}
       >
@@ -72,11 +129,11 @@ export function Drawer({ onClose, title, kicker, children, width = 420, dark }: 
             <h2 className="text-[16.5px] font-semibold">{title}</h2>
             {kicker && <div className={cn("label mt-0.5", dark && "text-white/50")}>{kicker}</div>}
           </div>
-          <button type="button" onClick={onClose} className={cn("grid size-8 place-items-center rounded-[5px]", dark ? "text-white/70 hover:bg-white/10" : "text-muted hover:bg-soft")} aria-label="Fechar">
+          <button type="button" onClick={close} className={cn("grid size-8 place-items-center rounded-[5px] transition-colors", dark ? "text-white/70 hover:bg-white/10" : "text-muted hover:bg-soft")} aria-label="Fechar">
             <X size={18} />
           </button>
         </div>
-        <div className="scrollbar-thin flex-1 overflow-y-auto">{children}</div>
+        <div className="scrollbar-thin flex-1 overflow-y-auto overscroll-contain">{children}</div>
       </aside>
     </div>
   );
@@ -102,7 +159,7 @@ export function Popover({ trigger, children, align = "right", className }: { tri
     <div className="relative" ref={ref}>
       <div onClick={() => setOpen((v) => !v)}>{trigger(open)}</div>
       {open && (
-        <div className={cn("absolute top-full z-[60] mt-2 rounded-[7px] border border-line bg-white shadow-pop animate-fade-in", align === "right" ? "right-0" : "left-0", className)}>
+        <div className={cn("absolute top-full z-[60] mt-2 rounded-[7px] border border-line bg-white shadow-pop animate-pop", align === "right" ? "right-0 origin-top-right" : "left-0 origin-top-left", className)}>
           {children(() => setOpen(false))}
         </div>
       )}
@@ -115,7 +172,7 @@ export function MenuItem({ icon, children, onClick, danger, sub }: { icon?: Reac
     <button
       type="button"
       onClick={onClick}
-      className={cn("flex w-full items-start gap-2.5 px-3 py-2 text-left text-[13px] hover:bg-soft", danger ? "text-brand" : "text-ink")}
+      className={cn("flex w-full items-start gap-2.5 px-3 py-2 text-left text-[13px] transition-colors hover:bg-soft", danger ? "text-brand" : "text-ink")}
     >
       {icon && <span className="mt-0.5 text-muted">{icon}</span>}
       <span>

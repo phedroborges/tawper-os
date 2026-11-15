@@ -60,7 +60,7 @@ function Tile({
       {sub && <div className="mt-1.5 truncate text-[12px] text-muted">{sub}</div>}
     </>
   );
-  const className = cn("rounded-[10px] border border-line bg-white px-4 py-3.5 text-left block", (onClick || href) && "transition hover:border-navy-3/30 cursor-pointer");
+  const className = cn("rounded-[10px] border border-line bg-white px-4 py-3.5 text-left block", (onClick || href) && "transition duration-200 hover:border-navy-3/30 hover:shadow-card active:scale-[0.98] cursor-pointer");
   if (href) {
     return (
       <Link href={href} className={className}>
@@ -412,12 +412,12 @@ export default function MeuDiaPage() {
                 text={
                   selected === -2
                     ? "As tarefas concluídas hoje aparecerão aqui para você conferir seus desfechos."
-                    : "Use Registrar, no topo, para lançar o que aconteceu ou marcar o próximo passo."
+                    : "Use Registrar para lançar o que aconteceu ou marcar o próximo passo."
                 }
               />
             </div>
           ) : (
-            <ul className="border-t border-line">
+            <ul key={selected} className="border-t border-line animate-fade-in">
               {selected === -2
                 ? list.map((a) => <ConcluidaRow key={a.id} a={a} />)
                 : list.map((a) => <AgendaRow key={a.id} a={a} late={selected === -1} />)}

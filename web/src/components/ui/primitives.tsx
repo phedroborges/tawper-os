@@ -36,7 +36,7 @@ export function Button({
     <button
       type="button"
       className={cn(
-        "inline-flex shrink-0 items-center justify-center rounded-[6px] font-medium whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+        "inline-flex shrink-0 items-center justify-center rounded-[6px] font-medium whitespace-nowrap transition-[color,background-color,border-color,transform] duration-150 active:scale-[0.97] disabled:cursor-not-allowed disabled:opacity-40 disabled:active:scale-100",
         VARIANTS[variant],
         SIZES[size],
         className,
@@ -64,7 +64,7 @@ export function LinkButton({
   return (
     <Link
       href={href}
-      className={cn("inline-flex shrink-0 items-center justify-center rounded-[6px] font-medium whitespace-nowrap transition-colors", VARIANTS[variant], SIZES[size], className)}
+      className={cn("inline-flex shrink-0 items-center justify-center rounded-[6px] font-medium whitespace-nowrap transition-[color,background-color,border-color,transform] duration-150 active:scale-[0.97]", VARIANTS[variant], SIZES[size], className)}
     >
       {children}
     </Link>
@@ -77,7 +77,7 @@ export function IconButton({ className, children, label, ...rest }: ButtonHTMLAt
       type="button"
       aria-label={label}
       title={label}
-      className={cn("inline-grid size-9 shrink-0 place-items-center rounded-[6px] text-muted transition-colors hover:bg-soft hover:text-ink", className)}
+      className={cn("inline-grid size-9 shrink-0 place-items-center rounded-[6px] text-muted transition-[color,background-color,transform] duration-150 hover:bg-soft hover:text-ink active:scale-[0.94]", className)}
       {...rest}
     >
       {children}
@@ -212,14 +212,14 @@ export function Checkbox({ checked, onChange, label, sub, disabled }: { checked:
 
 export function Segmented<T extends string>({ value, onChange, options, className }: { value: T; onChange: (v: T) => void; options: { value: T; label: ReactNode }[]; className?: string }) {
   return (
-    <div className={cn("inline-flex rounded-[6px] bg-soft p-0.5", className)}>
+    <div className={cn("no-scrollbar inline-flex max-w-full overflow-x-auto rounded-[6px] bg-soft p-0.5", className)}>
       {options.map((o) => (
         <button
           key={o.value}
           type="button"
           onClick={() => onChange(o.value)}
           className={cn(
-            "rounded-[5px] px-3 py-1.5 text-[12.5px] font-medium whitespace-nowrap transition-colors",
+            "shrink-0 rounded-[5px] px-3 py-1.5 text-[12.5px] font-medium whitespace-nowrap transition-[color,background-color,box-shadow] duration-200",
             value === o.value ? "bg-white text-ink shadow-card" : "text-muted hover:text-ink",
           )}
         >
@@ -234,7 +234,7 @@ export function Progress({ value, tone = "navy", className }: { value: number; t
   const color = { navy: "bg-navy-3", red: "bg-brand", green: "bg-ok", amber: "bg-warn", ai: "bg-ai" }[tone];
   return (
     <div className={cn("h-1.5 w-full overflow-hidden rounded-full bg-soft", className)}>
-      <div className={cn("h-full rounded-full transition-all", color)} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
+      <div className={cn("h-full origin-left rounded-full transition-[width] duration-500 animate-grow-x", color)} style={{ width: `${Math.max(0, Math.min(100, value))}%` }} />
     </div>
   );
 }
@@ -276,7 +276,7 @@ export function Stat({
       onClick={onClick}
       className={cn(
         "rounded-[8px] border border-line bg-white px-4 py-3.5 text-left transition",
-        onClick && "cursor-pointer hover:border-navy-3/30 hover:bg-soft/40",
+        onClick && "cursor-pointer hover:border-navy-3/30 hover:bg-soft/40 active:scale-[0.985]",
         className,
       )}
     >
