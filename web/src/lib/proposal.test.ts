@@ -1,166 +1,146 @@
+import { PDFDocument } from "pdf-lib";
 import { describe, expect, it } from "vitest";
-import { parseConfig } from "./config";
-import { buildInitialProposalInput, buildProposalPdfBytes, calcProposalTotals, pdfSafeText } from "./proposal";
+import { DEFAULT_PROPOSAL_STANDARD } from "./config";
+import { buildInitialProposalInput, buildProposalPdfBytes, pdfSafeText } from "./proposal";
 import { buildTawperPresentationDeck } from "./tawper-presentation";
 import type { Company, Contact, Deal, User } from "./types";
 
-describe("proposal PDF generator", () => {
-  const company: Company = {
-    id: "c1",
-    codigo: "TW-0042",
-    nome: "Usina Rio Pardo",
-    razaoSocial: "Agroindustrial Rio Pardo S/A",
-    cnpj: "12.345.678/0001-99",
-    status: "ativa",
-    ownerId: "u1",
-    cidade: "Uberaba",
-    uf: "MG",
-    cep: "38010-000",
-    endereco: "Rodovia BR-050, Km 142",
-    ramo: "Sucroenergético",
-    origem: "Prospecção",
-    urgencia: "Alta",
-    colhedoras: 18,
-    modelos: "Case A8800, John Deere CH570",
-    prensa: "Comodato concorrente",
-    marcaAtual: "Parker",
-    observacoes: "Priorizar safra de abril",
-    createdAt: "2026-01-01",
-    updatedAt: "2026-11-01",
-  };
+const sampleCompany: Company = {
+  id: "emp-teste",
+  codigo: "TWP-099",
+  nome: "Usina Rio Claro Bioenergia",
+  razaoSocial: "Usina Rio Claro Bioenergia S.A.",
+  cnpj: "12.345.678/0001-90",
+  status: "ativa",
+  ownerId: "u-douglas",
+  regiao: "Goiás",
+  cidade: "Rio Verde",
+  uf: "GO",
+  colhedoras: 22,
+  modelos: "Case A8800 / John Deere CH570",
+  prensa: "Comodato concorrente",
+  marcaAtual: "Parker",
+  origem: "Prospecção ativa",
+  urgencia: "Alta",
+  createdAt: "2026-10-01",
+  updatedAt: "2026-11-10",
+};
 
-  const contact: Contact = {
-    id: "ct1",
-    companyId: "c1",
-    nome: "Carlos Eduardo",
-    cargo: "Gerente de Manutenção",
-    papel: "Decisor",
-    influencia: 3,
-    whatsapp: "(34) 99988-7766",
-    email: "carlos@riopardo.com.br",
-    canal: "WhatsApp",
-    autorizaContato: true,
-    ativo: true,
-  };
+const sampleContact: Contact = {
+  id: "ctt-1",
+  companyId: "emp-teste",
+  nome: "Marcelo Prado",
+  cargo: "Gerente de Manutenção Agrícola",
+  papel: "Decisor",
+  influencia: 3,
+  whatsapp: "(64) 99911-2233",
+  email: "marcelo@rioclaro.example",
+  canal: "WhatsApp",
+  autorizaContato: true,
+  ativo: true,
+};
 
-  const owner: User = {
-    id: "u1",
-    name: "Fernando Silva",
-    short: "Fernando",
-    role: "vendedor",
-    title: "Consultor Técnico Comercial",
-    initials: "FS",
-    color: "#0a1d3f",
-    phone: "(34) 99123-4567",
-    regions: ["Triângulo Mineiro"],
-  };
+const sampleSeller: User = {
+  id: "u-douglas",
+  name: "Douglas Ferreira",
+  short: "Douglas",
+  role: "vendedor",
+  title: "Consultor Técnico Comercial",
+  initials: "DF",
+  color: "#c81421",
+  phone: "5517981640028",
+  regions: ["Goiás", "Triângulo"],
+};
 
-  const deal = {
-    id: "d1",
-    companyId: "c1",
-    ownerId: "u1",
-    funnel: "aquisicao",
-    stageId: "orcamento",
-    titulo: "Implantação prensa + kit inicial",
-    valor: 48000,
-    status: "aberta",
-    createdAt: "2026-11-01",
-    stageEnteredAt: "2026-11-05",
-    checklist: {},
-    history: [],
-    ciclo: 1,
-  } as Deal;
+const sampleDeal: Deal = {
+  id: "deal-1",
+  companyId: "emp-teste",
+  ownerId: "u-douglas",
+  funnel: "aquisicao",
+  stageId: "orcamento",
+  titulo: "Implantação de Oficina + Mangueiras Safra",
+  valor: 42500,
+  status: "aberta",
+  createdAt: "2026-11-01",
+  stageEnteredAt: "2026-11-08",
+  checklist: {},
+  history: [],
+  ciclo: 1,
+};
 
-  it("gera dados iniciais completos e calcula totais com desconto", () => {
-    const data = buildInitialProposalInput({ company, contact, owner, deal, now: new Date(2026, 10, 14) });
-    expect(data.cliente.cnpj).toBe("12.345.678/0001-99");
-    expect(data.vendedor.nome).toBe("Fernando Silva");
-    expect(data.frota.modelos).toContain("Case A8800");
-    expect(data.itens.length).toBeGreaterThanOrEqual(3);
-
-    const totals = calcProposalTotals(
-      [
-        { id: "1", equipamento: "Kit", especificacao: "", modalidade: "venda", unidade: "kit", qtd: 2, valorUnitario: 1000 },
-        { id: "2", equipamento: "Mapeamento", especificacao: "", modalidade: "cortesia", unidade: "serv", qtd: 1, valorUnitario: 500 },
-      ],
-      10,
-    );
-    expect(totals.subtotal).toBe(2000);
-    expect(totals.descontoValor).toBe(200);
-    expect(totals.total).toBe(1800);
+describe("proposal A4 & ERP PDF merge", () => {
+  it("normalizes unsupported glyphs for WinAnsi PDF embedding", () => {
+    expect(pdfSafeText("Proposta — Frota • Safra 2026 ✅")).toBe("Proposta - Frota - Safra 2026");
   });
 
-  it("gera um arquivo PDF binário válido com cabeçalho %PDF-1.", async () => {
-    const data = buildInitialProposalInput({ company, contact, owner, deal, now: new Date(2026, 10, 14) });
-    const bytes = await buildProposalPdfBytes(data);
-    expect(bytes).toBeInstanceOf(Uint8Array);
-    expect(bytes.byteLength).toBeGreaterThan(2000);
-    const header = new TextDecoder().decode(bytes.slice(0, 7));
-    expect(header).toBe("%PDF-1.");
-    expect(pdfSafeText("Atenção — entrega… R$ 100 → OK")).toBe("Atenção - entrega... R$ 100 -> OK");
-  });
-
-  it("gera a apresentação comercial HTML personalizada sem sorteio nos modos executivo e completo", () => {
-    const data = buildInitialProposalInput({ company, contact, owner, deal, now: new Date(2026, 10, 14) });
-    const execDeck = buildTawperPresentationDeck(data, { mode: "executive" });
-    expect(execDeck.slides.length).toBe(14);
-    expect(execDeck.html).toContain("Usina Rio Pardo");
-    expect(execDeck.html).toContain("Fernando Silva");
-    expect(execDeck.html).toContain("Case A8800, John Deere CH570");
-    expect(execDeck.html.toLowerCase()).not.toContain("kit churrasco");
-    expect(execDeck.html.toLowerCase()).not.toContain("sorteio-tawper.svg");
-
-    const fullDeck = buildTawperPresentationDeck(data, { mode: "complete" });
-    expect(fullDeck.slides.length).toBe(35);
-    expect(fullDeck.html.toLowerCase()).not.toContain("kit churrasco");
-  });
-
-  it("aplica o padrão oficial salvo pelo administrador e preserva o parseConfig", () => {
-    const parsed = parseConfig({
-      proposalStandard: {
-        validadeDias: 30,
-        condicaoPagamento: "30/60 dias",
-        prazoEntrega: "Entrega em 48h",
-        frete: "FOB (retira)",
-        mostrarValores: false,
-        descontoMaxPct: 5,
-        incluirInstitucional: false,
-        observacoesPadrao: "Regra oficial de safra",
-        itensPadrao: [
-          {
-            id: "std-1",
-            equipamento: "Prensa Hidráulica Padrão",
-            especificacao: "Modelo oficial homologado",
-            modalidade: "comodato",
-            unidade: "un",
-            qtd: 2,
-            valorUnitario: 0,
-          },
-        ],
-      },
+  it("initializes proposal from company fleet, consultant phone and commercial standards", () => {
+    const input = buildInitialProposalInput({
+      company: sampleCompany,
+      contact: sampleContact,
+      owner: sampleSeller,
+      deal: sampleDeal,
+      standard: DEFAULT_PROPOSAL_STANDARD,
     });
 
-    expect(parsed.proposalStandard?.validadeDias).toBe(30);
-    expect(parsed.proposalStandard?.mostrarValores).toBe(false);
+    expect(input.frota.numColhedoras).toBe(22);
+    expect(input.frota.marcaFrota).toContain("Case A8800");
+    expect(input.vendedor.nome).toBe("Douglas Ferreira");
+    expect(input.vendedor.telefone).toBe("5517981640028");
+    expect(input.cliente.destinatarioNome).toBe("Marcelo Prado");
+    expect(DEFAULT_PROPOSAL_STANDARD.condicoesPagamento).toContain(input.termos.condicaoPagamento);
+    expect(DEFAULT_PROPOSAL_STANDARD.validadesDias).toContain(input.termos.validadeDias);
+  });
 
-    const data = buildInitialProposalInput({
-      company,
-      contact,
-      owner,
-      deal,
-      now: new Date(2026, 10, 14),
-      standard: parsed.proposalStandard,
+  it("generates strictly 8 A4 pages without ERP attachment and merges all ERP pages cleanly", async () => {
+    const input = buildInitialProposalInput({
+      company: sampleCompany,
+      contact: sampleContact,
+      owner: sampleSeller,
+      deal: sampleDeal,
+      standard: DEFAULT_PROPOSAL_STANDARD,
     });
 
-    expect(data.termos.validadeDias).toBe(30);
-    expect(data.termos.condicaoPagamento).toBe("30/60 dias");
-    expect(data.termos.prazoEntrega).toBe("Entrega em 48h");
-    expect(data.termos.frete).toBe("FOB (retira)");
-    expect(data.termos.mostrarValores).toBe(false);
-    expect(data.termos.incluirInstitucional).toBe(false);
-    expect(data.termos.observacoes).toContain("Regra oficial de safra");
-    expect(data.itens).toHaveLength(1);
-    expect(data.itens[0]?.equipamento).toBe("Prensa Hidráulica Padrão");
-    expect(data.itens[0]?.qtd).toBe(2);
+    const basePdfBytes = await buildProposalPdfBytes(input);
+    const baseDoc = await PDFDocument.load(basePdfBytes);
+    expect(baseDoc.getPageCount()).toBe(8);
+    const p1Size = baseDoc.getPage(0).getSize();
+    expect(Math.round(p1Size.width)).toBe(595);
+    expect(Math.round(p1Size.height)).toBe(842);
+
+    // Create a synthetic 2-page ERP quote PDF
+    const syntheticErp = await PDFDocument.create();
+    syntheticErp.addPage([595.28, 841.89]);
+    syntheticErp.addPage([595.28, 841.89]);
+    const erpPdfBytes = await syntheticErp.save();
+
+    input.orcamento.numeroExterno = "ERP-004512";
+    input.orcamento.valorTotal = 42500;
+    input.orcamento.paginasAnexo = 2;
+
+    const mergedBytes = await buildProposalPdfBytes(input, { erpPdfBytes });
+    const mergedDoc = await PDFDocument.load(mergedBytes);
+    expect(mergedDoc.getPageCount()).toBe(10);
+  });
+
+  it("builds a borderless A4 HTML presentation deck with strictly 8 slides (< 10) and zero sorteio", () => {
+    const input = buildInitialProposalInput({
+      company: sampleCompany,
+      contact: sampleContact,
+      owner: sampleSeller,
+      deal: sampleDeal,
+      standard: DEFAULT_PROPOSAL_STANDARD,
+    });
+    input.orcamento.numeroExterno = "ERP-009911";
+    input.orcamento.valorTotal = 42500;
+    input.orcamento.paginasAnexo = 2;
+
+    const deck = buildTawperPresentationDeck(input, { baseUrl: "/apresentacao-tawper" });
+
+    expect(deck.slides).toHaveLength(8);
+    expect(deck.slides.length).toBeLessThan(10);
+    expect(deck.html).toContain("@page { size: A4 portrait; margin: 0; }");
+    expect(deck.html).toContain("ERP-009911");
+    expect(deck.html).toContain("5517981640028");
+    expect(deck.html.toLowerCase()).not.toContain("sorteio");
   });
 });

@@ -451,44 +451,55 @@ export const MODALIDADES: { value: import("./types").Modalidade; label: string; 
 
 export const CONDICOES_PAGAMENTO = ["28 dias", "28/56 dias", "30/60/90 dias", "À vista (3% desc.)", "Boleto 21 dias"];
 
-export interface CatalogItem {
-  sku: string;
-  descricao: string;
-  unidade: string;
-  preco: number;
-  linha: string;
-}
+export const OPCOES_VALIDADE_PADRAO = [7, 15, 20, 30];
 
-/** Catálogo legado (preço/SKU) — só para seed/demo. A IA e o produto usam PRODUCT_NAMES. */
-export const CATALOG: CatalogItem[] = [
-  { sku: "MH-R2-12", descricao: 'Mangueira hidráulica 2 tramas SAE 100 R2AT 1/2"', unidade: "m", preco: 38.9, linha: "Mangueiras" },
-  { sku: "MH-R2-34", descricao: 'Mangueira hidráulica 2 tramas SAE 100 R2AT 3/4"', unidade: "m", preco: 54.5, linha: "Mangueiras" },
-  { sku: "MH-4SH-34", descricao: 'Mangueira 4 espirais 4SH 3/4" — alta pressão', unidade: "m", preco: 96.8, linha: "Mangueiras" },
-  { sku: "MH-4SH-1", descricao: 'Mangueira 4 espirais 4SH 1"', unidade: "m", preco: 128.4, linha: "Mangueiras" },
-  { sku: "MH-R13-1", descricao: 'Mangueira R13 1" — corte de base', unidade: "m", preco: 162.0, linha: "Mangueiras" },
-  { sku: "TP-JIC-12", descricao: 'Terminal prensável JIC fêmea 37° 1/2"', unidade: "un", preco: 21.9, linha: "Terminais e conexões" },
-  { sku: "TP-JIC-34", descricao: 'Terminal prensável JIC fêmea 37° 3/4"', unidade: "un", preco: 34.5, linha: "Terminais e conexões" },
-  { sku: "TP-ORFS-34", descricao: 'Terminal prensável ORFS fêmea 3/4"', unidade: "un", preco: 41.2, linha: "Terminais e conexões" },
-  { sku: "TP-FLG-1", descricao: 'Terminal flange SAE código 62 — 1"', unidade: "un", preco: 118.0, linha: "Terminais e conexões" },
-  { sku: "AD-JICBSP-34", descricao: 'Adaptador JIC x BSP 3/4"', unidade: "un", preco: 27.6, linha: "Terminais e conexões" },
-  { sku: "CP-ESP-34", descricao: 'Capa protetora espiral 3/4"', unidade: "m", preco: 12.4, linha: "Proteção" },
-  { sku: "KIT-CH570-CB", descricao: "Kit mangueiras corte de base — John Deere CH570", unidade: "kit", preco: 4890.0, linha: "Kits para colhedoras" },
-  { sku: "KIT-CH950-EL", descricao: "Kit mangueiras elevador — John Deere CH950", unidade: "kit", preco: 6120.0, linha: "Kits para colhedoras" },
-  { sku: "KIT-A8800-PC", descricao: "Kit mangueiras picador — Case A8800", unidade: "kit", preco: 5640.0, linha: "Kits para colhedoras" },
-  { sku: "KIT-A9000-CB", descricao: "Kit mangueiras corte de base — Case A9000", unidade: "kit", preco: 5980.0, linha: "Kits para colhedoras" },
-  { sku: "PR-CMD", descricao: "Prensa hidráulica em comodato (contrato 12 meses)", unidade: "un", preco: 0, linha: "Serviços" },
-  { sku: "SV-ACAD", descricao: "Treinamento Tawper Academy — prensagem (até 8 mecânicos)", unidade: "turma", preco: 1800.0, linha: "Serviços" },
+export const OPCOES_FRETE_PADRAO = [
+  "CIF — Entrega e implantação pela Tawper",
+  "CIF — Entrega programada na unidade",
+  "FOB — Retira na Tawper",
 ];
 
-/** Nomes de produto para contexto da IA e da proposta — sem preço, sem SKU operacional. */
+export const OPCOES_ENTREGA_PADRAO = [
+  "Imediato / até 5 dias úteis após aprovação",
+  "Conforme cronograma de entressafra / implantação",
+  "Entrega programada conforme estoque e pedido no ERP",
+];
+
+/** Nomes de produto para contexto da IA e da proposta — sem preço, sem quantidade, sem SKU operacional. */
 export const PRODUCT_NAMES: string[] = [
-  "Mangueiras hidráulicas (2 tramas, 4 espirais, R13)",
-  "Terminais e conexões (JIC, ORFS, flange SAE)",
-  "Adaptadores e capas de proteção",
-  "Kits para colhedoras (corte de base, elevador, picador)",
-  "Prensa hidráulica em comodato",
-  "Treinamento Tawper Academy",
+  "Mangueiras hidráulicas de alta pressão (2 tramas SAE 100 R2AT, 4 espirais 4SH, R13)",
+  "Terminais prensáveis, flanges SAE e adaptadores (JIC 37°, ORFS, BSP)",
+  "Capas protetoras espirais contra abrasão",
+  "Kits completos de mangueiras por modelo de colhedora (corte de base, elevador, picador)",
+  "Prensa hidráulica com final de curso em comodato ou locação",
+  "Sistema de identificação por cores e rastreabilidade HydraSense",
+  "Treinamento técnico presencial Tawper Academy",
 ];
+
+/**
+ * Conhecimento oficial do portfólio e das modalidades Tawper para a IA.
+ * Não contém preços, quantidades nem tabela de itens — orçamentos e preços são gerados exclusivamente no ERP externo.
+ */
+export const TAWPER_PORTFOLIO_KNOWLEDGE = {
+  produtosETecnologias: [
+    "Mangueiras hidráulicas com tecnologia europeia certificada (ISO, MSHA, CCS) para colhedoras e operações pesadas.",
+    "Terminais prensáveis, flanges SAE código 62 e adaptadores (JIC 37°, ORFS, BSP) com alta resistência à vibração e pressão.",
+    "Capas protetoras espirais contra abrasão e atrito.",
+    "Kits prontos e padronizados por máquina/sistema (corte de base, elevador, picador) para colhedoras John Deere e Case.",
+    "Prensa hidráulica padronizada com controle de final de curso para oficina do cliente.",
+    "Sistema de identificação visual por cores para eliminar erro de montagem em campo e oficina.",
+    "Tecnologia HydraSense de rastreabilidade individual de cada mangueira (histórico e vida útil).",
+    "Treinamento técnico prático Tawper Academy para mecânicos e equipe de manutenção.",
+  ],
+  modalidadesComerciais: [
+    "Venda direta: fornecimento sob demanda ou programado conforme orçamento emitido no ERP externo.",
+    "Comodato: disponibilização de prensa hidráulica e implantação de oficina atrelada a contrato contínuo de fornecimento.",
+    "Locação: cessão mensal de equipamento mediante contrato específico.",
+    "Incluso / Cortesia contratual: mapeamento técnico de frota, padronização visual e capacitação Tawper Academy vinculados à operação.",
+  ],
+  politicaDePrecos:
+    "O Tawper OS não mantém catálogo nem preços de produtos. Valores unitários, quantidades e descontos são gerados no ERP externo da Tawper e anexados em PDF às propostas e negociações.",
+};
 
 export const FIELD_LABELS: Partial<Record<keyof Company, string>> = {
   nome: "Nome fantasia",

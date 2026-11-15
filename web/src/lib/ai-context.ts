@@ -1,7 +1,7 @@
 // Contexto enviado ao modelo de linguagem: só o necessário, já resumido e em texto legível.
 // Funções puras sobre o estado do app, para rodar no navegador antes de chamar a ação do servidor.
 
-import { CONDICOES_PAGAMENTO, FUNNELS, MOTIVOS_PERDA, PRODUCT_NAMES, REGIOES, isManager } from "./constants";
+import { CONDICOES_PAGAMENTO, FUNNELS, MODALIDADES, MOTIVOS_PERDA, PRODUCT_NAMES, REGIOES, TAWPER_PORTFOLIO_KNOWLEDGE, isManager } from "./constants";
 import { dayDiff, daysSince } from "./dates";
 import {
   alertsOf,
@@ -177,6 +177,8 @@ export function systemContext(d: SystemData, user: User, now = new Date()) {
         condicoesDePagamento: CONDICOES_PAGAMENTO,
         motivosDePerda: MOTIVOS_PERDA,
         produtos: PRODUCT_NAMES,
+        modalidadesComerciais: MODALIDADES.map((m) => `${m.label}: ${m.hint}`),
+        conhecimentoPortfolio: TAWPER_PORTFOLIO_KNOWLEDGE,
         funis: Object.values(FUNNELS).map((f) => ({
           nome: f.nome,
           etapas: f.stages.map((st) => clean({ id: st.id, nome: st.nome, objetivo: st.objetivo, limiteDias: st.limiteDias || undefined, terminal: st.terminal || undefined })),

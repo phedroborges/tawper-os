@@ -1,6 +1,15 @@
 // Configuração do sistema editada em Configurações: regras de etapa, regras de atividade, metas e lembretes.
 
-import { FUNNELS, type Criterion, type StageDef, type SuggestedTask } from "./constants";
+import {
+  CONDICOES_PAGAMENTO,
+  FUNNELS,
+  OPCOES_ENTREGA_PADRAO,
+  OPCOES_FRETE_PADRAO,
+  OPCOES_VALIDADE_PADRAO,
+  type Criterion,
+  type StageDef,
+  type SuggestedTask,
+} from "./constants";
 import type { ActivityType, FunnelId } from "./types";
 
 export interface StageRule {
@@ -48,27 +57,45 @@ export interface Goals {
   registros?: RecordGoalConfig;
 }
 
-export interface ProposalStandardItem {
-  id: string;
-  equipamento: string;
-  especificacao: string;
-  modalidade: "venda" | "comodato" | "locacao" | "cortesia";
-  unidade: string;
-  qtd: number;
-  valorUnitario: number;
+export interface ProposalStandardConfig {
+  /** Prazo padrão de validade (dias) aplicado às novas propostas. */
+  validadeDias: number;
+  /** Lista de opções de validade disponíveis (ex.: [7, 15, 20, 30]). */
+  validadesDias: number[];
+  /** Condição de pagamento padrão. */
+  condicaoPagamento: string;
+  /** Lista editável de condições comerciais de pagamento (ex.: "28 dias", "28/56 dias"). */
+  condicoesPagamento: string[];
+  /** Prazo de entrega padrão. */
+  prazoEntrega: string;
+  /** Lista editável de prazos de entrega disponíveis. */
+  opcoesEntrega: string[];
+  /** Modalidade padrão de frete. */
+  frete: string;
+  /** Lista editável de opções de frete disponíveis. */
+  opcoesFrete: string[];
+  /** Define se valores do orçamento ERP aparecem na capa/resumo da proposta. */
+  mostrarValores: boolean;
+  /** Inclui os slides institucionais resumidos (< 10 páginas A4) junto ao orçamento ERP. */
+  incluirInstitucional: boolean;
+  /** Observações padrão incluídas nas condições comerciais. */
+  observacoesPadrao: string;
 }
 
-export interface ProposalStandardConfig {
-  validadeDias: number;
-  condicaoPagamento: string;
-  prazoEntrega: string;
-  frete: string;
-  mostrarValores: boolean;
-  descontoMaxPct: number;
-  incluirInstitucional: boolean;
-  observacoesPadrao: string;
-  itensPadrao?: ProposalStandardItem[];
-}
+export const DEFAULT_PROPOSAL_STANDARD: ProposalStandardConfig = {
+  validadeDias: 15,
+  validadesDias: [...OPCOES_VALIDADE_PADRAO],
+  condicaoPagamento: CONDICOES_PAGAMENTO[1] ?? "28/56 dias",
+  condicoesPagamento: [...CONDICOES_PAGAMENTO],
+  prazoEntrega: OPCOES_ENTREGA_PADRAO[0],
+  opcoesEntrega: [...OPCOES_ENTREGA_PADRAO],
+  frete: OPCOES_FRETE_PADRAO[0],
+  opcoesFrete: [...OPCOES_FRETE_PADRAO],
+  mostrarValores: true,
+  incluirInstitucional: true,
+  observacoesPadrao:
+    "Preços, itens e quantidades detalhados no orçamento oficial emitido no ERP Tawper (anexo integrante desta proposta).",
+};
 
 export interface AppConfig {
   stageRules: Record<string, StageRule>;
@@ -157,20 +184,62 @@ export function parseConfig(raw: Partial<Record<keyof AppConfig, unknown>>): App
     remindersOff: Array.isArray(raw.remindersOff) ? raw.remindersOff.filter((x): x is string => typeof x === "string") : [],
     proposalStandard: (() => {
       const ps = obj(raw.proposalStandard);
-      if (typeof ps.condicaoPagamento !== "string" && typeof ps.validadeDias !== "number") return null;
-      const itens = Array.isArray(ps.itensPadrao)
-        ? (ps.itensPadrao as ProposalStandardItem[]).filter((x) => x && typeof x.equipamento === "string")
-        : undefined;
+      const hasAny =
+        typeof ps.condicaoPagamento === "string" ||
+        typeof ps.validadeDias === "number" ||
+        Array.isArray(ps.condicoesPagamento) ||
+        Array.isArray(ps.validadesDias);
+      if (!hasAny) return null;
+
+      const strList = (val: unknown, fallback: string[]) => {
+        if (!Array.isArray(val)) return [...fallback];
+        const clean = [...new Set(val.map((x) => (typeof x === "string" ? x.trim() : "")).filter(Boolean))];
+        return clean.length > 0 ? clean : [...fallback];
+      };
+      const numList = (val: unknown, fallback: number[]) => {
+        if (!Array.isArray(val)) return [...fallback];
+        const clean = [
+          ...new Set(
+            val
+              .map((x) => Math.round(Number(x)))
+              .filter((n) => Number.isFinite(n) && n >= 1 && n <= 365),
+          ),
+        ].sort((a, b) => a - b);
+        return clean.length > 0 ? clean : [...fallback];
+      };
+
+      const condicoesPagamento = strList(ps.condicoesPagamento, DEFAULT_PROPOSAL_STANDARD.condicoesPagamento);
+      const validadesDias = numList(ps.validadesDias, DEFAULT_PROPOSAL_STANDARD.validadesDias);
+      const opcoesFrete = strList(ps.opcoesFrete, DEFAULT_PROPOSAL_STANDARD.opcoesFrete);
+      const opcoesEntrega = strList(ps.opcoesEntrega, DEFAULT_PROPOSAL_STANDARD.opcoesEntrega);
+
+      const condicaoPagamento =
+        typeof ps.condicaoPagamento === "string" && ps.condicaoPagamento.trim()
+          ? ps.condicaoPagamento.trim()
+          : condicoesPagamento[0];
+      const validadeDias =
+        typeof ps.validadeDias === "number" && ps.validadeDias > 0
+          ? Math.min(365, Math.round(ps.validadeDias))
+          : (validadesDias[0] ?? 15);
+      const frete =
+        typeof ps.frete === "string" && ps.frete.trim() ? ps.frete.trim() : opcoesFrete[0];
+      const prazoEntrega =
+        typeof ps.prazoEntrega === "string" && ps.prazoEntrega.trim()
+          ? ps.prazoEntrega.trim()
+          : opcoesEntrega[0];
+
       return {
-        validadeDias: typeof ps.validadeDias === "number" && ps.validadeDias > 0 ? Math.min(180, Math.round(ps.validadeDias)) : 15,
-        condicaoPagamento: typeof ps.condicaoPagamento === "string" && ps.condicaoPagamento ? ps.condicaoPagamento : "28 dias",
-        prazoEntrega: typeof ps.prazoEntrega === "string" && ps.prazoEntrega ? ps.prazoEntrega : "Imediato / até 5 dias úteis após aprovação",
-        frete: typeof ps.frete === "string" && ps.frete ? ps.frete : "CIF — Entrega e implantação pela Tawper",
+        validadeDias,
+        validadesDias: validadesDias.includes(validadeDias) ? validadesDias : [...validadesDias, validadeDias].sort((a, b) => a - b),
+        condicaoPagamento,
+        condicoesPagamento: condicoesPagamento.includes(condicaoPagamento) ? condicoesPagamento : [condicaoPagamento, ...condicoesPagamento],
+        prazoEntrega,
+        opcoesEntrega: opcoesEntrega.includes(prazoEntrega) ? opcoesEntrega : [prazoEntrega, ...opcoesEntrega],
+        frete,
+        opcoesFrete: opcoesFrete.includes(frete) ? opcoesFrete : [frete, ...opcoesFrete],
         mostrarValores: typeof ps.mostrarValores === "boolean" ? ps.mostrarValores : true,
-        descontoMaxPct: typeof ps.descontoMaxPct === "number" ? Math.max(0, Math.min(90, ps.descontoMaxPct)) : 0,
         incluirInstitucional: typeof ps.incluirInstitucional === "boolean" ? ps.incluirInstitucional : true,
         observacoesPadrao: typeof ps.observacoesPadrao === "string" ? ps.observacoesPadrao : "",
-        ...(itens && itens.length > 0 ? { itensPadrao: itens } : {}),
       };
     })(),
   };

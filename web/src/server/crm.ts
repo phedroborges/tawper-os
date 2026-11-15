@@ -8,6 +8,7 @@ import { checklistFromRequirements, hasRetornoNote, stageKeyToUi } from "@/lib/c
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import type { Activity, AuditEntry, Canal, Company, Contact, Deal, DemoData, Interaction, InteractionKind, Strategy, User } from "@/lib/types";
 import { FUNNELS, USERS } from "@/lib/constants";
+import { buildAgentPhoneLookup } from "@/server/auth/whatsapp-phone-fallback";
 import { ensureOperators } from "@/server/persist";
 import { listQuotes } from "@/server/quotes";
 
@@ -136,21 +137,24 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
   }
   const profileById = new Map((profilesRes.data ?? []).map((p) => [p.id as string, p]));
   const memberships = membershipsRes.data ?? [];
+  const lookupAgentPhone = buildAgentPhoneLookup();
 
   const users: User[] = memberships.length
     ? memberships.map((m) => {
         const p = profileById.get(m.profile_id as string);
         const name = p?.full_name ?? "Usuário";
         const short = p?.short_name ?? name.split(" ")[0];
+        const profileId = m.profile_id as string;
+        const phone = (p?.phone_e164 ?? "") || lookupAgentPhone({ id: profileId, name, short });
         return {
-          id: m.profile_id as string,
+          id: profileId,
           name,
           short,
           role: ROLE[(m.role as string) ?? "vendedor"] ?? "vendedor",
           title: p?.title ?? "",
           initials: short.slice(0, 2).toUpperCase(),
           color: p?.avatar_color ?? "#123a7b",
-          phone: p?.phone_e164 ?? "",
+          phone,
           regions: [],
         };
       })

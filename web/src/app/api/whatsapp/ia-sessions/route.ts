@@ -1,3 +1,4 @@
+import { storedWhatsApp } from "@/lib/br-ids";
 import { NextResponse } from "next/server";
 import {
   analyzeRunWithEvaluator,
@@ -819,9 +820,10 @@ export async function POST(req: Request) {
     if (body.action === "authorize_caller" && body.callerPhone && body.profileId) {
       if (process.env.DATABASE_URL) {
         const admin = getSupabaseAdmin();
+        const phone = storedWhatsApp(body.callerPhone) ?? body.callerPhone.trim();
         await admin
           .from("profiles")
-          .update({ whatsapp: body.callerPhone.trim() })
+          .update({ phone_e164: phone })
           .eq("id", body.profileId);
       }
       return NextResponse.json({ ok: true });

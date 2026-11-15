@@ -1,6 +1,6 @@
 "use client";
 
-import { Bell, Columns3, History, ListChecks, Target, UserRound, Users, Workflow } from "lucide-react";
+import { Bell, Columns3, FileSpreadsheet, History, ListChecks, Target, UserRound, Users, Workflow } from "lucide-react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
@@ -16,6 +16,7 @@ const ITEMS: { href: string; label: string; icon: ReactNode; access: Access; gro
   { href: "/configuracoes/etapas", label: "Requisitos das etapas", icon: <Columns3 size={16} />, access: "admin", group: "Processo" },
   { href: "/configuracoes/atividades", label: "Requisitos das atividades", icon: <Workflow size={16} />, access: "admin", group: "Processo" },
   { href: "/configuracoes/metas", label: "Metas", icon: <Target size={16} />, access: "admin", group: "Processo" },
+  { href: "/configuracoes/propostas", label: "Condições da proposta", icon: <FileSpreadsheet size={16} />, access: "admin", group: "Processo" },
   { href: "/configuracoes/equipe", label: "Equipe", icon: <Users size={16} />, access: "admin", group: "Sistema" },
   { href: "/configuracoes/auditoria", label: "Auditoria", icon: <History size={16} />, access: "gestor", group: "Sistema" },
   { href: "/configuracoes/implementacao", label: "Implementação", icon: <ListChecks size={16} />, access: "admin", group: "Sistema" },

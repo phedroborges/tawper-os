@@ -3,6 +3,7 @@ import "server-only";
 import { USERS } from "@/lib/constants";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import type { User } from "@/lib/types";
+import { buildAgentPhoneLookup } from "./whatsapp-phone-fallback";
 
 /**
  * Quem tem acesso ao sistema sai do banco (profiles + memberships), editado no painel Equipe.
@@ -33,11 +34,13 @@ export async function loadTeam(fresh = false): Promise<TeamMember[]> {
   if (members.error) throw new Error(members.error.message);
   if (profiles.error) throw new Error(profiles.error.message);
   const byId = new Map((profiles.data ?? []).map((row) => [row.id as string, row]));
+  const lookupAgentPhone = buildAgentPhoneLookup();
   const team = (members.data ?? []).flatMap((m): TeamMember[] => {
     const p = byId.get(m.profile_id as string);
     if (!p) return [];
     const name = (p.full_name as string) || "Usuário";
     const short = (p.short_name as string) || name.split(" ")[0];
+    const phone = ((p.phone_e164 as string) ?? "") || lookupAgentPhone({ id: p.id as string, name, short });
     return [
       {
         id: p.id as string,
@@ -47,7 +50,7 @@ export async function loadTeam(fresh = false): Promise<TeamMember[]> {
         title: (p.title as string) ?? "",
         initials: initials(name),
         color: (p.avatar_color as string) ?? "#123a7b",
-        phone: (p.phone_e164 as string) ?? "",
+        phone,
         regions: [],
         email: String(p.email ?? ""),
         ativo: Boolean(m.is_active) && p.is_active !== false,

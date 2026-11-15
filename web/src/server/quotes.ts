@@ -39,7 +39,7 @@ function fromRows(row: Row, items: Row[]): Quote {
       .sort((a, b) => Number(a.position) - Number(b.position))
       .map((it) => ({
         id: it.id as string,
-        productId: (it.product_id as string) ?? undefined,
+        productId: undefined,
         sku: it.sku as string,
         descricao: it.description as string,
         unidade: it.unit as string,

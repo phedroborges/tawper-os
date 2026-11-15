@@ -4,7 +4,8 @@ import { FileUp, Paperclip } from "lucide-react";
 import { useState } from "react";
 import { Modal } from "@/components/ui/overlay";
 import { Button, Field, Input, Select, Textarea } from "@/components/ui/primitives";
-import { CONDICOES_PAGAMENTO, papelRotulo, stageIndex } from "@/lib/constants";
+import { DEFAULT_PROPOSAL_STANDARD } from "@/lib/config";
+import { papelRotulo, stageIndex } from "@/lib/constants";
 import { useStore } from "@/lib/store";
 import type { Quote } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
@@ -24,11 +25,13 @@ export function QuoteModal({ dealId }: { dealId: string; quoteId?: string }) {
   const deal = s.deals.find((d) => d.id === dealId);
   const company = s.companies.find((c) => c.id === deal?.companyId);
   const contacts = s.contacts.filter((c) => c.companyId === company?.id && c.ativo);
+  const std = s.config.proposalStandard ?? DEFAULT_PROPOSAL_STANDARD;
+  const paymentOptions = std.condicoesPagamento?.length ? std.condicoesPagamento : DEFAULT_PROPOSAL_STANDARD.condicoesPagamento;
   const [file, setFile] = useState<File | null>(null);
   const [numero, setNumero] = useState("");
   const [valor, setValor] = useState("");
-  const [condicao, setCondicao] = useState("28 dias");
-  const [validade, setValidade] = useState(15);
+  const [condicao, setCondicao] = useState(std.condicaoPagamento || paymentOptions[0] || "28 dias");
+  const [validade, setValidade] = useState(std.validadeDias || 15);
   const [contactId, setContactId] = useState("");
   const [obs, setObs] = useState("");
   if (!deal || !company) return null;
@@ -101,7 +104,7 @@ export function QuoteModal({ dealId }: { dealId: string; quoteId?: string }) {
           </Field>
           <Field label="Condição de pagamento">
             <Select value={condicao} onChange={(e) => setCondicao(e.target.value)}>
-              {CONDICOES_PAGAMENTO.map((c) => (
+              {paymentOptions.map((c) => (
                 <option key={c}>{c}</option>
               ))}
             </Select>

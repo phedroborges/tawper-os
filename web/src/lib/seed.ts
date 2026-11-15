@@ -2,7 +2,7 @@
 // (re)iniciada, para que atrasos, "hoje" e estagnações façam sentido em qualquer dia.
 
 import { regionForUf } from "./regions";
-import { CATALOG, FUNNELS, USERS, stageIndex } from "./constants";
+import { FUNNELS, USERS, stageIndex } from "./constants";
 import { rel, relMinutes } from "./dates";
 import type {
   Activity,
@@ -389,35 +389,40 @@ export function buildSeed(now = new Date()): DemoData {
   ];
 
   // ---------------------------------------------------------------------------
-  // Orçamentos
+  // Orçamentos externos (ERP anexado em PDF — sem catálogo/preço unitário interno)
   // ---------------------------------------------------------------------------
-  const it = (sku: string, qtd: number, preco?: number): QuoteItem => {
-    const c = CATALOG.find((x) => x.sku === sku)!;
-    return { id: `qi-${sku}-${qtd}`, sku, descricao: c.descricao, unidade: c.unidade, qtd, preco: preco ?? c.preco, modo: "venda" };
-  };
+  const erpQuoteItem = (numeroExterno: string, descricao: string, valorTotal: number): QuoteItem => ({
+    id: `qi-erp-${numeroExterno}`,
+    sku: numeroExterno,
+    descricao,
+    unidade: "un",
+    qtd: 1,
+    preco: valorTotal,
+    modo: "venda",
+  });
 
   const quotes: Quote[] = [
-    { id: "q-ourobranco", numero: "TW-2026-0187", companyId: "c-ourobranco", dealId: "d-ourobranco", autorId: "u-douglas",
-      itens: [it("KIT-CH570-CB", 6), it("MH-4SH-34", 80), it("TP-JIC-34", 120), it("CP-ESP-34", 60), it("SV-ACAD", 1)],
-      desconto: 3, condicao: "28/56 dias", validadeDias: 15, status: "enviado", createdAt: R(-6, 11), enviadoEm: R(-6, 15), decisaoEsperada: R(4) },
-    { id: "q-colina", numero: "TW-2026-0179", companyId: "c-colina", dealId: "d-colina", autorId: "u-murilo",
-      itens: [it("KIT-A9000-CB", 12), it("KIT-CH950-EL", 6), it("MH-4SH-1", 160), it("TP-FLG-1", 48), it("PR-CMD", 1)],
-      desconto: 4, condicao: "28 dias", validadeDias: 20, status: "enviado", createdAt: R(-15, 10), enviadoEm: R(-15, 17), decisaoEsperada: R(2) },
-    { id: "q-rioclaro", numero: "TW-2026-0161", companyId: "c-rioclaro", dealId: "d-rioclaro", autorId: "u-paulo",
-      itens: [it("KIT-A8800-PC", 10), it("MH-R13-1", 90), it("TP-JIC-34", 80)],
-      desconto: 2, condicao: "28 dias", validadeDias: 15, status: "enviado", createdAt: R(-34, 10), enviadoEm: R(-33, 16), decisaoEsperada: R(-20) },
-    { id: "q-esperanca", numero: "TW-2026-0189", companyId: "c-esperanca", dealId: "d-esperanca-r4", autorId: "u-paulo",
-      itens: [it("MH-R2-12", 150), it("MH-R2-34", 100), it("TP-JIC-12", 180), it("TP-JIC-34", 140), it("AD-JICBSP-34", 60)],
+    { id: "q-ourobranco", numero: "TW-2026-0187", numeroExterno: "ERP-4510", anexo: true, companyId: "c-ourobranco", dealId: "d-ourobranco", autorId: "u-douglas",
+      itens: [erpQuoteItem("ERP-4510", "Orçamento nº ERP-4510 (sistema externo)", 42800)],
+      desconto: 0, condicao: "28/56 dias", validadeDias: 15, status: "enviado", createdAt: R(-6, 11), enviadoEm: R(-6, 15), decisaoEsperada: R(4) },
+    { id: "q-colina", numero: "TW-2026-0179", numeroExterno: "ERP-4498", anexo: true, companyId: "c-colina", dealId: "d-colina", autorId: "u-murilo",
+      itens: [erpQuoteItem("ERP-4498", "Orçamento nº ERP-4498 (sistema externo)", 134500)],
+      desconto: 0, condicao: "28 dias", validadeDias: 20, status: "enviado", createdAt: R(-15, 10), enviadoEm: R(-15, 17), decisaoEsperada: R(2) },
+    { id: "q-rioclaro", numero: "TW-2026-0161", numeroExterno: "ERP-4462", anexo: true, companyId: "c-rioclaro", dealId: "d-rioclaro", autorId: "u-paulo",
+      itens: [erpQuoteItem("ERP-4462", "Orçamento nº ERP-4462 (sistema externo)", 73740)],
+      desconto: 0, condicao: "28 dias", validadeDias: 15, status: "enviado", createdAt: R(-34, 10), enviadoEm: R(-33, 16), decisaoEsperada: R(-20) },
+    { id: "q-esperanca", numero: "TW-2026-0189", numeroExterno: "ERP-4518", anexo: false, companyId: "c-esperanca", dealId: "d-esperanca-r4", autorId: "u-paulo",
+      itens: [erpQuoteItem("ERP-4518", "Orçamento nº ERP-4518 (sistema externo)", 21660)],
       desconto: 0, condicao: "28 dias", validadeDias: 10, status: "rascunho", createdAt: R(-1, 15) },
-    { id: "q-boavista", numero: "TW-2026-0175", companyId: "c-boavista", dealId: "d-boavista-acq", autorId: "u-douglas",
-      itens: [it("KIT-CH570-CB", 6), it("MH-4SH-34", 40), it("TP-JIC-34", 60), it("PR-CMD", 1), it("SV-ACAD", 1)],
-      desconto: 5, condicao: "28/56 dias", validadeDias: 15, status: "aceito", createdAt: R(-14), enviadoEm: R(-11) },
-    { id: "q-pioneira", numero: "TW-2026-0166", companyId: "c-pioneira", dealId: "d-pioneira-acq", autorId: "u-fernando",
-      itens: [it("KIT-CH570-CB", 3), it("MH-R2-34", 60), it("TP-JIC-34", 40), it("PR-CMD", 1)],
+    { id: "q-boavista", numero: "TW-2026-0175", numeroExterno: "ERP-4480", anexo: true, companyId: "c-boavista", dealId: "d-boavista-acq", autorId: "u-douglas",
+      itens: [erpQuoteItem("ERP-4480", "Orçamento nº ERP-4480 (sistema externo)", 37080)],
+      desconto: 0, condicao: "28/56 dias", validadeDias: 15, status: "aceito", createdAt: R(-14), enviadoEm: R(-11) },
+    { id: "q-pioneira", numero: "TW-2026-0166", numeroExterno: "ERP-4471", anexo: true, companyId: "c-pioneira", dealId: "d-pioneira-acq", autorId: "u-fernando",
+      itens: [erpQuoteItem("ERP-4471", "Orçamento nº ERP-4471 (sistema externo)", 19320)],
       desconto: 0, condicao: "28 dias", validadeDias: 15, status: "aceito", createdAt: R(-34), enviadoEm: R(-31) },
-    { id: "q-belavista", numero: "TW-2026-0181", companyId: "c-belavista", dealId: "d-belavista-r8", autorId: "u-murilo",
-      itens: [it("KIT-CH570-CB", 5), it("KIT-CH950-EL", 3), it("MH-4SH-34", 120), it("TP-ORFS-34", 90)],
-      desconto: 6, condicao: "30/60/90 dias", validadeDias: 15, status: "aceito", createdAt: R(-24), enviadoEm: R(-23) },
+    { id: "q-belavista", numero: "TW-2026-0181", numeroExterno: "ERP-4503", anexo: true, companyId: "c-belavista", dealId: "d-belavista-r8", autorId: "u-murilo",
+      itens: [erpQuoteItem("ERP-4503", "Orçamento nº ERP-4503 (sistema externo)", 58100)],
+      desconto: 0, condicao: "30/60/90 dias", validadeDias: 15, status: "aceito", createdAt: R(-24), enviadoEm: R(-23) },
   ];
 
   const qTotal = (id: string) => {

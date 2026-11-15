@@ -1,8 +1,10 @@
 "use client";
 
 import { Suspense, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import {
+  AlertTriangle,
   ArrowLeft,
   ArrowRight,
   Building2,
@@ -10,12 +12,15 @@ import {
   CheckCircle2,
   Download,
   Eye,
+  FileText,
+  FileUp,
   Lock,
-  Plus,
   Printer,
   Save,
   Search,
+  Settings,
   ShieldCheck,
+  Sparkles,
   Trash2,
   Unlock,
   UserRound,
@@ -33,24 +38,21 @@ import {
   Input,
   PageHeader,
   Select,
+  Textarea,
 } from "@/components/ui/primitives";
-import { CONDICOES_PAGAMENTO, papelRotulo } from "@/lib/constants";
-import type { ProposalStandardConfig } from "@/lib/config";
+import { DEFAULT_PROPOSAL_STANDARD, type ProposalStandardConfig } from "@/lib/config";
+import { papelRotulo } from "@/lib/constants";
 import {
   buildInitialProposalInput,
   buildProposalPdfBytes,
-  calcProposalTotals,
   defaultSellerEmail,
-  MODE_LABEL,
-  PROPOSAL_EQUIPMENT_PRESETS,
-  type EquipmentPreset,
+  type ProposalBudgetMeta,
   type ProposalDocumentInput,
-  type ProposalLineItem,
-  type ProposalMode,
 } from "@/lib/proposal";
 import { openDealOf, visibleCompanies } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { buildTawperPresentationDeck } from "@/lib/tawper-presentation";
+import type { Quote } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 import { cn, money, normalize } from "@/lib/utils";
 
@@ -80,8 +82,36 @@ async function getLogoPngBytes(): Promise<Uint8Array | undefined> {
     URL.revokeObjectURL(url);
     const pngBlob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/png"));
     if (!pngBlob) return undefined;
-    const buf = await pngBlob.arrayBuffer();
-    return new Uint8Array(buf);
+    return new Uint8Array(await pngBlob.arrayBuffer());
+  } catch {
+    return undefined;
+  }
+}
+
+async function loadCompressedJpgBytes(urlPath: string, maxWidth = 1050): Promise<Uint8Array | undefined> {
+  if (typeof window === "undefined") return undefined;
+  try {
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = () => reject(new Error(`Falha ao carregar ${urlPath}`));
+      img.src = urlPath;
+    });
+    const ratio = img.width > maxWidth ? maxWidth / img.width : 1;
+    const w = Math.max(1, Math.round(img.width * ratio));
+    const h = Math.max(1, Math.round(img.height * ratio));
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return undefined;
+    ctx.fillStyle = "#0e1016";
+    ctx.fillRect(0, 0, w, h);
+    ctx.drawImage(img, 0, 0, w, h);
+    const jpgBlob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.78));
+    if (!jpgBlob) return undefined;
+    return new Uint8Array(await jpgBlob.arrayBuffer());
   } catch {
     return undefined;
   }
@@ -100,6 +130,28 @@ function slugFileName(s: string): string {
 
 type WizardStep = 1 | 2 | 3;
 
+interface ParsedErpResponse {
+  ok: boolean;
+  usedAi?: boolean;
+  fileName?: string;
+  pageCount?: number;
+  numeroOrcamento?: string;
+  valorTotal?: number | null;
+  condicaoDetectada?: string | null;
+  resumoExecutivo?: string;
+  destaques?: string[];
+  error?: string;
+}
+
+interface PdfAssetBundle {
+  logoPngBytes?: Uint8Array | null;
+  capaHeroBytes?: Uint8Array | null;
+  terminaisBytes?: Uint8Array | null;
+  coresBytes?: Uint8Array | null;
+  prensaBytes?: Uint8Array | null;
+  academyBytes?: Uint8Array | null;
+}
+
 function PropostasInner() {
   const s = useStore();
   const user = useCurrentUser();
@@ -107,7 +159,6 @@ function PropostasInner() {
   const params = useSearchParams();
   const initialCompanyId = params.get("empresa");
 
-  // Regra de governança: proposta segue um padrão oficial; apenas Administrador altera o padrão/modelo.
   const isAdmin = user.role === "admin";
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const canEditStandard = isAdmin && adminUnlocked;
@@ -145,17 +196,33 @@ function PropostasInner() {
   }, [s.contacts, company]);
 
   const sellers = useMemo(
-    () => s.users.filter((u) => u.role === "vendedor" || u.role === "representante" || u.id === company?.ownerId),
+    () =>
+      s.users.filter(
+        (u) =>
+          u.role === "vendedor" ||
+          u.role === "representante" ||
+          u.role === "gestor" ||
+          u.role === "admin" ||
+          u.id === company?.ownerId,
+      ),
     [s.users, company?.ownerId],
   );
 
-  const [draftsByCompany, setDraftsByCompany] = useState<Record<string, ProposalDocumentInput>>({});
+  const [draftOverridesByCompany, setDraftOverridesByCompany] = useState<Record<string, ProposalDocumentInput>>({});
   const [selectedContactIdByCompany, setSelectedContactIdByCompany] = useState<Record<string, string>>({});
   const [selectedSellerIdByCompany, setSelectedSellerIdByCompany] = useState<Record<string, string>>({});
+  const [erpFileByCompany, setErpFileByCompany] = useState<Record<string, { file: File; bytes: Uint8Array; usedAi: boolean } | undefined>>({});
+  const [erpMetaByCompany, setErpMetaByCompany] = useState<Record<string, Partial<ProposalBudgetMeta> | undefined>>({});
+  const [termsOverrideByCompany, setTermsOverrideByCompany] = useState<
+    Record<string, Partial<ProposalDocumentInput["termos"]> | undefined>
+  >({});
 
+  const [readingErp, setReadingErp] = useState(false);
   const [busyPdf, setBusyPdf] = useState(false);
+  const [savingQuote, setSavingQuote] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const logoCacheRef = useRef<Uint8Array | null>(null);
+  const assetCacheRef = useRef<PdfAssetBundle | null>(null);
+  const erpInputRef = useRef<HTMLInputElement | null>(null);
   const hiddenPrintFrameRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
@@ -170,47 +237,87 @@ function PropostasInner() {
   const activeContact = contacts.find((c) => c.id === activeContactId) ?? contacts[0];
 
   const activeSellerId = company
-    ? selectedSellerIdByCompany[company.id] ??
-      deal?.ownerId ??
-      company.ownerId ??
-      user.id
+    ? selectedSellerIdByCompany[company.id] ?? deal?.ownerId ?? company.ownerId ?? user.id
     : user.id;
   const activeSeller = s.users.find((u) => u.id === activeSellerId) ?? user;
 
-  const standard = s.config.proposalStandard ?? null;
+  const standard = useMemo<ProposalStandardConfig>(() => {
+    const raw = s.config.proposalStandard;
+    if (!raw) return DEFAULT_PROPOSAL_STANDARD;
+    return {
+      ...DEFAULT_PROPOSAL_STANDARD,
+      ...raw,
+      condicoesPagamento: raw.condicoesPagamento?.length
+        ? raw.condicoesPagamento
+        : DEFAULT_PROPOSAL_STANDARD.condicoesPagamento,
+      validadesDias: raw.validadesDias?.length
+        ? raw.validadesDias
+        : DEFAULT_PROPOSAL_STANDARD.validadesDias,
+      opcoesFrete: raw.opcoesFrete?.length
+        ? raw.opcoesFrete
+        : DEFAULT_PROPOSAL_STANDARD.opcoesFrete,
+      opcoesEntrega: raw.opcoesEntrega?.length
+        ? raw.opcoesEntrega
+        : DEFAULT_PROPOSAL_STANDARD.opcoesEntrega,
+    };
+  }, [s.config.proposalStandard]);
 
   const baseDraft = useMemo(() => {
     if (!company) return null;
-    const fallbackContact = activeContact ?? {
-      id: "manual",
-      companyId: company.id,
-      nome: "Gestão de Manutenção e Compras",
-      cargo: "",
-      papel: "Decisor" as const,
-      influencia: 2 as const,
-      canal: "WhatsApp" as const,
-      autorizaContato: true,
-      ativo: true,
-    };
-    return buildInitialProposalInput({
+    const base = buildInitialProposalInput({
       company,
-      contact: fallbackContact,
+      contact: activeContact ?? null,
+      contacts,
       owner: activeSeller,
       deal,
       standard,
     });
-  }, [company, activeContact, activeSeller, deal, standard]);
+    const erpMeta = erpMetaByCompany[company.id];
+    const termsOver = termsOverrideByCompany[company.id];
+    return {
+      ...base,
+      orcamento: erpMeta ? { ...base.orcamento, ...erpMeta } : base.orcamento,
+      termos: termsOver ? { ...base.termos, ...termsOver } : base.termos,
+    };
+  }, [company, activeContact, contacts, activeSeller, deal, standard, erpMetaByCompany, termsOverrideByCompany]);
 
-  // Se não for Admin (ou se Admin não desbloqueou edição), usa estritamente o padrão oficial (baseDraft)
-  const draft: ProposalDocumentInput | null = company
-    ? (canEditStandard ? (draftsByCompany[company.id] ?? baseDraft) : baseDraft)
-    : null;
+  const draft: ProposalDocumentInput | null = useMemo(() => {
+    if (!company || !baseDraft) return null;
+    if (!canEditStandard) return baseDraft;
+    const custom = draftOverridesByCompany[company.id];
+    if (!custom) return baseDraft;
+    return {
+      ...custom,
+      orcamento: erpMetaByCompany[company.id]
+        ? { ...custom.orcamento, ...erpMetaByCompany[company.id] }
+        : custom.orcamento,
+      termos: termsOverrideByCompany[company.id]
+        ? { ...custom.termos, ...termsOverrideByCompany[company.id] }
+        : custom.termos,
+    };
+  }, [company, baseDraft, canEditStandard, draftOverridesByCompany, erpMetaByCompany, termsOverrideByCompany]);
 
   const patchDraft = (updater: (cur: ProposalDocumentInput) => ProposalDocumentInput) => {
     if (!canEditStandard || !company || !draft) return;
-    setDraftsByCompany((prev) => ({
+    setDraftOverridesByCompany((prev) => ({
       ...prev,
       [company.id]: updater(draft),
+    }));
+  };
+
+  const patchTermos = (patch: Partial<ProposalDocumentInput["termos"]>) => {
+    if (!company) return;
+    setTermsOverrideByCompany((prev) => ({
+      ...prev,
+      [company.id]: { ...prev[company.id], ...patch },
+    }));
+  };
+
+  const patchOrcamento = (patch: Partial<ProposalBudgetMeta>) => {
+    if (!company) return;
+    setErpMetaByCompany((prev) => ({
+      ...prev,
+      [company.id]: { ...prev[company.id], ...patch },
     }));
   };
 
@@ -232,73 +339,103 @@ function PropostasInner() {
       ...cur,
       cliente: {
         ...cur.cliente,
-        contatoNome: found.nome || cur.cliente.contatoNome,
-        contatoCargo: found.cargo || cur.cliente.contatoCargo,
-        contatoPapel: papelRotulo(found.papel),
-        contatoWhatsapp: found.whatsapp || cur.cliente.contatoWhatsapp,
-        contatoEmail: found.email || cur.cliente.contatoEmail,
+        destinatarioNome: found.nome || cur.cliente.destinatarioNome,
+        destinatarioCargo: found.cargo || cur.cliente.destinatarioCargo,
+        destinatarioPapel: papelRotulo(found.papel),
+        destinatarioFone: found.whatsapp || cur.cliente.destinatarioFone,
+        destinatarioEmail: found.email || cur.cliente.destinatarioEmail,
       },
     }));
   };
 
   const handleSelectSeller = (sellerId: string) => {
-    if (!canEditStandard || !company) return;
+    if (!company) return;
     setSelectedSellerIdByCompany((prev) => ({ ...prev, [company.id]: sellerId }));
     const found = s.users.find((u) => u.id === sellerId);
-    if (!found) return;
+    if (!found || !canEditStandard) return;
     patchDraft((cur) => ({
       ...cur,
       vendedor: {
+        userId: found.id,
         nome: found.name,
-        cargo: found.title || cur.vendedor.cargo,
-        telefone: found.phone || cur.vendedor.telefone,
+        cargo: found.title || papelRotulo(found.role),
+        telefone: found.phone || "",
         email: defaultSellerEmail(found),
         regiao: found.regions?.join(" · ") || cur.vendedor.regiao,
       },
     }));
   };
 
-  const updateItem = (itemId: string, patch: Partial<ProposalLineItem>) => {
-    patchDraft((cur) => ({
-      ...cur,
-      itens: cur.itens.map((it) => (it.id === itemId ? { ...it, ...patch } : it)),
-    }));
+  const handleErpPdfUpload = async (file: File | null) => {
+    if (!file || !company) return;
+    if (file.size > 10 * 1024 * 1024) {
+      toast("Arquivo excede 10 MB", { tone: "warn", sub: "Reduza ou compacte o PDF do ERP antes de anexar." });
+      return;
+    }
+
+    setReadingErp(true);
+    try {
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      const form = new FormData();
+      form.set("arquivo", file);
+      const res = await fetch("/api/propostas/ler-orcamento", {
+        method: "POST",
+        body: form,
+      });
+      const data = (await res.json().catch(() => ({}))) as ParsedErpResponse;
+      if (!res.ok || !data.ok) {
+        throw new Error(data.error || "Não foi possível ler o PDF do orçamento.");
+      }
+
+      setErpFileByCompany((prev) => ({
+        ...prev,
+        [company.id]: { file, bytes, usedAi: Boolean(data.usedAi) },
+      }));
+
+      patchOrcamento({
+        numeroExterno: data.numeroOrcamento || "",
+        nomeArquivo: data.fileName || file.name,
+        valorTotal: typeof data.valorTotal === "number" ? data.valorTotal : null,
+        resumoEscopo:
+          data.resumoExecutivo ||
+          "Escopo técnico-comercial conforme orçamento oficial emitido no ERP Tawper.",
+        destaques:
+          data.destaques && data.destaques.length > 0
+            ? data.destaques
+            : [
+                "Orçamento oficial emitido no ERP Tawper anexado integralmente ao final do documento",
+                "Padronização de mangueiras, terminais, sistema de cores e suporte técnico em campo",
+              ],
+        condicaoDetectada: data.condicaoDetectada || "",
+        paginasAnexo: data.pageCount || 1,
+      });
+
+      if (data.condicaoDetectada) {
+        const matched = standard.condicoesPagamento.find(
+          (c) => normalize(c) === normalize(data.condicaoDetectada || ""),
+        );
+        if (matched) patchTermos({ condicaoPagamento: matched });
+      }
+
+      toast(`Orçamento ERP anexado (${data.pageCount || 1} pág.)`, {
+        sub: data.usedAi
+          ? "IA leu o PDF, resumiu o escopo e vai anexar as páginas originais."
+          : "PDF validado e pronto para ser anexado no final da proposta.",
+      });
+    } catch (e) {
+      toast("Erro ao processar PDF do ERP", {
+        tone: "warn",
+        sub: e instanceof Error ? e.message : "Verifique se o arquivo é um PDF válido.",
+      });
+    } finally {
+      setReadingErp(false);
+    }
   };
 
-  const removeItem = (itemId: string) => {
-    patchDraft((cur) => ({
-      ...cur,
-      itens: cur.itens.length > 1 ? cur.itens.filter((it) => it.id !== itemId) : cur.itens,
-    }));
-  };
-
-  const addPresetItem = (preset?: EquipmentPreset) => {
-    patchDraft((cur) => {
-      const id = `item-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
-      const nextItem: ProposalLineItem = preset
-        ? {
-            id,
-            equipamento: preset.equipamento,
-            especificacao: preset.especificacao,
-            qtd: preset.qtd,
-            unidade: preset.unidade,
-            modalidade: preset.modalidade,
-            valorUnitario: preset.valorUnitario,
-          }
-        : {
-            id,
-            equipamento: "Novo equipamento / conjunto hidráulico",
-            especificacao: "Especificar bitola, norma (4SH / R13 / 2SN), terminais ou aplicação",
-            qtd: 1,
-            unidade: "un",
-            modalidade: "venda",
-            valorUnitario: 1200,
-          };
-      return {
-        ...cur,
-        itens: [...cur.itens, nextItem],
-      };
-    });
+  const removeErpAttachment = () => {
+    if (!company) return;
+    setErpFileByCompany((prev) => ({ ...prev, [company.id]: undefined }));
+    setErpMetaByCompany((prev) => ({ ...prev, [company.id]: undefined }));
   };
 
   const saveAsOfficialStandard = async () => {
@@ -306,20 +443,18 @@ function PropostasInner() {
     setSavingStandard(true);
     try {
       const nextStandard: ProposalStandardConfig = {
+        ...standard,
         validadeDias: draft.termos.validadeDias,
         condicaoPagamento: draft.termos.condicaoPagamento,
         prazoEntrega: draft.termos.prazoEntrega,
         frete: draft.termos.frete,
         mostrarValores: draft.termos.mostrarValores,
-        descontoMaxPct: draft.termos.descontoPct,
-        incluirInstitucional: draft.termos.incluirInstitucional,
         observacoesPadrao: draft.termos.observacoes,
-        itensPadrao: draft.itens.map((it) => ({ ...it })),
       };
       await s.saveConfig("proposalStandard", nextStandard);
       setAdminUnlocked(false);
-      toast("Padrão oficial salvo", {
-        sub: "Todas as novas propostas da equipe seguirão este modelo bloqueado.",
+      toast("Padrão oficial atualizado", {
+        sub: "Condições comerciais e diretrizes aplicadas às novas propostas.",
       });
     } catch (e) {
       toast("Erro ao salvar padrão", {
@@ -331,18 +466,49 @@ function PropostasInner() {
     }
   };
 
+  const loadAssetsOnce = async (): Promise<PdfAssetBundle> => {
+    if (assetCacheRef.current) return assetCacheRef.current;
+    const [
+      logoPngBytes,
+      capaHeroBytes,
+      terminaisBytes,
+      coresBytes,
+      prensaBytes,
+      academyBytes,
+    ] = await Promise.all([
+      getLogoPngBytes(),
+      loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/14-capa-terminais-catalogo.png", 1050),
+      loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/17-mangueiras-catalogo.png", 1000),
+      loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/06-sistema-cores.png", 1000),
+      loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/18-prensa-catalogo.png", 1000),
+      loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/20-academy-catalogo.png", 1000),
+    ]);
+    const bundle: PdfAssetBundle = {
+      logoPngBytes: logoPngBytes ?? null,
+      capaHeroBytes: capaHeroBytes ?? null,
+      terminaisBytes: terminaisBytes ?? null,
+      coresBytes: coresBytes ?? null,
+      prensaBytes: prensaBytes ?? null,
+      academyBytes: academyBytes ?? null,
+    };
+    assetCacheRef.current = bundle;
+    return bundle;
+  };
+
   const generatePdf = async (mode: "download" | "preview") => {
-    if (!draft) return;
+    if (!draft || !company) return;
     setBusyPdf(true);
     try {
-      if (!logoCacheRef.current) {
-        logoCacheRef.current = (await getLogoPngBytes()) ?? null;
-      }
+      const assets = await loadAssetsOnce();
+      const attached = erpFileByCompany[company.id];
       const bytes = await buildProposalPdfBytes(draft, {
-        logoWhitePng: logoCacheRef.current ?? undefined,
+        ...assets,
+        erpPdfBytes: attached?.bytes ?? null,
       });
       const blob = new Blob([new Uint8Array(bytes)], { type: "application/pdf" });
-      const fileName = `Proposta-${slugFileName(draft.termos.numero || "Tawper")}-${slugFileName(draft.cliente.nomeFantasia || "Cliente")}.pdf`;
+      const fileName = `Proposta-${slugFileName(draft.termos.codigo || "Tawper")}-${slugFileName(
+        draft.cliente.nomeFantasia || "Cliente",
+      )}.pdf`;
 
       if (mode === "download") {
         const url = URL.createObjectURL(blob);
@@ -353,7 +519,11 @@ function PropostasInner() {
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 5000);
-        toast("Proposta em PDF baixada", { sub: fileName });
+        toast("Proposta A4 gerada", {
+          sub: attached
+            ? `8 páginas Tawper + ${draft.orcamento.paginasAnexo} pág(s). do orçamento ERP (${fileName})`
+            : fileName,
+        });
       } else {
         const nextUrl = URL.createObjectURL(blob);
         setPreviewUrl((prev) => {
@@ -364,14 +534,14 @@ function PropostasInner() {
     } catch (e) {
       toast("Erro ao gerar PDF", {
         tone: "warn",
-        sub: e instanceof Error ? e.message : "Não foi possível montar o arquivo PDF.",
+        sub: e instanceof Error ? e.message : "Não foi possível montar o arquivo PDF A4.",
       });
     } finally {
       setBusyPdf(false);
     }
   };
 
-  const printWidescreenProposal = () => {
+  const printA4Deck = () => {
     if (!draft) return;
     const built = buildTawperPresentationDeck(draft, {
       mode: "executive",
@@ -389,236 +559,190 @@ function PropostasInner() {
   };
 
   const already = Boolean(deal?.checklist.proposta_enviada);
-  const marcarEnviada = () => {
-    if (!deal) {
+  const saveAndMarkSent = async () => {
+    if (!deal || !company || !draft) {
       toast("Sem negócio aberto", { tone: "warn", sub: "Abra ou retome a oportunidade na empresa." });
       return;
     }
-    s.setChecklist(deal.id, { proposta_enviada: true });
-    toast("Proposta marcada como enviada", { sub: "Critério do funil atualizado." });
+
+    const attached = erpFileByCompany[company.id];
+    const hasValor = typeof draft.orcamento.valorTotal === "number" && draft.orcamento.valorTotal > 0;
+    const numeroErp = draft.orcamento.numeroExterno.trim() || draft.termos.codigo;
+
+    setSavingQuote(true);
+    try {
+      if (attached && hasValor) {
+        const form = new FormData();
+        form.set("arquivo", attached.file);
+        form.set("companyId", company.id);
+        form.set("dealId", deal.id);
+        form.set("numero", numeroErp);
+        form.set("valor", String(draft.orcamento.valorTotal));
+        form.set("condicao", draft.termos.condicaoPagamento);
+        form.set("validade", String(draft.termos.validadeDias));
+        form.set("contactId", activeContact?.id ?? "");
+        form.set("observacoes", draft.orcamento.resumoEscopo);
+
+        const res = await fetch("/api/quotes", { method: "POST", body: form });
+        const data = (await res.json().catch(() => ({}))) as { error?: string; quote?: Quote };
+        if (res.ok && data.quote) {
+          s.upsertQuote(data.quote);
+          s.afterQuoteSent(data.quote);
+        }
+      }
+
+      s.setChecklist(deal.id, { proposta_enviada: true });
+      toast("Proposta registrada como enviada", {
+        sub: attached
+          ? "Orçamento ERP vinculado e etapa do funil atualizada."
+          : "Critério do funil atualizado.",
+      });
+    } catch (e) {
+      toast("Não foi possível salvar no funil", {
+        tone: "warn",
+        sub: e instanceof Error ? e.message : "Erro ao registrar envio.",
+      });
+    } finally {
+      setSavingQuote(false);
+    }
   };
 
-  const totals = draft ? calcProposalTotals(draft.itens, draft.termos.descontoPct) : null;
+  const attachedErp = company ? erpFileByCompany[company.id] : undefined;
+  const totalPdfPages = 8 + (draft?.orcamento.paginasAnexo || 0);
 
   return (
     <div className="mx-auto max-w-5xl space-y-6 pb-10">
-      {/* Cabeçalho limpo sem nenhum link externo/aberto */}
       <PageHeader
-        kicker="Comercial · Modelo Oficial Tawper"
-        title="Gerador de Proposta Comercial"
-        subtitle="Modelo padrão protegido pela política Tawper: escolha o cliente, confirme o destinatário e emita a proposta pronta."
+        kicker="Comercial · Proposta Executiva A4 (8 páginas)"
+        title="Gerador de Proposta Comercial Tawper"
+        subtitle="Modelo institucional padronizado (sem edição livre) integrado ao orçamento PDF emitido no ERP e pronto para impressão A4 sem bordas."
         actions={
-          <Badge tone={canEditStandard ? "amber" : "navy"}>
-            {canEditStandard ? <Unlock size={12} /> : <Lock size={12} />}
-            {canEditStandard
-              ? "Modo Administrador (Edição Liberada)"
-              : "Padrão Oficial Bloqueado"}
-          </Badge>
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Link href="/configuracoes/propostas">
+                <Button variant="outline" size="xs">
+                  <Settings size={13} /> Condições comerciais
+                </Button>
+              </Link>
+            )}
+            <Badge tone={canEditStandard ? "amber" : "navy"}>
+              {canEditStandard ? <Unlock size={12} /> : <Lock size={12} />}
+              {canEditStandard ? "Modo Administrador" : "Padrão Oficial Bloqueado"}
+            </Badge>
+          </div>
         }
       />
 
-      {/* Caminho de 3 Etapas (Stepper Editorial Tawper) */}
+      {/* Stepper */}
       <div className="grid grid-cols-3 gap-3 rounded-[10px] border border-line bg-white p-3 shadow-2xs">
-        <button
-          type="button"
-          onClick={() => setStep(1)}
-          className={cn(
-            "flex items-center gap-3 rounded-[8px] border-t-2 px-3.5 py-2.5 text-left transition-colors",
-            step === 1
-              ? "border-brand bg-paper"
-              : step > 1
-                ? "border-navy bg-soft/30 hover:bg-soft/60"
-                : "border-line text-muted",
-          )}
-        >
-          <span
+        {[
+          { n: 1 as const, label: "Passo 1", title: company ? company.nome : "Escolher o Cliente", enabled: true },
+          { n: 2 as const, label: "Passo 2", title: "Orçamento ERP & Condições", enabled: Boolean(company) },
+          { n: 3 as const, label: "Passo 3", title: "Proposta A4 Pronta", enabled: Boolean(company && draft) },
+        ].map((st) => (
+          <button
+            key={st.n}
+            type="button"
+            disabled={!st.enabled}
+            onClick={() => st.enabled && setStep(st.n)}
             className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold",
-              step === 1
-                ? "bg-brand text-white"
-                : step > 1
-                  ? "bg-navy text-white"
-                  : "bg-soft text-muted",
+              "flex items-center gap-3 rounded-[8px] border-t-2 px-3.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+              step === st.n
+                ? "border-brand bg-paper"
+                : step > st.n
+                  ? "border-navy bg-soft/30 hover:bg-soft/60"
+                  : "border-line text-muted",
             )}
           >
-            01
-          </span>
-          <div className="min-w-0">
-            <div className="text-[10.5px] font-extrabold tracking-[0.1em] text-muted uppercase">
-              Passo 1
+            <span
+              className={cn(
+                "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold",
+                step === st.n
+                  ? "bg-brand text-white"
+                  : step > st.n
+                    ? "bg-navy text-white"
+                    : "bg-soft text-muted",
+              )}
+            >
+              0{st.n}
+            </span>
+            <div className="min-w-0">
+              <div className="text-[10.5px] font-extrabold tracking-[0.1em] text-muted uppercase">{st.label}</div>
+              <div className="truncate text-[13.5px] font-bold text-ink">{st.title}</div>
             </div>
-            <div className="truncate text-[13.5px] font-bold text-ink">
-              {company ? company.nome : "Escolher o Cliente"}
-            </div>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          disabled={!company}
-          onClick={() => company && setStep(2)}
-          className={cn(
-            "flex items-center gap-3 rounded-[8px] border-t-2 px-3.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-            step === 2
-              ? "border-brand bg-paper"
-              : step > 2
-                ? "border-navy bg-soft/30 hover:bg-soft/60"
-                : "border-line text-muted",
-          )}
-        >
-          <span
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold",
-              step === 2
-                ? "bg-brand text-white"
-                : step > 2
-                  ? "bg-navy text-white"
-                  : "bg-soft text-muted",
-            )}
-          >
-            02
-          </span>
-          <div className="min-w-0">
-            <div className="text-[10.5px] font-extrabold tracking-[0.1em] text-muted uppercase">
-              Passo 2
-            </div>
-            <div className="truncate text-[13.5px] font-bold text-ink">
-              Conferir Padrão
-            </div>
-          </div>
-        </button>
-
-        <button
-          type="button"
-          disabled={!company || !draft}
-          onClick={() => company && draft && setStep(3)}
-          className={cn(
-            "flex items-center gap-3 rounded-[8px] border-t-2 px-3.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
-            step === 3 ? "border-brand bg-paper" : "border-line text-muted hover:bg-soft/40",
-          )}
-        >
-          <span
-            className={cn(
-              "flex h-7 w-7 shrink-0 items-center justify-center rounded-full text-[12px] font-extrabold",
-              step === 3 ? "bg-brand text-white" : "bg-soft text-muted",
-            )}
-          >
-            03
-          </span>
-          <div className="min-w-0">
-            <div className="text-[10.5px] font-extrabold tracking-[0.1em] text-muted uppercase">
-              Passo 3
-            </div>
-            <div className="truncate text-[13.5px] font-bold text-ink">
-              Proposta Pronta
-            </div>
-          </div>
-        </button>
+          </button>
+        ))}
       </div>
 
-      {/* ===================================================================== */}
-      {/* PASSO 1: ESCOLHER O CLIENTE                                           */}
-      {/* ===================================================================== */}
+      {/* PASSO 1: ESCOLHER O CLIENTE */}
       {step === 1 && (
-        <Card className="overflow-hidden border-line bg-white">
-          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-line/70 px-5 py-4">
-            <div>
-              <div className="text-[11px] font-extrabold tracking-[0.12em] text-brand uppercase">
-                Passo 01 · Selecionar Conta
-              </div>
-              <h2 className="mt-0.5 text-[17px] font-bold tracking-tight text-ink">
-                Para qual cliente vamos emitir a proposta padrão?
-              </h2>
+        <Card>
+          <CardHeader
+            kicker="Passo 01 · Selecionar Cliente"
+            title="Para qual empresa ou usina é esta proposta?"
+            action={
+              <Checkbox
+                checked={onlyWithDeal}
+                onChange={(v) => setOnlyWithDeal(v)}
+                label="Somente com negócio em aberto"
+              />
+            }
+          />
+          <div className="space-y-4 border-t border-line/70 px-5 py-4">
+            <div className="relative">
+              <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
+              <Input
+                value={q}
+                onChange={(e) => setQ(e.target.value)}
+                placeholder="Buscar por nome fantasia, razão social, CNPJ ou cidade…"
+                className="pl-9"
+              />
             </div>
 
-            <div className="flex flex-wrap items-center gap-2.5">
-              <div className="relative w-64 sm:w-72">
-                <Search size={14} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
-                <Input
-                  className="h-9 pl-8 text-[13px]"
-                  placeholder="Buscar usina, cidade ou CNPJ…"
-                  value={q}
-                  onChange={(e) => setQ(e.target.value)}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => setOnlyWithDeal((v) => !v)}
-                className={cn(
-                  "h-9 rounded-[6px] border px-3 text-[12px] font-semibold transition-colors",
-                  onlyWithDeal
-                    ? "border-navy bg-navy text-white"
-                    : "border-line bg-white text-muted hover:text-ink",
-                )}
-              >
-                Com negócio aberto
-              </button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              {companies.map((c) => {
+                const d = openDealOf(s, c.id);
+                const selected = c.id === companyId;
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => handleChooseClient(c.id)}
+                    className={cn(
+                      "flex items-center justify-between gap-3 rounded-[8px] border px-4 py-3 text-left transition-colors",
+                      selected
+                        ? "border-brand bg-brand/5"
+                        : "border-line bg-white hover:border-navy/40 hover:bg-soft/40",
+                    )}
+                  >
+                    <div className="min-w-0">
+                      <div className="truncate text-[14px] font-bold text-ink">{c.nome}</div>
+                      <div className="truncate text-[12px] text-muted">
+                        {[c.cidade, c.uf].filter(Boolean).join("/") || "—"}
+                        {c.colhedoras ? ` · ${c.colhedoras} colhedoras` : ""}
+                        {c.modelos ? ` · ${c.modelos}` : ""}
+                      </div>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      {d && <StagePill deal={d} />}
+                      <ArrowRight size={15} className="text-muted" />
+                    </div>
+                  </button>
+                );
+              })}
+              {companies.length === 0 && (
+                <div className="col-span-full py-10 text-center text-[13px] text-muted">
+                  Nenhuma empresa encontrada com os filtros atuais.
+                </div>
+              )}
             </div>
-          </div>
-
-          <div className="p-5">
-            {companies.length === 0 ? (
-              <div className="py-12 text-center text-[13.5px] text-muted">
-                Nenhuma empresa encontrada para o filtro informado.
-              </div>
-            ) : (
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-                {companies.map((c) => {
-                  const d = openDealOf(s, c.id);
-                  const active = c.id === company?.id;
-                  const ownerUser = s.users.find((u) => u.id === (d?.ownerId || c.ownerId));
-                  return (
-                    <button
-                      key={c.id}
-                      type="button"
-                      onClick={() => handleChooseClient(c.id)}
-                      className={cn(
-                        "group flex flex-col justify-between rounded-[8px] border border-t-2 p-4 text-left transition-all hover:border-navy hover:bg-soft/40",
-                        active
-                          ? "border-navy border-t-brand bg-paper shadow-2xs"
-                          : "border-line border-t-navy/60 bg-white",
-                      )}
-                    >
-                      <div className="space-y-1.5">
-                        <div className="flex items-start justify-between gap-2">
-                          <span className="text-[14.5px] font-bold leading-snug text-ink group-hover:text-navy">
-                            {c.nome}
-                          </span>
-                          {d && <StagePill deal={d} />}
-                        </div>
-                        <div className="text-[12px] text-muted">
-                          {[c.cidade, c.uf].filter(Boolean).join(" / ") || c.regiao || "—"}
-                        </div>
-                      </div>
-
-                      <div className="mt-4 flex items-center justify-between border-t border-line/60 pt-2.5 text-[11.5px] text-muted">
-                        <span>
-                          {c.colhedoras != null ? `${c.colhedoras} colhedora(s)` : "Frota a mapear"}
-                        </span>
-                        <span className="font-semibold text-navy group-hover:translate-x-0.5 transition-transform">
-                          Selecionar →
-                        </span>
-                      </div>
-                      {ownerUser && (
-                        <div className="mt-1 text-[11px] text-muted/80">
-                          Consultor: {ownerUser.name}
-                        </div>
-                      )}
-                    </button>
-                  );
-                })}
-              </div>
-            )}
           </div>
         </Card>
       )}
 
-      {/* ===================================================================== */}
-      {/* PASSO 2: CONFERÊNCIA DO PADRÃO OFICIAL (BLOQUEADO PARA NÃO-ADMIN)     */}
-      {/* ===================================================================== */}
+      {/* PASSO 2: ORÇAMENTO ERP + DESTINATÁRIO + CONDIÇÕES */}
       {step === 2 && company && draft && (
-        <div className="space-y-5">
-          {/* Barra superior da Etapa 2 */}
+        <div className="space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-line bg-white px-5 py-3.5 shadow-2xs">
             <div className="flex items-center gap-3">
               <Button size="xs" variant="outline" onClick={() => setStep(1)}>
@@ -630,7 +754,7 @@ function PropostasInner() {
                 </div>
                 <div className="text-[15px] font-bold text-ink">
                   {draft.cliente.nomeFantasia}{" "}
-                  <span className="font-normal text-muted">({draft.cliente.cidadeUf || "—"})</span>
+                  <span className="font-normal text-muted">({draft.cliente.cidadeUf})</span>
                 </div>
               </div>
             </div>
@@ -643,12 +767,8 @@ function PropostasInner() {
               )}
               {isAdmin && adminUnlocked && (
                 <>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setAdminUnlocked(false)}
-                  >
-                    <Lock size={14} /> Bloquear novamente
+                  <Button variant="outline" size="sm" onClick={() => setAdminUnlocked(false)}>
+                    <Lock size={14} /> Bloquear modelo
                   </Button>
                   <Button
                     variant="dark"
@@ -666,673 +786,405 @@ function PropostasInner() {
             </div>
           </div>
 
-          {/* Aviso de Governança / Travamento */}
-          <div
-            className={cn(
-              "flex flex-wrap items-center justify-between gap-3 rounded-[8px] border px-4 py-3 text-[12.5px]",
-              canEditStandard
-                ? "border-warn/40 bg-warn-soft/50 text-ink"
-                : "border-navy/20 bg-soft/60 text-ink",
-            )}
-          >
-            <div className="flex items-center gap-2.5">
-              {canEditStandard ? (
-                <Unlock size={16} className="shrink-0 text-warn" />
-              ) : (
-                <Lock size={16} className="shrink-0 text-navy" />
-              )}
-              <span>
-                {canEditStandard ? (
-                  <>
-                    <strong>Modo Administrador ativo:</strong> você pode ajustar equipamentos, preços e condições e clicar em{" "}
-                    <strong>&quot;Salvar Padrão Oficial&quot;</strong> para aplicar à toda a equipe.
-                  </>
-                ) : (
-                  <>
-                    <strong>Proposta Padrão Tawper:</strong> os equipamentos, valores, condições comerciais e textos são padronizados. Apenas um <strong>Administrador</strong> pode alterar o modelo padrão.
-                  </>
-                )}
-              </span>
-            </div>
-          </div>
-
-          {/* Bloco 1: Cliente, Destinatário e Consultor */}
-          <Card>
+          {/* Bloco 1: Upload Orçamento ERP + Leitura IA */}
+          <Card className="border-t-4 border-brand">
             <CardHeader
-              kicker="1 · Identificação na Proposta"
-              title="Cliente, Destinatário e Consultor Tawper"
-              action={<Building2 size={16} className="text-navy-3" />}
+              kicker="1 · Orçamento Oficial do Sistema Externo (ERP)"
+              title="Anexar orçamento em PDF e gerar leitura executiva"
+              action={<FileText size={16} className="text-brand" />}
             />
             <div className="space-y-4 border-t border-line/70 px-5 py-4">
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label="Nome Fantasia">
+              <div className="flex flex-wrap items-center justify-between gap-3 rounded-[8px] border border-dashed border-line bg-soft/40 p-4">
+                <div className="space-y-1">
+                  <div className="text-[13.5px] font-bold text-ink">
+                    {attachedErp
+                      ? `${attachedErp.file.name} (${draft.orcamento.paginasAnexo} pág. originais)`
+                      : "Nenhum orçamento PDF do ERP anexado ainda"}
+                  </div>
+                  <p className="text-[12px] text-muted">
+                    A IA extrai número, valor total e resumo qualitativo. Todas as páginas originais do orçamento do ERP serão anexadas automaticamente ao final da proposta A4.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <input
+                    ref={erpInputRef}
+                    type="file"
+                    accept="application/pdf,.pdf"
+                    className="hidden"
+                    onChange={(e) => {
+                      void handleErpPdfUpload(e.target.files?.[0] ?? null);
+                      e.target.value = "";
+                    }}
+                  />
+                  {attachedErp && (
+                    <Button variant="outline" size="sm" onClick={removeErpAttachment}>
+                      <Trash2 size={14} /> Remover PDF
+                    </Button>
+                  )}
+                  <Button
+                    variant="dark"
+                    size="sm"
+                    disabled={readingErp}
+                    onClick={() => erpInputRef.current?.click()}
+                  >
+                    <FileUp size={14} />
+                    {readingErp
+                      ? "Lendo PDF com IA…"
+                      : attachedErp
+                        ? "Substituir orçamento (PDF)"
+                        : "Adicionar orçamento em PDF (ERP)"}
+                  </Button>
+                </div>
+              </div>
+
+              <div className="grid gap-3 sm:grid-cols-3">
+                <Field label="Número do Orçamento (ERP)">
                   <Input
-                    disabled={!canEditStandard}
-                    value={draft.cliente.nomeFantasia}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        cliente: { ...cur.cliente, nomeFantasia: e.target.value },
-                      }))
-                    }
+                    value={draft.orcamento.numeroExterno}
+                    placeholder="Ex.: 004512"
+                    onChange={(e) => patchOrcamento({ numeroExterno: e.target.value })}
                   />
                 </Field>
-                <Field label="Razão Social">
+                <Field label="Valor Total do Orçamento (R$)" hint={draft.termos.mostrarValores ? "Exibido na proposta" : "Oculto na capa"}>
                   <Input
-                    disabled={!canEditStandard}
-                    value={draft.cliente.razaoSocial}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        cliente: { ...cur.cliente, razaoSocial: e.target.value },
-                      }))
-                    }
+                    type="number"
+                    step="0.01"
+                    min="0"
+                    value={draft.orcamento.valorTotal ?? ""}
+                    placeholder="Ex.: 28500.00"
+                    onChange={(e) => {
+                      const raw = Number(e.target.value);
+                      patchOrcamento({ valorTotal: Number.isFinite(raw) && raw > 0 ? raw : null });
+                    }}
                   />
                 </Field>
-                <Field label="CNPJ">
-                  <Input
-                    disabled={!canEditStandard}
-                    value={draft.cliente.cnpj}
-                    placeholder="Conforme cadastro no CRM"
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        cliente: { ...cur.cliente, cnpj: e.target.value },
-                      }))
-                    }
-                  />
-                </Field>
-                <Field label="Cidade / UF">
-                  <Input
-                    disabled={!canEditStandard}
-                    value={draft.cliente.cidadeUf}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        cliente: { ...cur.cliente, cidadeUf: e.target.value },
-                      }))
-                    }
-                  />
+                <Field label="Exibição de Valores">
+                  <div className="flex h-9 items-center rounded-[6px] border border-line bg-white px-3">
+                    <Checkbox
+                      checked={draft.termos.mostrarValores}
+                      onChange={(v) => patchTermos({ mostrarValores: v })}
+                      label="Mostrar valor total na capa/resumo"
+                    />
+                  </div>
                 </Field>
               </div>
 
-              <div className="grid gap-4 border-t border-line/60 pt-4 lg:grid-cols-2">
-                {/* Destinatário no Cliente (Vendedor pode selecionar um contato já cadastrado no CRM) */}
-                <div className="space-y-3 rounded-[8px] border border-line/80 bg-paper/60 p-3.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[11px] font-extrabold tracking-[0.1em] text-navy-3 uppercase">
-                      Destinatário Cadastrado (A/C)
-                    </span>
-                    {contacts.length > 0 && (
-                      <select
-                        value={activeContactId}
-                        onChange={(e) => handleSelectContact(e.target.value)}
-                        className="rounded border border-line bg-white px-2 py-1 text-[12px] font-semibold text-ink"
-                      >
-                        {contacts.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.nome} {c.cargo ? `(${c.cargo})` : ""}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                  <div className="grid gap-2.5 sm:grid-cols-3">
-                    <Field label="Nome do Responsável">
-                      <Input
-                        disabled={!canEditStandard}
-                        value={draft.cliente.contatoNome}
-                        onChange={(e) =>
-                          patchDraft((cur) => ({
-                            ...cur,
-                            cliente: { ...cur.cliente, contatoNome: e.target.value },
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Field label="Cargo / Setor">
-                      <Input
-                        disabled={!canEditStandard}
-                        value={draft.cliente.contatoCargo}
-                        onChange={(e) =>
-                          patchDraft((cur) => ({
-                            ...cur,
-                            cliente: { ...cur.cliente, contatoCargo: e.target.value },
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Field label="WhatsApp / Telefone">
-                      <Input
-                        disabled={!canEditStandard}
-                        value={draft.cliente.contatoWhatsapp}
-                        onChange={(e) =>
-                          patchDraft((cur) => ({
-                            ...cur,
-                            cliente: { ...cur.cliente, contatoWhatsapp: e.target.value },
-                          }))
-                        }
-                      />
-                    </Field>
-                  </div>
-                </div>
+              <Field
+                label="Resumo Executivo do Escopo (leitura automática do orçamento / editável para apresentação)"
+                hint={attachedErp?.usedAi ? "Extraído pela IA" : undefined}
+              >
+                <Textarea
+                  rows={3}
+                  value={draft.orcamento.resumoEscopo}
+                  onChange={(e) => patchOrcamento({ resumoEscopo: e.target.value })}
+                />
+              </Field>
 
-                {/* Consultor Tawper */}
-                <div className="space-y-3 rounded-[8px] border border-line/80 bg-paper/60 p-3.5">
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="text-[11px] font-extrabold tracking-[0.1em] text-brand uppercase">
-                      Consultor Responsável Tawper
-                    </span>
-                    {canEditStandard && (
-                      <select
-                        value={activeSellerId}
-                        onChange={(e) => handleSelectSeller(e.target.value)}
-                        className="rounded border border-line bg-white px-2 py-1 text-[12px] font-medium text-ink"
-                      >
-                        {sellers.map((u) => (
-                          <option key={u.id} value={u.id}>
-                            {u.name}
-                          </option>
-                        ))}
-                      </select>
-                    )}
-                  </div>
-                  <div className="grid gap-2.5 sm:grid-cols-3">
-                    <Field label="Consultor">
-                      <Input
-                        disabled={!canEditStandard}
-                        value={draft.vendedor.nome}
-                        onChange={(e) =>
-                          patchDraft((cur) => ({
-                            ...cur,
-                            vendedor: { ...cur.vendedor, nome: e.target.value },
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Field label="Cargo">
-                      <Input
-                        disabled={!canEditStandard}
-                        value={draft.vendedor.cargo}
-                        onChange={(e) =>
-                          patchDraft((cur) => ({
-                            ...cur,
-                            vendedor: { ...cur.vendedor, cargo: e.target.value },
-                          }))
-                        }
-                      />
-                    </Field>
-                    <Field label="WhatsApp Comercial">
-                      <Input
-                        disabled={!canEditStandard}
-                        value={draft.vendedor.telefone}
-                        onChange={(e) =>
-                          patchDraft((cur) => ({
-                            ...cur,
-                            vendedor: { ...cur.vendedor, telefone: e.target.value },
-                          }))
-                        }
-                      />
-                    </Field>
-                  </div>
+              {attachedErp && (
+                <div className="flex flex-wrap items-center gap-2 text-[12px] text-good">
+                  <Sparkles size={14} />
+                  <span>
+                    Documento final consolidado terá{" "}
+                    <strong>8 páginas institucionais Tawper + {draft.orcamento.paginasAnexo} página(s) do orçamento ERP = {totalPdfPages} páginas A4 sem bordas</strong>.
+                  </span>
                 </div>
-              </div>
+              )}
             </div>
           </Card>
 
-          {/* Bloco 2: Frota do Cliente & Escopo Padrão Tawper */}
+          {/* Bloco 2: Destinatário e Consultor */}
           <Card>
             <CardHeader
-              kicker="2 · Diagnóstico Técnico e Escopo Padrão"
-              title="Parque de Máquinas e Soluções Tawper"
-              action={<Wrench size={16} className="text-navy-3" />}
+              kicker="2 · Destinatário & Consultor Comercial"
+              title="Dados que vão na capa e na assinatura da proposta"
+              action={<Building2 size={16} className="text-navy-3" />}
             />
             <div className="space-y-4 border-t border-line/70 px-5 py-4">
-              <div className="grid gap-3 rounded-[8px] border border-line bg-soft/35 p-3.5 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label="Qtd. Colhedoras / Máquinas">
-                  <Input
-                    disabled={!canEditStandard}
-                    value={draft.frota.colhedoras}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        frota: { ...cur.frota, colhedoras: e.target.value },
-                      }))
-                    }
-                  />
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <Field label="Contato Destinatário (A/C)">
+                  <Select value={activeContactId} onChange={(e) => handleSelectContact(e.target.value)}>
+                    {contacts.length === 0 && <option value="">Equipe Técnica & Compras</option>}
+                    {contacts.map((c) => (
+                      <option key={c.id} value={c.id}>
+                        {c.nome} {c.cargo ? `— ${c.cargo}` : ""}
+                      </option>
+                    ))}
+                  </Select>
                 </Field>
-                <Field label="Modelos dos Equipamentos">
-                  <Input
-                    disabled={!canEditStandard}
-                    value={draft.frota.modelos}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        frota: { ...cur.frota, modelos: e.target.value },
-                      }))
-                    }
-                  />
+
+                <Field label="Consultor Responsável">
+                  <Select value={activeSellerId} onChange={(e) => handleSelectSeller(e.target.value)}>
+                    {sellers.map((u) => (
+                      <option key={u.id} value={u.id}>
+                        {u.name} ({u.role})
+                      </option>
+                    ))}
+                  </Select>
                 </Field>
-                <Field label="Sistema de Prensa">
-                  <Input
-                    disabled={!canEditStandard}
-                    value={draft.frota.prensa}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        frota: { ...cur.frota, prensa: e.target.value },
-                      }))
-                    }
-                  />
-                </Field>
-                <Field label="Marca / Fornecedor Atual">
-                  <Input
-                    disabled={!canEditStandard}
-                    value={draft.frota.marcaAtual}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        frota: { ...cur.frota, marcaAtual: e.target.value },
-                      }))
-                    }
-                  />
+
+                <Field label="WhatsApp Comercial do Consultor">
+                  <div
+                    className={cn(
+                      "flex h-9 items-center justify-between rounded-[6px] border px-3 text-[13px]",
+                      draft.vendedor.telefone
+                        ? "border-line bg-soft/40 font-semibold text-ink"
+                        : "border-warn/40 bg-warn-soft/50 text-warn",
+                    )}
+                  >
+                    <span>{draft.vendedor.telefone || "Não cadastrado no perfil"}</span>
+                    {!draft.vendedor.telefone && <AlertTriangle size={14} />}
+                  </div>
                 </Field>
               </div>
 
               {canEditStandard && (
-                <div>
-                  <div className="label mb-2">Adicionar equipamento ou solução padrão (Somente Admin)</div>
-                  <div className="flex flex-wrap gap-1.5">
-                    {PROPOSAL_EQUIPMENT_PRESETS.map((preset) => (
-                      <Button
-                        key={preset.key}
-                        type="button"
-                        size="xs"
-                        variant="outline"
-                        onClick={() => addPresetItem(preset)}
-                      >
-                        {preset.label}
-                      </Button>
-                    ))}
-                    <Button type="button" size="xs" variant="ghost" onClick={() => addPresetItem()}>
-                      <Plus size={12} /> Item personalizado
-                    </Button>
-                  </div>
-                </div>
-              )}
-
-              <div className="space-y-2.5">
-                {draft.itens.map((item, idx) => (
-                  <div key={item.id} className="rounded-[8px] border border-line bg-paper/60 p-3.5">
-                    <div className="mb-2 flex items-center justify-between gap-2">
-                      <Badge tone="navy">Item {String(idx + 1).padStart(2, "0")}</Badge>
-                      {canEditStandard && (
-                        <button
-                          type="button"
-                          onClick={() => removeItem(item.id)}
-                          className="inline-flex items-center gap-1 text-[11.5px] text-muted hover:text-brand"
-                        >
-                          <Trash2 size={13} /> Remover
-                        </button>
-                      )}
-                    </div>
-                    <div className="grid gap-2.5 sm:grid-cols-2 lg:grid-cols-[1.6fr_1fr_90px_90px_130px]">
-                      <Field label="Equipamento / Solução">
-                        <Input
-                          disabled={!canEditStandard}
-                          value={item.equipamento}
-                          onChange={(e) => updateItem(item.id, { equipamento: e.target.value })}
-                        />
-                      </Field>
-                      <Field label="Modalidade">
-                        <Select
-                          disabled={!canEditStandard}
-                          value={item.modalidade}
-                          onChange={(e) =>
-                            updateItem(item.id, { modalidade: e.target.value as ProposalMode })
-                          }
-                        >
-                          {(Object.keys(MODE_LABEL) as ProposalMode[]).map((m) => (
-                            <option key={m} value={m}>
-                              {MODE_LABEL[m]}
-                            </option>
-                          ))}
-                        </Select>
-                      </Field>
-                      <Field label="Qtd.">
-                        <Input
-                          disabled={!canEditStandard}
-                          type="number"
-                          min={1}
-                          value={item.qtd}
-                          onChange={(e) =>
-                            updateItem(item.id, { qtd: Math.max(1, Number(e.target.value) || 1) })
-                          }
-                        />
-                      </Field>
-                      <Field label="Unid.">
-                        <Input
-                          disabled={!canEditStandard}
-                          value={item.unidade}
-                          onChange={(e) => updateItem(item.id, { unidade: e.target.value })}
-                        />
-                      </Field>
-                      <Field label="Valor Unit. (R$)">
-                        <Input
-                          type="number"
-                          min={0}
-                          step="100"
-                          disabled={!canEditStandard || item.modalidade === "cortesia" || !draft.termos.mostrarValores}
-                          value={item.modalidade === "cortesia" ? 0 : item.valorUnitario}
-                          onChange={(e) =>
-                            updateItem(item.id, {
-                              valorUnitario: Math.max(0, Number(e.target.value) || 0),
-                            })
-                          }
-                        />
-                      </Field>
-                    </div>
-                    <div className="mt-2">
-                      <Field label="Especificação técnica / Aplicação">
-                        <Input
-                          disabled={!canEditStandard}
-                          value={item.especificacao}
-                          onChange={(e) => updateItem(item.id, { especificacao: e.target.value })}
-                        />
-                      </Field>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </Card>
-
-          {/* Bloco 3: Condições Comerciais Padrão */}
-          <Card>
-            <CardHeader
-              kicker="3 · Termos e Condições Padronizadas"
-              title="Condições Comerciais Oficiais"
-              action={<UserRound size={16} className="text-brand" />}
-            />
-            <div className="space-y-4 border-t border-line/70 px-5 py-4">
-              <div className="flex flex-wrap items-center justify-between gap-4 rounded-[8px] border border-line bg-soft/45 px-4 py-3">
-                <div className="flex flex-wrap items-center gap-5">
-                  {canEditStandard ? (
-                    <Checkbox
-                      checked={draft.termos.mostrarValores}
-                      onChange={(on) =>
+                <div className="grid gap-3 rounded-[8px] border border-warn/30 bg-warn-soft/20 p-3 sm:grid-cols-2 lg:grid-cols-4">
+                  <Field label="Nome Fantasia na Capa">
+                    <Input
+                      value={draft.cliente.nomeFantasia}
+                      onChange={(e) =>
                         patchDraft((cur) => ({
                           ...cur,
-                          termos: { ...cur.termos, mostrarValores: on },
+                          cliente: { ...cur.cliente, nomeFantasia: e.target.value },
                         }))
                       }
-                      label="Exibir valores financeiros (R$) na proposta"
-                      sub="Somente Administrador define política de preço aberto/comodato"
                     />
-                  ) : (
-                    <div className="text-[12.5px] font-semibold text-ink">
-                      Política de exibição de preço:{" "}
-                      <span className="text-navy">
-                        {draft.termos.mostrarValores
-                          ? "Com valores comerciais (R$)"
-                          : "Modelo técnico / Comodato (sem preço aberto)"}
-                      </span>
-                    </div>
-                  )}
-
-                  {draft.termos.mostrarValores && canEditStandard && (
-                    <div className="flex items-center gap-2 text-[12.5px]">
-                      <span className="text-muted">Desconto (%):</span>
-                      <Input
-                        type="number"
-                        min={0}
-                        max={90}
-                        value={draft.termos.descontoPct}
-                        onChange={(e) =>
-                          patchDraft((cur) => ({
-                            ...cur,
-                            termos: {
-                              ...cur.termos,
-                              descontoPct: Math.max(0, Math.min(90, Number(e.target.value) || 0)),
-                            },
-                          }))
-                        }
-                        className="h-8 w-20 text-right"
-                      />
-                    </div>
-                  )}
+                  </Field>
+                  <Field label="CNPJ">
+                    <Input
+                      value={draft.cliente.cnpj}
+                      onChange={(e) =>
+                        patchDraft((cur) => ({
+                          ...cur,
+                          cliente: { ...cur.cliente, cnpj: e.target.value },
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="WhatsApp do Consultor (Override)">
+                    <Input
+                      value={draft.vendedor.telefone}
+                      onChange={(e) =>
+                        patchDraft((cur) => ({
+                          ...cur,
+                          vendedor: { ...cur.vendedor, telefone: e.target.value },
+                        }))
+                      }
+                    />
+                  </Field>
+                  <Field label="E-mail do Consultor">
+                    <Input
+                      value={draft.vendedor.email}
+                      onChange={(e) =>
+                        patchDraft((cur) => ({
+                          ...cur,
+                          vendedor: { ...cur.vendedor, email: e.target.value },
+                        }))
+                      }
+                    />
+                  </Field>
                 </div>
-
-                {draft.termos.mostrarValores && totals && (
-                  <div className="text-right">
-                    {totals.descontoPct > 0 && (
-                      <div className="text-[11.5px] text-muted">
-                        Subtotal {money(totals.subtotal)} · Desc. -{money(totals.descontoValor)}
-                      </div>
-                    )}
-                    <div className="text-[18px] font-bold tabular-nums text-navy">
-                      Total: {money(totals.total)}
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-                <Field label="Nº da Proposta">
-                  <Input
-                    disabled={!canEditStandard}
-                    value={draft.termos.numero}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        termos: { ...cur.termos, numero: e.target.value },
-                      }))
-                    }
-                  />
-                </Field>
-                <Field label="Validade (dias)">
-                  <Input
-                    disabled={!canEditStandard}
-                    type="number"
-                    min={1}
-                    max={180}
-                    value={draft.termos.validadeDias}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        termos: {
-                          ...cur.termos,
-                          validadeDias: Math.max(1, Number(e.target.value) || 15),
-                        },
-                      }))
-                    }
-                  />
-                </Field>
-                <Field label="Condição de Pagamento">
-                  <Select
-                    disabled={!canEditStandard}
-                    value={draft.termos.condicaoPagamento}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        termos: { ...cur.termos, condicaoPagamento: e.target.value },
-                      }))
-                    }
-                  >
-                    {CONDICOES_PAGAMENTO.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                    <option value="Comodato mediante consumo mínimo">
-                      Comodato mediante consumo mínimo
-                    </option>
-                  </Select>
-                </Field>
-                <Field label="Frete / Entrega">
-                  <Input
-                    disabled={!canEditStandard}
-                    value={draft.termos.frete}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        termos: { ...cur.termos, frete: e.target.value },
-                      }))
-                    }
-                  />
-                </Field>
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Prazo de Entrega / Implantação">
-                  <Input
-                    disabled={!canEditStandard}
-                    value={draft.termos.prazoEntrega}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        termos: { ...cur.termos, prazoEntrega: e.target.value },
-                      }))
-                    }
-                  />
-                </Field>
-                <Field label="Observações Padrão da Proposta">
-                  <Input
-                    disabled={!canEditStandard}
-                    value={draft.termos.observacoes}
-                    onChange={(e) =>
-                      patchDraft((cur) => ({
-                        ...cur,
-                        termos: { ...cur.termos, observacoes: e.target.value },
-                      }))
-                    }
-                  />
-                </Field>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-3 border-t border-line/70 pt-4">
-                <Button variant="outline" onClick={() => setStep(1)}>
-                  <ArrowLeft size={14} /> Escolher outro cliente
-                </Button>
-                <div className="flex flex-wrap items-center gap-2">
-                  {canEditStandard && (
-                    <Button
-                      variant="dark"
-                      disabled={savingStandard}
-                      onClick={() => void saveAsOfficialStandard()}
-                    >
-                      <Save size={14} /> {savingStandard ? "Salvando…" : "Salvar Padrão Oficial"}
-                    </Button>
-                  )}
-                  <Button variant="primary" onClick={() => setStep(3)}>
-                    Finalizar e Gerar Proposta Pronta <ArrowRight size={14} />
-                  </Button>
-                </div>
-              </div>
+              )}
             </div>
           </Card>
+
+          {/* Bloco 3: Frota & Condições Comerciais */}
+          <div className="grid gap-4 lg:grid-cols-2">
+            <Card>
+              <CardHeader
+                kicker="3 · Diagnóstico de Frota"
+                title="Dados técnicos puxados do cliente"
+                action={<Wrench size={16} className="text-navy-3" />}
+              />
+              <div className="space-y-3 border-t border-line/70 px-5 py-4">
+                <div className="grid grid-cols-2 gap-3 text-[12.5px]">
+                  <div className="rounded-[6px] border border-line/80 bg-soft/40 p-2.5">
+                    <div className="text-[10.5px] font-bold text-muted uppercase">Colhedoras / Máquinas</div>
+                    <div className="font-bold text-ink">{draft.frota.numColhedoras} unidade(s)</div>
+                  </div>
+                  <div className="rounded-[6px] border border-line/80 bg-soft/40 p-2.5">
+                    <div className="text-[10.5px] font-bold text-muted uppercase">Modelos / Frota</div>
+                    <div className="truncate font-bold text-ink">{draft.frota.marcaFrota}</div>
+                  </div>
+                  <div className="rounded-[6px] border border-line/80 bg-soft/40 p-2.5">
+                    <div className="text-[10.5px] font-bold text-muted uppercase">Prensa Atual</div>
+                    <div className="truncate font-bold text-ink">{draft.frota.prensa}</div>
+                  </div>
+                  <div className="rounded-[6px] border border-line/80 bg-soft/40 p-2.5">
+                    <div className="text-[10.5px] font-bold text-muted uppercase">Fornecedor / Base</div>
+                    <div className="truncate font-bold text-ink">{draft.frota.fornecedorAtual}</div>
+                  </div>
+                </div>
+                {canEditStandard && (
+                  <Field label="Foco prioritário do diagnóstico">
+                    <Textarea
+                      rows={2}
+                      value={draft.frota.gargaloPrincipal}
+                      onChange={(e) =>
+                        patchDraft((cur) => ({
+                          ...cur,
+                          frota: { ...cur.frota, gargaloPrincipal: e.target.value },
+                        }))
+                      }
+                    />
+                  </Field>
+                )}
+              </div>
+            </Card>
+
+            <Card>
+              <CardHeader
+                kicker="4 · Condições Comerciais"
+                title="Condições editáveis nas Configurações"
+                action={
+                  isAdmin ? (
+                    <Link href="/configuracoes/propostas" className="text-[11.5px] font-semibold text-brand hover:underline">
+                      Adicionar / editar opções →
+                    </Link>
+                  ) : (
+                    <UserRound size={16} className="text-navy-3" />
+                  )
+                }
+              />
+              <div className="space-y-3 border-t border-line/70 px-5 py-4">
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <Field label="Condição de Pagamento">
+                    <Select
+                      value={draft.termos.condicaoPagamento}
+                      onChange={(e) => patchTermos({ condicaoPagamento: e.target.value })}
+                    >
+                      {!standard.condicoesPagamento.includes(draft.termos.condicaoPagamento) && (
+                        <option value={draft.termos.condicaoPagamento}>{draft.termos.condicaoPagamento}</option>
+                      )}
+                      {standard.condicoesPagamento.map((c) => (
+                        <option key={c} value={c}>
+                          {c}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field label="Validade (dias)">
+                    <Select
+                      value={String(draft.termos.validadeDias)}
+                      onChange={(e) => patchTermos({ validadeDias: Number(e.target.value) || 15 })}
+                    >
+                      {!standard.validadesDias.includes(draft.termos.validadeDias) && (
+                        <option value={String(draft.termos.validadeDias)}>{draft.termos.validadeDias} dias</option>
+                      )}
+                      {standard.validadesDias.map((d) => (
+                        <option key={d} value={String(d)}>
+                          {d} dias
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field label="Frete & Logística">
+                    <Select value={draft.termos.frete} onChange={(e) => patchTermos({ frete: e.target.value })}>
+                      {!standard.opcoesFrete.includes(draft.termos.frete) && (
+                        <option value={draft.termos.frete}>{draft.termos.frete}</option>
+                      )}
+                      {standard.opcoesFrete.map((f) => (
+                        <option key={f} value={f}>
+                          {f}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+
+                  <Field label="Prazo de Entrega">
+                    <Select
+                      value={draft.termos.prazoEntrega}
+                      onChange={(e) => patchTermos({ prazoEntrega: e.target.value })}
+                    >
+                      {!standard.opcoesEntrega.includes(draft.termos.prazoEntrega) && (
+                        <option value={draft.termos.prazoEntrega}>{draft.termos.prazoEntrega}</option>
+                      )}
+                      {standard.opcoesEntrega.map((p) => (
+                        <option key={p} value={p}>
+                          {p}
+                        </option>
+                      ))}
+                    </Select>
+                  </Field>
+                </div>
+
+                {canEditStandard && (
+                  <Field label="Observações Padrão">
+                    <Input
+                      value={draft.termos.observacoes}
+                      onChange={(e) =>
+                        patchDraft((cur) => ({
+                          ...cur,
+                          termos: { ...cur.termos, observacoes: e.target.value },
+                        }))
+                      }
+                    />
+                  </Field>
+                )}
+              </div>
+            </Card>
+          </div>
+
+          <div className="flex flex-wrap items-center justify-between gap-3 pt-1">
+            <Button variant="outline" onClick={() => setStep(1)}>
+              <ArrowLeft size={14} /> Voltar aos clientes
+            </Button>
+            <Button variant="primary" size="lg" onClick={() => setStep(3)}>
+              Avançar para Proposta Pronta (8 páginas A4) <ArrowRight size={15} />
+            </Button>
+          </div>
         </div>
       )}
 
-      {/* ===================================================================== */}
-      {/* PASSO 3: PROPOSTA PRONTA (SEM POLUIÇÃO VISUAL, SÓ AÇÕES DIRETAS)      */}
-      {/* ===================================================================== */}
-      {step === 3 && company && draft && totals && (
+      {/* PASSO 3: PROPOSTA PRONTA */}
+      {step === 3 && company && draft && (
         <div className="mx-auto max-w-3xl space-y-5">
           <Card className="overflow-hidden border-line bg-white shadow-sm">
-            {/* Cabeçalho Editorial de Proposta Pronta */}
             <div className="border-t-4 border-brand bg-navy px-6 py-6 text-white">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <span className="inline-flex items-center gap-1.5 text-[11.5px] font-extrabold tracking-[0.14em] text-white/85 uppercase">
                   <CheckCircle2 size={15} className="text-brand" />
-                  Proposta Oficial Pronta · {draft.termos.numero}
+                  Proposta Oficial A4 Pronta · {draft.termos.codigo}
                 </span>
                 <span className="text-[12px] text-white/75">
-                  Validade: {draft.termos.validadeDias} dias
+                  8 páginas Tawper{draft.orcamento.paginasAnexo > 0 ? ` + ${draft.orcamento.paginasAnexo} pág. ERP` : ""}
                 </span>
               </div>
-              <h2 className="mt-2 text-[24px] font-extrabold tracking-tight">
-                {draft.cliente.nomeFantasia}
-              </h2>
-              <p className="mt-1 text-[13.5px] text-white/80">
-                A/C {draft.cliente.contatoNome || "Responsável"}
-                {draft.cliente.contatoCargo ? ` (${draft.cliente.contatoCargo})` : ""} ·{" "}
-                {draft.cliente.cidadeUf || "—"} · Consultor Tawper:{" "}
-                <strong className="text-white">{draft.vendedor.nome}</strong>
+              <h2 className="mt-2 text-[22px] font-extrabold tracking-tight">{draft.cliente.nomeFantasia}</h2>
+              <p className="mt-1 text-[13px] text-white/80">
+                A/C {draft.cliente.destinatarioNome} · Consultor: {draft.vendedor.nome}{" "}
+                {draft.vendedor.telefone ? `(${draft.vendedor.telefone})` : ""}
               </p>
             </div>
 
-            {/* Resumo Limpo das Informações Alinhadas */}
-            <div className="space-y-5 p-6">
-              <div className="grid gap-4 sm:grid-cols-3">
-                <div className="border-t-2 border-navy pt-2.5">
-                  <div className="text-[10.5px] font-extrabold tracking-[0.12em] text-brand uppercase">
-                    01 · Frota Mapeada
-                  </div>
-                  <div className="mt-1 text-[14.5px] font-bold text-ink">
-                    {draft.frota.colhedoras || "—"} máquina(s)
-                  </div>
-                  <div className="mt-0.5 text-[12px] text-muted">
-                    {draft.frota.modelos || "Frota agroindustrial"} · Prensa: {draft.frota.prensa || "Padrão Tawper"}
+            <div className="space-y-4 px-6 py-5">
+              <div className="grid gap-3 rounded-[8px] border border-line bg-soft/40 p-4 sm:grid-cols-3">
+                <div>
+                  <div className="text-[11px] font-bold text-muted uppercase">Frota</div>
+                  <div className="mt-0.5 text-[14px] font-bold text-ink">
+                    {draft.frota.numColhedoras} máquinas · {draft.frota.marcaFrota}
                   </div>
                 </div>
-
-                <div className="border-t-2 border-navy pt-2.5">
-                  <div className="text-[10.5px] font-extrabold tracking-[0.12em] text-brand uppercase">
-                    02 · Escopo Técnico
-                  </div>
-                  <div className="mt-1 text-[14.5px] font-bold text-ink">
-                    {draft.itens.length} item(ns) padrão Tawper
-                  </div>
-                  <div className="mt-0.5 text-[12px] text-muted">
-                    Apresentação oficial + Rastreabilidade HydraSense
+                <div>
+                  <div className="text-[11px] font-bold text-muted uppercase">Orçamento ERP</div>
+                  <div className="mt-0.5 text-[14px] font-bold text-ink">
+                    {draft.orcamento.numeroExterno ? `#${draft.orcamento.numeroExterno}` : "Escopo padrão"}
+                    {draft.termos.mostrarValores && draft.orcamento.valorTotal
+                      ? ` · ${money(draft.orcamento.valorTotal)}`
+                      : ""}
                   </div>
                 </div>
-
-                <div className="border-t-2 border-navy pt-2.5">
-                  <div className="text-[10.5px] font-extrabold tracking-[0.12em] text-brand uppercase">
-                    03 · Condição Comercial
-                  </div>
-                  <div className="mt-1 text-[15.5px] font-extrabold tabular-nums text-navy">
-                    {draft.termos.mostrarValores ? money(totals.total) : "Comodato & Fornecimento"}
-                  </div>
-                  <div className="mt-0.5 text-[12px] text-muted">
-                    {draft.termos.condicaoPagamento} · {draft.termos.frete}
+                <div>
+                  <div className="text-[11px] font-bold text-muted uppercase">Condição Comercial</div>
+                  <div className="mt-0.5 text-[14px] font-bold text-ink">
+                    {draft.termos.condicaoPagamento} · {draft.termos.validadeDias} dias
                   </div>
                 </div>
               </div>
 
-              {/* Lista enxuta dos itens incluídos */}
-              <div className="rounded-[8px] border border-line bg-paper p-4">
-                <div className="mb-2.5 text-[11px] font-extrabold tracking-[0.1em] text-navy-3 uppercase">
-                  Itens da proposta oficial
-                </div>
-                <ul className="divide-y divide-line/60 text-[13px]">
-                  {draft.itens.map((it, idx) => (
-                    <li key={it.id} className="flex items-center justify-between gap-3 py-2 first:pt-0 last:pb-0">
-                      <div className="min-w-0">
-                        <span className="mr-2 font-bold text-brand">
-                          {String(idx + 1).padStart(2, "0")}
-                        </span>
-                        <span className="font-semibold text-ink">{it.equipamento}</span>
-                        <span className="ml-2 text-[11.5px] text-muted">
-                          ({MODE_LABEL[it.modalidade]} · {it.qtd} {it.unidade})
-                        </span>
-                      </div>
-                      {draft.termos.mostrarValores && (
-                        <span className="shrink-0 font-bold tabular-nums text-ink">
-                          {it.modalidade === "cortesia" || it.valorUnitario === 0
-                            ? "Incluso"
-                            : money(it.qtd * it.valorUnitario)}
-                        </span>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-
-              {/* Botões Principais de Entrega */}
-              <div className="grid gap-3 pt-2 sm:grid-cols-2">
+              <div className="grid gap-3 sm:grid-cols-2">
                 <Button
                   variant="primary"
                   size="lg"
@@ -1340,41 +1192,43 @@ function PropostasInner() {
                   onClick={() => void generatePdf("download")}
                   className="w-full justify-center"
                 >
-                  <Download size={16} /> {busyPdf ? "Gerando PDF…" : "Baixar Proposta em PDF"}
+                  <Download size={16} />{" "}
+                  {busyPdf
+                    ? "Gerando PDF A4…"
+                    : attachedErp
+                      ? `Baixar PDF Completo (${totalPdfPages} págs. A4)`
+                      : "Baixar PDF A4 Sem Bordas (8 págs.)"}
                 </Button>
 
-                <Button
-                  variant="outline"
-                  size="lg"
-                  onClick={printWidescreenProposal}
-                  className="w-full justify-center"
-                >
-                  <Printer size={16} /> Imprimir Apresentação Comercial
+                <Button variant="outline" size="lg" onClick={printA4Deck} className="w-full justify-center">
+                  <Printer size={16} /> Imprimir Apresentação A4 (8 págs.)
                 </Button>
               </div>
 
               <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-4">
                 <div className="flex flex-wrap items-center gap-2">
                   <Button variant="ghost" size="sm" onClick={() => setStep(2)}>
-                    <ArrowLeft size={14} /> Voltar
+                    <ArrowLeft size={14} /> Ajustar orçamento / condições
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    disabled={busyPdf}
-                    onClick={() => void generatePdf("preview")}
-                  >
-                    <Eye size={14} /> Visualizar PDF
+                  <Button variant="outline" size="sm" disabled={busyPdf} onClick={() => void generatePdf("preview")}>
+                    <Eye size={14} /> Visualizar PDF A4
                   </Button>
                 </div>
 
                 <Button
                   variant={already ? "success" : "dark"}
                   size="sm"
-                  disabled={!deal || already}
-                  onClick={marcarEnviada}
+                  disabled={!deal || already || savingQuote}
+                  onClick={() => void saveAndMarkSent()}
                 >
-                  <Check size={14} /> {already ? "Proposta já marcada como enviada" : "Marcar como enviada no Funil"}
+                  <Check size={14} />{" "}
+                  {savingQuote
+                    ? "Salvando…"
+                    : already
+                      ? "Proposta já marcada como enviada"
+                      : attachedErp
+                        ? "Salvar orçamento & marcar enviada"
+                        : "Marcar como enviada no Funil"}
                 </Button>
               </div>
             </div>
@@ -1382,17 +1236,15 @@ function PropostasInner() {
         </div>
       )}
 
-      {/* Iframe oculto apenas para disparo de impressão widescreen quando solicitado */}
       <iframe
         ref={hiddenPrintFrameRef}
-        title="Impressão da Proposta Tawper"
-        className="pointer-events-none fixed -left-[9999px] top-0 h-[900px] w-[1600px] opacity-0"
+        title="Impressão A4 da Proposta Tawper"
+        className="pointer-events-none fixed -left-[9999px] top-0 h-[1122px] w-[794px] opacity-0"
       />
 
-      {/* Modal de Pré-visualização Real do PDF */}
       {previewUrl && draft && (
         <Modal
-          title={`Proposta Comercial · ${draft.termos.numero} (${draft.cliente.nomeFantasia})`}
+          title={`Proposta Comercial A4 · ${draft.termos.codigo} (${draft.cliente.nomeFantasia})`}
           onClose={() => {
             URL.revokeObjectURL(previewUrl);
             setPreviewUrl(null);
@@ -1418,7 +1270,7 @@ function PropostasInner() {
           <div className="h-[72vh] w-full overflow-hidden rounded-[6px] border border-line bg-soft">
             <iframe
               src={previewUrl}
-              title={`Pré-visualização da proposta ${draft.termos.numero}`}
+              title={`Pré-visualização da proposta ${draft.termos.codigo}`}
               className="h-full w-full"
             />
           </div>
