@@ -68,7 +68,7 @@ const sampleDeal: Deal = {
   ciclo: 1,
 };
 
-describe("proposal A4 & ERP PDF merge", () => {
+describe("proposal official HTML presentation (9 slides) & ERP PDF merge", () => {
   it("normalizes unsupported glyphs for WinAnsi PDF embedding", () => {
     expect(pdfSafeText("Proposta — Frota • Safra 2026 ✅")).toBe("Proposta - Frota - Safra 2026");
   });
@@ -91,7 +91,7 @@ describe("proposal A4 & ERP PDF merge", () => {
     expect(DEFAULT_PROPOSAL_STANDARD.validadesDias).toContain(input.termos.validadeDias);
   });
 
-  it("generates strictly 8 A4 pages without ERP attachment and merges all ERP pages cleanly", async () => {
+  it("generates strictly 9 presentation slides in PDF without ERP attachment and merges all ERP pages cleanly", async () => {
     const input = buildInitialProposalInput({
       company: sampleCompany,
       contact: sampleContact,
@@ -102,10 +102,10 @@ describe("proposal A4 & ERP PDF merge", () => {
 
     const basePdfBytes = await buildProposalPdfBytes(input);
     const baseDoc = await PDFDocument.load(basePdfBytes);
-    expect(baseDoc.getPageCount()).toBe(8);
+    expect(baseDoc.getPageCount()).toBe(9);
     const p1Size = baseDoc.getPage(0).getSize();
-    expect(Math.round(p1Size.width)).toBe(595);
-    expect(Math.round(p1Size.height)).toBe(842);
+    expect(Math.round(p1Size.width)).toBe(842);
+    expect(Math.round(p1Size.height)).toBe(595);
 
     // Create a synthetic 2-page ERP quote PDF
     const syntheticErp = await PDFDocument.create();
@@ -119,10 +119,10 @@ describe("proposal A4 & ERP PDF merge", () => {
 
     const mergedBytes = await buildProposalPdfBytes(input, { erpPdfBytes });
     const mergedDoc = await PDFDocument.load(mergedBytes);
-    expect(mergedDoc.getPageCount()).toBe(10);
+    expect(mergedDoc.getPageCount()).toBe(11);
   });
 
-  it("builds a borderless A4 HTML presentation deck with strictly 8 slides (< 10) and zero sorteio", () => {
+  it("uses the original Tawper HTML & CSS presentation condensed to 9 slides (< 10) with zero sorteio", () => {
     const input = buildInitialProposalInput({
       company: sampleCompany,
       contact: sampleContact,
@@ -136,9 +136,13 @@ describe("proposal A4 & ERP PDF merge", () => {
 
     const deck = buildTawperPresentationDeck(input, { baseUrl: "/apresentacao-tawper" });
 
-    expect(deck.slides).toHaveLength(8);
+    expect(deck.slides).toHaveLength(9);
     expect(deck.slides.length).toBeLessThan(10);
-    expect(deck.html).toContain("@page { size: A4 portrait; margin: 0; }");
+    expect(deck.html).toContain("/apresentacao-tawper/apresentacao.css");
+    expect(deck.html).toContain("/apresentacao-tawper/refinamentos.css");
+    expect(deck.html).toContain("Mangueiras de tecnologia europeia.");
+    expect(deck.html).toContain("Prensagem padronizada.");
+    expect(deck.html).toContain("O DNA de cada mangueira.");
     expect(deck.html).toContain("ERP-009911");
     expect(deck.html).toContain("5517981640028");
     expect(deck.html.toLowerCase()).not.toContain("sorteio");

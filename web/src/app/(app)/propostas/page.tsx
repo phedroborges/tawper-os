@@ -15,6 +15,7 @@ import {
   FileText,
   FileUp,
   Lock,
+  Maximize2,
   Printer,
   Save,
   Search,
@@ -54,7 +55,7 @@ import { useCurrentUser, useStore } from "@/lib/store";
 import { buildTawperPresentationDeck } from "@/lib/tawper-presentation";
 import type { Quote } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
-import { cn, money, normalize } from "@/lib/utils";
+import { cn, normalize } from "@/lib/utils";
 
 const TAWPER_LOGO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 198.28 52.38" width="396" height="104"><path fill="#FFFFFF" d="M29.41,0L0,0l0,9.56l9.65,0l0,26.6l10.12,0l0,-26.6l9.64,0l0,-9.56Z"/><polygon fill="#E31C3F" points="10.97,52.38 0.25,52.38 11.4,40.31 22.13,40.31 10.97,52.38"/><path fill="#FFFFFF" d="M40.82,16.92c2.1,-2.22 5.29,-3.34 9.57,-3.34c4.32,0 7.51,1.03 9.58,3.08c2.07,2.06 3.1,5.02 3.1,8.88l0,16.57l-9.42,0l0,-3.44c-1.69,2.52 -4.38,3.79 -8.07,3.79c-2.99,0 -5.37,-0.8 -7.15,-2.41c-1.78,-1.6 -2.67,-3.72 -2.67,-6.35c0,-2.84 1.04,-5.02 3.11,-6.52c2.07,-1.5 5.14,-2.25 9.21,-2.25l5.42,0l0,-0.69c0,-1.44 -0.42,-2.54 -1.26,-3.3c-0.84,-0.76 -2.12,-1.14 -3.84,-1.14c-2.55,0 -4.29,0.99 -5.22,2.96l-8.46,-2.34c0.63,-1.35 1.33,-2.52 2.1,-3.5Zm10.02,16.65c1.1,0 2.02,-0.34 2.74,-1.02c0.73,-0.68 1.1,-1.56 1.1,-2.65l0,-1.28l-4.23,0c-2.79,0 -4.18,0.89 -4.18,2.67c0,0.72 0.29,1.29 0.87,1.7c0.58,0.41 1.35,0.58 2.7,0.58Z"/></svg>`;
 
@@ -106,7 +107,7 @@ async function loadCompressedJpgBytes(urlPath: string, maxWidth = 1050): Promise
     canvas.height = h;
     const ctx = canvas.getContext("2d");
     if (!ctx) return undefined;
-    ctx.fillStyle = "#0e1016";
+    ctx.fillStyle = "#141d35";
     ctx.fillRect(0, 0, w, h);
     ctx.drawImage(img, 0, 0, w, h);
     const jpgBlob = await new Promise<Blob | null>((r) => canvas.toBlob(r, "image/jpeg", 0.78));
@@ -146,10 +147,11 @@ interface ParsedErpResponse {
 interface PdfAssetBundle {
   logoPngBytes?: Uint8Array | null;
   capaHeroBytes?: Uint8Array | null;
+  reliabilityBytes?: Uint8Array | null;
   terminaisBytes?: Uint8Array | null;
   coresBytes?: Uint8Array | null;
   prensaBytes?: Uint8Array | null;
-  academyBytes?: Uint8Array | null;
+  hydrasenseBytes?: Uint8Array | null;
 }
 
 function PropostasInner() {
@@ -211,7 +213,9 @@ function PropostasInner() {
   const [draftOverridesByCompany, setDraftOverridesByCompany] = useState<Record<string, ProposalDocumentInput>>({});
   const [selectedContactIdByCompany, setSelectedContactIdByCompany] = useState<Record<string, string>>({});
   const [selectedSellerIdByCompany, setSelectedSellerIdByCompany] = useState<Record<string, string>>({});
-  const [erpFileByCompany, setErpFileByCompany] = useState<Record<string, { file: File; bytes: Uint8Array; usedAi: boolean } | undefined>>({});
+  const [erpFileByCompany, setErpFileByCompany] = useState<
+    Record<string, { file: File; bytes: Uint8Array; usedAi: boolean } | undefined>
+  >({});
   const [erpMetaByCompany, setErpMetaByCompany] = useState<Record<string, Partial<ProposalBudgetMeta> | undefined>>({});
   const [termsOverrideByCompany, setTermsOverrideByCompany] = useState<
     Record<string, Partial<ProposalDocumentInput["termos"]> | undefined>
@@ -221,15 +225,28 @@ function PropostasInner() {
   const [busyPdf, setBusyPdf] = useState(false);
   const [savingQuote, setSavingQuote] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [activeSlideIndex, setActiveSlideIndex] = useState(0);
+
   const assetCacheRef = useRef<PdfAssetBundle | null>(null);
   const erpInputRef = useRef<HTMLInputElement | null>(null);
-  const hiddenPrintFrameRef = useRef<HTMLIFrameElement | null>(null);
+  const deckFrameRef = useRef<HTMLIFrameElement | null>(null);
 
   useEffect(() => {
     return () => {
       if (previewUrl) URL.revokeObjectURL(previewUrl);
     };
   }, [previewUrl]);
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      const data = event.data;
+      if (data && typeof data === "object" && data.type === "TAWPER_DECK_SLIDE_CHANGE" && typeof data.index === "number") {
+        setActiveSlideIndex(data.index);
+      }
+    };
+    window.addEventListener("message", onMessage);
+    return () => window.removeEventListener("message", onMessage);
+  }, []);
 
   const activeContactId = company
     ? selectedContactIdByCompany[company.id] ?? contacts[0]?.id ?? ""
@@ -297,6 +314,15 @@ function PropostasInner() {
     };
   }, [company, baseDraft, canEditStandard, draftOverridesByCompany, erpMetaByCompany, termsOverrideByCompany]);
 
+  const builtDeck = useMemo(() => {
+    if (!draft) return null;
+    return buildTawperPresentationDeck(draft, {
+      mode: "executive",
+      baseUrl: "/apresentacao-tawper",
+      initialSlideIndex: 0,
+    });
+  }, [draft]);
+
   const patchDraft = (updater: (cur: ProposalDocumentInput) => ProposalDocumentInput) => {
     if (!canEditStandard || !company || !draft) return;
     setDraftOverridesByCompany((prev) => ({
@@ -327,6 +353,7 @@ function PropostasInner() {
       URL.revokeObjectURL(previewUrl);
       setPreviewUrl(null);
     }
+    setActiveSlideIndex(0);
     setStep(2);
   };
 
@@ -419,7 +446,7 @@ function PropostasInner() {
 
       toast(`Orçamento ERP anexado (${data.pageCount || 1} pág.)`, {
         sub: data.usedAi
-          ? "IA leu o PDF, resumiu o escopo e vai anexar as páginas originais."
+          ? "IA leu o PDF, resumiu o escopo no slide comercial e anexou as páginas originais."
           : "PDF validado e pronto para ser anexado no final da proposta.",
       });
     } catch (e) {
@@ -471,25 +498,28 @@ function PropostasInner() {
     const [
       logoPngBytes,
       capaHeroBytes,
+      reliabilityBytes,
       terminaisBytes,
       coresBytes,
       prensaBytes,
-      academyBytes,
+      hydrasenseBytes,
     ] = await Promise.all([
       getLogoPngBytes(),
-      loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/14-capa-terminais-catalogo.png", 1050),
+      loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/14-capa-terminais-catalogo.png", 1100),
+      loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/23-confiabilidade-cana-usina.png", 1050),
       loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/17-mangueiras-catalogo.png", 1000),
       loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/06-sistema-cores.png", 1000),
       loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/18-prensa-catalogo.png", 1000),
-      loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/20-academy-catalogo.png", 1000),
+      loadCompressedJpgBytes("/apresentacao-tawper/assets/geradas/22-hydrasense-vertical.png", 1000),
     ]);
     const bundle: PdfAssetBundle = {
       logoPngBytes: logoPngBytes ?? null,
       capaHeroBytes: capaHeroBytes ?? null,
+      reliabilityBytes: reliabilityBytes ?? null,
       terminaisBytes: terminaisBytes ?? null,
       coresBytes: coresBytes ?? null,
       prensaBytes: prensaBytes ?? null,
-      academyBytes: academyBytes ?? null,
+      hydrasenseBytes: hydrasenseBytes ?? null,
     };
     assetCacheRef.current = bundle;
     return bundle;
@@ -519,9 +549,9 @@ function PropostasInner() {
         a.click();
         a.remove();
         setTimeout(() => URL.revokeObjectURL(url), 5000);
-        toast("Proposta A4 gerada", {
+        toast("Proposta em PDF baixada", {
           sub: attached
-            ? `8 páginas Tawper + ${draft.orcamento.paginasAnexo} pág(s). do orçamento ERP (${fileName})`
+            ? `9 slides Tawper + ${draft.orcamento.paginasAnexo} pág(s). do orçamento ERP (${fileName})`
             : fileName,
         });
       } else {
@@ -534,28 +564,22 @@ function PropostasInner() {
     } catch (e) {
       toast("Erro ao gerar PDF", {
         tone: "warn",
-        sub: e instanceof Error ? e.message : "Não foi possível montar o arquivo PDF A4.",
+        sub: e instanceof Error ? e.message : "Não foi possível montar o arquivo PDF.",
       });
     } finally {
       setBusyPdf(false);
     }
   };
 
-  const printA4Deck = () => {
-    if (!draft) return;
-    const built = buildTawperPresentationDeck(draft, {
-      mode: "executive",
-      baseUrl: "/apresentacao-tawper",
-      initialSlideIndex: 0,
-    });
-    const frame = hiddenPrintFrameRef.current;
-    if (!frame) return;
-    frame.srcdoc = built.html;
-    frame.onload = () => {
-      setTimeout(() => {
-        frame.contentWindow?.print();
-      }, 350);
-    };
+  const sendDeckCommand = (payload: Record<string, unknown>) => {
+    deckFrameRef.current?.contentWindow?.postMessage(payload, "*");
+  };
+
+  const printHtmlPresentation = () => {
+    if (deckFrameRef.current?.contentWindow) {
+      deckFrameRef.current.contentWindow.focus();
+      deckFrameRef.current.contentWindow.print();
+    }
   };
 
   const already = Boolean(deal?.checklist.proposta_enviada);
@@ -608,14 +632,14 @@ function PropostasInner() {
   };
 
   const attachedErp = company ? erpFileByCompany[company.id] : undefined;
-  const totalPdfPages = 8 + (draft?.orcamento.paginasAnexo || 0);
+  const totalPdfPages = 9 + (draft?.orcamento.paginasAnexo || 0);
 
   return (
-    <div className="mx-auto max-w-5xl space-y-6 pb-10">
+    <div className="mx-auto max-w-6xl space-y-6 pb-10">
       <PageHeader
-        kicker="Comercial · Proposta Executiva A4 (8 páginas)"
+        kicker="Comercial · Apresentação Oficial Tawper (9 Slides)"
         title="Gerador de Proposta Comercial Tawper"
-        subtitle="Modelo institucional padronizado (sem edição livre) integrado ao orçamento PDF emitido no ERP e pronto para impressão A4 sem bordas."
+        subtitle="Apresentação oficial em HTML resumida em 9 slides (< 10), personalizada com os dados do cliente, condições comerciais e orçamento do ERP anexo."
         actions={
           <div className="flex items-center gap-2">
             {isAdmin && (
@@ -638,7 +662,7 @@ function PropostasInner() {
         {[
           { n: 1 as const, label: "Passo 1", title: company ? company.nome : "Escolher o Cliente", enabled: true },
           { n: 2 as const, label: "Passo 2", title: "Orçamento ERP & Condições", enabled: Boolean(company) },
-          { n: 3 as const, label: "Passo 3", title: "Proposta A4 Pronta", enabled: Boolean(company && draft) },
+          { n: 3 as const, label: "Passo 3", title: "Apresentação & PDF Prontos", enabled: Boolean(company && draft) },
         ].map((st) => (
           <button
             key={st.n}
@@ -781,7 +805,7 @@ function PropostasInner() {
                 </>
               )}
               <Button variant="primary" size="sm" onClick={() => setStep(3)}>
-                Gerar Proposta Pronta <ArrowRight size={14} />
+                Ver Apresentação Pronta (9 Slides) <ArrowRight size={14} />
               </Button>
             </div>
           </div>
@@ -790,7 +814,7 @@ function PropostasInner() {
           <Card className="border-t-4 border-brand">
             <CardHeader
               kicker="1 · Orçamento Oficial do Sistema Externo (ERP)"
-              title="Anexar orçamento em PDF e gerar leitura executiva"
+              title="Anexar orçamento em PDF e alimentar o slide comercial"
               action={<FileText size={16} className="text-brand" />}
             />
             <div className="space-y-4 border-t border-line/70 px-5 py-4">
@@ -802,7 +826,7 @@ function PropostasInner() {
                       : "Nenhum orçamento PDF do ERP anexado ainda"}
                   </div>
                   <p className="text-[12px] text-muted">
-                    A IA extrai número, valor total e resumo qualitativo. Todas as páginas originais do orçamento do ERP serão anexadas automaticamente ao final da proposta A4.
+                    A IA extrai número, valor total e resumo qualitativo para o Slide 08 da apresentação, e anexa as páginas originais do orçamento ERP ao final do PDF.
                   </p>
                 </div>
                 <div className="flex items-center gap-2">
@@ -845,7 +869,10 @@ function PropostasInner() {
                     onChange={(e) => patchOrcamento({ numeroExterno: e.target.value })}
                   />
                 </Field>
-                <Field label="Valor Total do Orçamento (R$)" hint={draft.termos.mostrarValores ? "Exibido na proposta" : "Oculto na capa"}>
+                <Field
+                  label="Valor Total do Orçamento (R$)"
+                  hint={draft.termos.mostrarValores ? "Exibido no Slide 08" : "Oculto na proposta"}
+                >
                   <Input
                     type="number"
                     step="0.01"
@@ -863,14 +890,14 @@ function PropostasInner() {
                     <Checkbox
                       checked={draft.termos.mostrarValores}
                       onChange={(v) => patchTermos({ mostrarValores: v })}
-                      label="Mostrar valor total na capa/resumo"
+                      label="Mostrar valor total no Slide 08"
                     />
                   </div>
                 </Field>
               </div>
 
               <Field
-                label="Resumo Executivo do Escopo (leitura automática do orçamento / editável para apresentação)"
+                label="Resumo Executivo do Escopo (exibido no Slide 08 Comercial)"
                 hint={attachedErp?.usedAi ? "Extraído pela IA" : undefined}
               >
                 <Textarea
@@ -884,8 +911,11 @@ function PropostasInner() {
                 <div className="flex flex-wrap items-center gap-2 text-[12px] text-good">
                   <Sparkles size={14} />
                   <span>
-                    Documento final consolidado terá{" "}
-                    <strong>8 páginas institucionais Tawper + {draft.orcamento.paginasAnexo} página(s) do orçamento ERP = {totalPdfPages} páginas A4 sem bordas</strong>.
+                    PDF consolidado terá{" "}
+                    <strong>
+                      9 slides oficiais Tawper + {draft.orcamento.paginasAnexo} página(s) do orçamento ERP = {totalPdfPages} páginas
+                    </strong>
+                    .
                   </span>
                 </div>
               )}
@@ -896,7 +926,7 @@ function PropostasInner() {
           <Card>
             <CardHeader
               kicker="2 · Destinatário & Consultor Comercial"
-              title="Dados que vão na capa e na assinatura da proposta"
+              title="Dados que vão na Capa (Slide 01), Diagnóstico (Slide 02) e Contato (Slide 09)"
               action={<Building2 size={16} className="text-navy-3" />}
             />
             <div className="space-y-4 border-t border-line/70 px-5 py-4">
@@ -992,7 +1022,7 @@ function PropostasInner() {
           <div className="grid gap-4 lg:grid-cols-2">
             <Card>
               <CardHeader
-                kicker="3 · Diagnóstico de Frota"
+                kicker="3 · Diagnóstico de Frota (Slide 02)"
                 title="Dados técnicos puxados do cliente"
                 action={<Wrench size={16} className="text-navy-3" />}
               />
@@ -1016,7 +1046,7 @@ function PropostasInner() {
                   </div>
                 </div>
                 {canEditStandard && (
-                  <Field label="Foco prioritário do diagnóstico">
+                  <Field label="Objetivo técnico / diretrizes da implantação">
                     <Textarea
                       rows={2}
                       value={draft.frota.gargaloPrincipal}
@@ -1034,7 +1064,7 @@ function PropostasInner() {
 
             <Card>
               <CardHeader
-                kicker="4 · Condições Comerciais"
+                kicker="4 · Condições Comerciais (Slide 08)"
                 title="Condições editáveis nas Configurações"
                 action={
                   isAdmin ? (
@@ -1109,20 +1139,6 @@ function PropostasInner() {
                     </Select>
                   </Field>
                 </div>
-
-                {canEditStandard && (
-                  <Field label="Observações Padrão">
-                    <Input
-                      value={draft.termos.observacoes}
-                      onChange={(e) =>
-                        patchDraft((cur) => ({
-                          ...cur,
-                          termos: { ...cur.termos, observacoes: e.target.value },
-                        }))
-                      }
-                    />
-                  </Field>
-                )}
               </div>
             </Card>
           </div>
@@ -1132,89 +1148,50 @@ function PropostasInner() {
               <ArrowLeft size={14} /> Voltar aos clientes
             </Button>
             <Button variant="primary" size="lg" onClick={() => setStep(3)}>
-              Avançar para Proposta Pronta (8 páginas A4) <ArrowRight size={15} />
+              Avançar para Apresentação Oficial Pronta (9 Slides) <ArrowRight size={15} />
             </Button>
           </div>
         </div>
       )}
 
-      {/* PASSO 3: PROPOSTA PRONTA */}
-      {step === 3 && company && draft && (
-        <div className="mx-auto max-w-3xl space-y-5">
+      {/* PASSO 3: APRESENTAÇÃO HTML OFICIAL (9 SLIDES) + PDF */}
+      {step === 3 && company && draft && builtDeck && (
+        <div className="space-y-4">
+          {/* Barra de ações principal */}
           <Card className="overflow-hidden border-line bg-white shadow-sm">
-            <div className="border-t-4 border-brand bg-navy px-6 py-6 text-white">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <span className="inline-flex items-center gap-1.5 text-[11.5px] font-extrabold tracking-[0.14em] text-white/85 uppercase">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t-4 border-brand bg-navy px-6 py-4 text-white">
+              <div>
+                <div className="flex items-center gap-2">
                   <CheckCircle2 size={15} className="text-brand" />
-                  Proposta Oficial A4 Pronta · {draft.termos.codigo}
-                </span>
-                <span className="text-[12px] text-white/75">
-                  8 páginas Tawper{draft.orcamento.paginasAnexo > 0 ? ` + ${draft.orcamento.paginasAnexo} pág. ERP` : ""}
-                </span>
-              </div>
-              <h2 className="mt-2 text-[22px] font-extrabold tracking-tight">{draft.cliente.nomeFantasia}</h2>
-              <p className="mt-1 text-[13px] text-white/80">
-                A/C {draft.cliente.destinatarioNome} · Consultor: {draft.vendedor.nome}{" "}
-                {draft.vendedor.telefone ? `(${draft.vendedor.telefone})` : ""}
-              </p>
-            </div>
-
-            <div className="space-y-4 px-6 py-5">
-              <div className="grid gap-3 rounded-[8px] border border-line bg-soft/40 p-4 sm:grid-cols-3">
-                <div>
-                  <div className="text-[11px] font-bold text-muted uppercase">Frota</div>
-                  <div className="mt-0.5 text-[14px] font-bold text-ink">
-                    {draft.frota.numColhedoras} máquinas · {draft.frota.marcaFrota}
-                  </div>
+                  <span className="text-[11px] font-extrabold tracking-[0.14em] text-white/85 uppercase">
+                    Apresentação Oficial Tawper · {draft.termos.codigo} · 9 Slides
+                  </span>
                 </div>
-                <div>
-                  <div className="text-[11px] font-bold text-muted uppercase">Orçamento ERP</div>
-                  <div className="mt-0.5 text-[14px] font-bold text-ink">
-                    {draft.orcamento.numeroExterno ? `#${draft.orcamento.numeroExterno}` : "Escopo padrão"}
-                    {draft.termos.mostrarValores && draft.orcamento.valorTotal
-                      ? ` · ${money(draft.orcamento.valorTotal)}`
-                      : ""}
-                  </div>
-                </div>
-                <div>
-                  <div className="text-[11px] font-bold text-muted uppercase">Condição Comercial</div>
-                  <div className="mt-0.5 text-[14px] font-bold text-ink">
-                    {draft.termos.condicaoPagamento} · {draft.termos.validadeDias} dias
-                  </div>
-                </div>
+                <h2 className="mt-1 text-[19px] font-extrabold tracking-tight">
+                  {draft.cliente.nomeFantasia}{" "}
+                  <span className="text-[13px] font-normal text-white/75">
+                    · A/C {draft.cliente.destinatarioNome} · Consultor: {draft.vendedor.nome}
+                  </span>
+                </h2>
               </div>
 
-              <div className="grid gap-3 sm:grid-cols-2">
+              <div className="flex flex-wrap items-center gap-2">
+                <Button variant="outline" size="sm" onClick={printHtmlPresentation}>
+                  <Printer size={14} /> Salvar / Imprimir Apresentação (HTML → PDF)
+                </Button>
                 <Button
                   variant="primary"
-                  size="lg"
+                  size="sm"
                   disabled={busyPdf}
                   onClick={() => void generatePdf("download")}
-                  className="w-full justify-center"
                 >
-                  <Download size={16} />{" "}
+                  <Download size={14} />{" "}
                   {busyPdf
-                    ? "Gerando PDF A4…"
+                    ? "Gerando PDF…"
                     : attachedErp
-                      ? `Baixar PDF Completo (${totalPdfPages} págs. A4)`
-                      : "Baixar PDF A4 Sem Bordas (8 págs.)"}
+                      ? `Baixar PDF + Orçamento ERP (${totalPdfPages} págs.)`
+                      : "Baixar PDF Direto (9 slides)"}
                 </Button>
-
-                <Button variant="outline" size="lg" onClick={printA4Deck} className="w-full justify-center">
-                  <Printer size={16} /> Imprimir Apresentação A4 (8 págs.)
-                </Button>
-              </div>
-
-              <div className="flex flex-wrap items-center justify-between gap-2 border-t border-line/70 pt-4">
-                <div className="flex flex-wrap items-center gap-2">
-                  <Button variant="ghost" size="sm" onClick={() => setStep(2)}>
-                    <ArrowLeft size={14} /> Ajustar orçamento / condições
-                  </Button>
-                  <Button variant="outline" size="sm" disabled={busyPdf} onClick={() => void generatePdf("preview")}>
-                    <Eye size={14} /> Visualizar PDF A4
-                  </Button>
-                </div>
-
                 <Button
                   variant={already ? "success" : "dark"}
                   size="sm"
@@ -1225,26 +1202,69 @@ function PropostasInner() {
                   {savingQuote
                     ? "Salvando…"
                     : already
-                      ? "Proposta já marcada como enviada"
+                      ? "Marcada como enviada"
                       : attachedErp
                         ? "Salvar orçamento & marcar enviada"
-                        : "Marcar como enviada no Funil"}
+                        : "Marcar enviada"}
                 </Button>
               </div>
+            </div>
+
+            {/* Atalhos rápidos dos 9 slides da apresentação oficial */}
+            <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-soft/40 px-4 py-2.5">
+              <div className="flex flex-wrap items-center gap-1.5">
+                {builtDeck.slides.map((sl) => (
+                  <button
+                    key={sl.id}
+                    type="button"
+                    onClick={() => {
+                      setActiveSlideIndex(sl.index);
+                      sendDeckCommand({ type: "TAWPER_DECK_GOTO", index: sl.index });
+                    }}
+                    className={cn(
+                      "rounded-[5px] px-2.5 py-1 text-[11.5px] font-bold transition-colors",
+                      activeSlideIndex === sl.index
+                        ? "bg-brand text-white"
+                        : "bg-white text-ink border border-line hover:border-navy/40",
+                    )}
+                  >
+                    {String(sl.index + 1).padStart(2, "0")} · {sl.chapter}
+                  </button>
+                ))}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => sendDeckCommand({ type: "TAWPER_DECK_FULLSCREEN" })}
+                >
+                  <Maximize2 size={13} /> Tela cheia
+                </Button>
+                <Button variant="ghost" size="xs" disabled={busyPdf} onClick={() => void generatePdf("preview")}>
+                  <Eye size={13} /> Ver PDF com Anexo
+                </Button>
+                <Button variant="ghost" size="xs" onClick={() => setStep(2)}>
+                  <ArrowLeft size={13} /> Voltar
+                </Button>
+              </div>
+            </div>
+
+            {/* Palco 16:9 com a apresentação HTML original exata */}
+            <div className="relative aspect-video w-full overflow-hidden bg-[#0c101a]">
+              <iframe
+                ref={deckFrameRef}
+                srcDoc={builtDeck.html}
+                title={`Apresentação Comercial Tawper · ${draft.cliente.nomeFantasia}`}
+                className="h-full w-full border-0"
+              />
             </div>
           </Card>
         </div>
       )}
 
-      <iframe
-        ref={hiddenPrintFrameRef}
-        title="Impressão A4 da Proposta Tawper"
-        className="pointer-events-none fixed -left-[9999px] top-0 h-[1122px] w-[794px] opacity-0"
-      />
-
       {previewUrl && draft && (
         <Modal
-          title={`Proposta Comercial A4 · ${draft.termos.codigo} (${draft.cliente.nomeFantasia})`}
+          title={`PDF Consolidado · ${draft.termos.codigo} (${draft.cliente.nomeFantasia})`}
           onClose={() => {
             URL.revokeObjectURL(previewUrl);
             setPreviewUrl(null);

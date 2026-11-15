@@ -21,8 +21,11 @@ export async function POST(request: Request) {
       throw new AuthError("E-mail ou senha incorretos.");
     }
 
-    // Quem entra é quem está ativo no painel Equipe (o id do Auth é o id do perfil).
-    const member = (await loadTeam(true)).find((item) => item.id === signed.data.user.id);
+    // Quem entra é quem está ativo no painel Equipe (por id do Auth ou e-mail corporativo).
+    const team = await loadTeam(true);
+    const member =
+      team.find((item) => item.id === signed.data.user.id) ??
+      team.find((item) => item.email.trim().toLowerCase() === email);
     if (!member?.ativo) throw new AuthError("Este usuário não tem acesso ao Tawper OS. Fale com o administrador.");
 
     const session = createSessionForUser(member.id, member);

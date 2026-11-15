@@ -10,7 +10,9 @@ function isPublic(pathname: string) {
   if (pathname === "/entrar") return true;
   if (pathname === "/api/health") return true;
   if (pathname.startsWith("/api/auth/login")) return true;
+  if (pathname.startsWith("/api/auth/google")) return true;
   if (pathname.startsWith("/api/auth/me")) return true;
+  if (pathname.startsWith("/apresentacao-tawper")) return true;
   if (pathname.startsWith("/api/whatsapp/webhook")) return true;
   if (pathname.startsWith("/api/whatsapp/agent/webhook")) return true;
   // Rotas internas: cada uma confere o próprio token.

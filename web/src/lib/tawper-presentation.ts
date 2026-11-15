@@ -1,5 +1,5 @@
+import institutionalSlidesData from "./tawper-slides-data.json";
 import type { ProposalDocumentInput } from "./proposal";
-import { money } from "./utils";
 
 export type PresentationDeckMode = "executive" | "complete";
 
@@ -9,8 +9,20 @@ export interface SlideDescriptor {
   title: string;
   chapter: string;
   isCustom?: boolean;
-  customKey?: "cover" | "diagnosis" | "scope" | "commercial" | "closing";
+  customKey?: "cover" | "diagnosis" | "commercial" | "closing";
 }
+
+interface RawInstitutionalSlide {
+  originalNum: number;
+  title: string;
+  chapter: string;
+  notes: string;
+  sources: string;
+  visual: string;
+  html: string;
+}
+
+const INSTITUTIONAL_SLIDES = institutionalSlidesData as RawInstitutionalSlide[];
 
 function esc(raw: string | number | undefined | null): string {
   if (raw === undefined || raw === null) return "";
@@ -19,6 +31,15 @@ function esc(raw: string | number | undefined | null): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+function fmtMoney(v: number): string {
+  return v.toLocaleString("pt-BR", {
+    style: "currency",
+    currency: "BRL",
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
+  });
 }
 
 function fmtDateBr(raw: string): string {
@@ -32,14 +53,60 @@ function fmtDateBr(raw: string): string {
 function addDaysBr(raw: string, days: number): string {
   let base: Date;
   if (/^\d{2}\/\d{2}\/\d{4}$/.test(raw)) {
-    const [d, m, y] = raw.split("/").map(Number);
-    base = new Date(y, m - 1, d);
+    const [d, m, y] = raw.split("/");
+    base = new Date(`${y}-${m}-${d}T12:00:00`);
   } else {
-    base = new Date(`${raw}T12:00:00`);
+    base = raw ? new Date(`${raw}T12:00:00`) : new Date();
   }
-  if (Number.isNaN(base.getTime())) return raw;
-  base.setDate(base.getDate() + Math.max(0, days));
-  return `${String(base.getDate()).padStart(2, "0")}/${String(base.getMonth() + 1).padStart(2, "0")}/${base.getFullYear()}`;
+  if (Number.isNaN(base.getTime())) base = new Date();
+  base.setDate(base.getDate() + (Number.isFinite(days) ? days : 15));
+  return base.toISOString().slice(0, 10).split("-").reverse().join("/");
+}
+
+function cleanPhone(raw: string): string {
+  const digits = (raw || "").replace(/\D/g, "");
+  if (!digits) return "5517991252896";
+  return digits.startsWith("55") ? digits : `55${digits}`;
+}
+
+/**
+ * Slides institucionais originais selecionados para a Proposta Executiva (9 slides no total, < 10 slides):
+ * 01. Capa Oficial Personalizada (Slide 1 original adaptado com cliente/consultor)
+ * 02. Diagnóstico Operacional & Frota do Cliente (Layout Slide 2 original .company-story)
+ * 03. Qualidade da linha Tawper (+8 anos no mercado - Slide 3 original)
+ * 04. A mangueira é apenas uma parte da conta (R$ 7.700 / 9,1% - Slide 9 original)
+ * 05. Mangueiras de tecnologia europeia (ISO · MSHA · CCS / 15x ISO - Slide 12 original)
+ * 06. Prensagem padronizada & Sistema de Cores (Prensa com final de curso + guia de cores - Slide 16 original)
+ * 07. HydraSense: O DNA de cada mangueira (Rastreabilidade em campo - Slide 22 original)
+ * 08. Investimento (Orçamento ERP) & Condições Comerciais (Layout .simulation original)
+ * 09. Fale com a Tawper, Consultor Responsável & Aceite Formal (Layout Slide 32 original)
+ */
+const EXECUTIVE_INSTITUTIONAL_NUMS = [
+  3,  // Qualidade da linha Tawper (+8 anos)
+  9,  // A mangueira é apenas uma parte da conta (R$ 7.700 / 9,1%)
+  12, // Mangueiras de tecnologia europeia (ISO · MSHA · CCS)
+  16, // Prensagem padronizada + guia visual do sistema de cores
+  22, // HydraSense: O DNA de cada mangueira
+];
+
+/**
+ * Caso o administrador solicite a apresentação completa (sem sorteio).
+ */
+const COMPLETE_INSTITUTIONAL_NUMS = Array.from({ length: 30 }, (_, i) => i + 2); // 2..31
+
+function rewriteSlideAssets(sectionHtml: string, baseUrl: string, slideNumber: number, totalSlides: number): string {
+  const cleanBase = baseUrl.replace(/\/$/, "");
+  let out = sectionHtml
+    .replace(/src="assets\//g, `src="${cleanBase}/assets/`)
+    .replace(/url\('assets\//g, `url('${cleanBase}/assets/`)
+    .replace(/url\("assets\//g, `url("${cleanBase}/assets/`);
+
+  out = out.replace(/class="slide\s+([^"]*?)\bactive\b([^"]*)"/, 'class="slide $1$2"');
+  out = out.replace(/aria-hidden="false"/, 'aria-hidden="true"');
+  const pageStr = `${String(slideNumber).padStart(2, "0")} / ${String(totalSlides).padStart(2, "0")}`;
+  out = out.replace(/<span class="page"[^>]*>[\s\S]*?<\/span>/, `<span class="page">${pageStr}</span>`);
+  out = out.replace(/id="slide-\d+"/, `id="slide-${String(slideNumber).padStart(2, "0")}"`);
+  return out;
 }
 
 export function buildTawperPresentationDeck(
@@ -48,575 +115,553 @@ export function buildTawperPresentationDeck(
     mode?: PresentationDeckMode;
     baseUrl?: string;
     initialSlideIndex?: number;
-  }
+  },
 ): {
   html: string;
   slides: SlideDescriptor[];
 } {
+  const mode: PresentationDeckMode = options?.mode ?? "executive";
   const baseUrl = (options?.baseUrl ?? "/apresentacao-tawper").replace(/\/$/, "");
-  const initialIndex = Math.max(0, Math.min(7, options?.initialSlideIndex ?? 0));
+  const initialIndex = Math.max(0, options?.initialSlideIndex ?? 0);
 
   const { cliente, vendedor, frota, orcamento, termos } = input;
-  const nomeCliente = cliente.nomeFantasia || cliente.razaoSocial || "Cliente Parceiro";
   const emissaoFmt = fmtDateBr(termos.dataEmissao);
   const validadeFmt = addDaysBr(termos.dataEmissao, termos.validadeDias);
-  const totalSlides = 8;
+  const nomeCliente = cliente.nomeFantasia || cliente.razaoSocial || "Cliente Parceiro";
 
-  const showValor = Boolean(termos.mostrarValores && orcamento.valorTotal && orcamento.valorTotal > 0);
-  const valorFmt = showValor && orcamento.valorTotal ? money(orcamento.valorTotal) : "Conforme Orçamento ERP Anexo";
+  const institutionalNums = mode === "complete" ? COMPLETE_INSTITUTIONAL_NUMS : EXECUTIVE_INSTITUTIONAL_NUMS;
+  const selectedInstitutional = institutionalNums
+    .map((n) => INSTITUTIONAL_SLIDES.find((s) => s.originalNum === n))
+    .filter((s): s is RawInstitutionalSlide => Boolean(s));
 
-  const sections: Array<{
+  // Total slides no modo executivo = 1 (Capa) + 1 (Diagnóstico) + 5 (Institucionais Core) + 1 (Comercial/ERP) + 1 (Fechamento) = 9 slides (< 10)
+  const totalSlides = 1 + selectedInstitutional.length + 3;
+
+  const builtSections: Array<{
     id: string;
     title: string;
     chapter: string;
-    customKey?: SlideDescriptor["customKey"];
+    notes: string;
+    sources: string;
+    visual: string;
     html: string;
-  }> = [
-    // SLIDE 01 — CAPA A4 SEM BORDAS
-    {
-      id: "slide-01",
-      title: `Capa · ${nomeCliente}`,
-      chapter: "Abertura",
-      customKey: "cover",
-      html: `<section class="slide page-dark active" id="slide-01">
-  <div class="accent-bar"></div>
-  <div class="cover-hero">
-    <img src="${baseUrl}/assets/geradas/14-capa-terminais-catalogo.png" alt="Conjuntos hidráulicos Tawper" class="cover-photo"/>
-    <div class="cover-scrim"></div>
-    <header class="cover-top">
-      <img src="${baseUrl}/assets/marca/tawper.svg" alt="Tawper" class="logo-svg"/>
-      <span class="badge-code">${esc(termos.codigo)} · PROPOSTA COMERCIAL</span>
-    </header>
-    <div class="cover-copy">
-      <p class="kicker">PREPARADA PARA ${esc(nomeCliente.toUpperCase())}</p>
-      <h1>Soluções completas em mangueiras hidráulicas para safra contínua.</h1>
-      <p class="lead">Tecnologia de linha pesada, padronização de oficina, fornecimento programado e rastreabilidade operacional para a <strong>${esc(nomeCliente)}</strong>.</p>
-    </div>
-  </div>
-  <div class="cover-body">
-    <div class="dark-panel highlight-left">
-      <span class="mini-label">DESTINATÁRIO & UNIDADE</span>
-      <h2>${esc(nomeCliente)}</h2>
-      <p class="muted-light">${esc(cliente.razaoSocial)} · CNPJ: ${esc(cliente.cnpj)} · ${esc(cliente.cidadeUf)}</p>
-      <p class="white-line">A/C: <strong>${esc(cliente.destinatarioNome)}</strong> (${esc(cliente.destinatarioCargo)})${cliente.destinatarioFone ? ` · ${esc(cliente.destinatarioFone)}` : ""}</p>
-    </div>
+    isCustom?: boolean;
+    customKey?: SlideDescriptor["customKey"];
+  }> = [];
 
-    <div class="metrics-row">
-      <div class="dark-panel">
-        <span class="mini-label">FROTA MAPEADA</span>
-        <strong>${frota.numColhedoras} máquinas</strong>
-        <p>${esc(frota.marcaFrota)}</p>
-      </div>
-      <div class="dark-panel">
-        <span class="mini-label">CONDIÇÃO PADRÃO</span>
-        <strong>${esc(termos.condicaoPagamento)}</strong>
-        <p>${esc(termos.frete)} · ${esc(termos.prazoEntrega)}</p>
-      </div>
-      <div class="dark-panel">
-        <span class="mini-label">${showValor ? "ORÇAMENTO ERP" : "VALIDADE"}</span>
-        <strong>${esc(showValor ? valorFmt : `${termos.validadeDias} dias`)}</strong>
-        <p>${orcamento.numeroExterno ? `Orçamento ERP ${esc(orcamento.numeroExterno)}` : `Válida até ${esc(validadeFmt)}`}</p>
-      </div>
-    </div>
-
-    <div class="dark-panel seller-panel">
-      <div>
-        <span class="mini-label">CONSULTOR TAWPER RESPONSÁVEL</span>
-        <h3>${esc(vendedor.nome)} — ${esc(vendedor.cargo)}</h3>
-        <p class="white-line">WhatsApp Comercial: <strong>${esc(vendedor.telefone || "A confirmar")}</strong> · E-mail: ${esc(vendedor.email)}</p>
-      </div>
-      <div class="date-col">
-        <span>Emissão: ${esc(emissaoFmt)}</span>
-        <span>Validade: ${esc(validadeFmt)}</span>
-      </div>
-    </div>
-  </div>
-  <footer class="slide-foot dark-foot">
-    <span>TAWPER MANGUEIRAS E CONEXÕES · FORMATO A4 EXECUTIVO</span>
-    <span>01 / ${String(totalSlides).padStart(2, "0")}</span>
-  </footer>
+  // 1. SLIDE 01: CAPA OFICIAL PERSONALIZADA
+  const coverPage = `01 / ${String(totalSlides).padStart(2, "0")}`;
+  builtSections.push({
+    id: "slide-01",
+    title: `Proposta Comercial · ${nomeCliente}`,
+    chapter: "Abertura & Proposta",
+    isCustom: true,
+    customKey: "cover",
+    notes: `Apresentação e Proposta Comercial preparada exclusivamente para ${nomeCliente} (${cliente.cidadeUf || "Operação"}). Responsável técnico/comercial: ${vendedor.nome} (${vendedor.telefone || "WhatsApp Comercial"}).`,
+    sources: `CRM Tawper · Proposta ${termos.codigo} emitida em ${emissaoFmt}.`,
+    visual: "Capa oficial Tawper com conjuntos hidráulicos e prensa ao fundo, personalizada para o cliente.",
+    html: `<section aria-hidden="false" aria-label="Slide 1 de ${totalSlides}: Proposta Comercial ${esc(nomeCliente)}" class="slide dark cover cover-revised proposal-cover" data-chapter="Abertura" data-title="Proposta Comercial · ${esc(nomeCliente)}" id="slide-01">
+<header class="topbar"><img alt="Tawper — mangueiras e conexões" class="logo" src="${baseUrl}/assets/marca/tawper.svg"/><span class="topic">PROPOSTA COMERCIAL · ${esc(termos.codigo)}</span></header>
+<img alt="Conjuntos de mangueiras Tawper de dimensões reais sobre bancada, com prensa ao fundo." class="full-photo" draggable="false" loading="eager" src="${baseUrl}/assets/geradas/14-capa-terminais-catalogo.png"/>
+<div class="veil"></div>
+<div class="cover-title">
+  <p class="eyebrow kicker proposal-cover-kicker">PREPARADO PARA ${esc(nomeCliente.toUpperCase())}${cliente.cidadeUf ? ` · ${esc(cliente.cidadeUf.toUpperCase())}` : ""}</p>
+  <h1><span style="font-size: 88px !important;">Soluções completas<br/>em mangueiras hidráulicas</span></h1>
+  <p class="subtitle">Tecnologia, padronização de oficina, fornecimento direto e rastreabilidade para a operação da <strong>${esc(nomeCliente)}</strong>.</p>
+</div>
+<div class="cover-bottom">
+  <p><strong>A/C ${esc(cliente.destinatarioNome || "Gestão de Manutenção e Suprimentos")}</strong>${cliente.destinatarioCargo ? ` (${esc(cliente.destinatarioCargo)})` : ""} &nbsp;·&nbsp; Consultor Tawper: <strong>${esc(vendedor.nome)}</strong>${vendedor.telefone ? ` (${esc(vendedor.telefone)})` : ""} &nbsp;·&nbsp; Emissão: ${esc(emissaoFmt)}</p>
+</div>
+<footer class="slide-footer"><span>TAWPER · PROPOSTA ${esc(termos.codigo)} · ${esc(nomeCliente.toUpperCase())}</span><span class="page">${coverPage}</span></footer>
 </section>`,
-    },
+  });
 
-    // SLIDE 02 — DIAGNÓSTICO DE FROTA
-    {
-      id: "slide-02",
-      title: `Diagnóstico de Frota · ${nomeCliente}`,
-      chapter: "Diagnóstico",
-      customKey: "diagnosis",
-      html: `<section class="slide page-light" id="slide-02">
-  <header class="band-head">
-    <div class="band-meta"><span class="red-kicker">02 · DIAGNÓSTICO DA OPERAÇÃO</span><span>02 / 08</span></div>
-    <h2>Cenário técnico e riscos operacionais em ${esc(nomeCliente)}</h2>
-  </header>
-  <div class="page-pad">
-    <div class="spec-grid">
-      <div class="spec-box"><span>Frota Ativa</span><strong>${frota.numColhedoras} colhedoras / máquinas</strong></div>
-      <div class="spec-box"><span>Fabricantes / Linhas</span><strong>${esc(frota.marcaFrota)}</strong></div>
-      <div class="spec-box"><span>Prensa em Oficina</span><strong>${esc(frota.prensa)}</strong></div>
-      <div class="spec-box"><span>Terminais / Roscas</span><strong>${esc(frota.conector)}</strong></div>
-      <div class="spec-box"><span>Proteção / Espiral</span><strong>${esc(frota.espiral)}</strong></div>
-      <div class="spec-box"><span>Fornecedor / Base</span><strong>${esc(frota.fornecedorAtual)}</strong></div>
+  // SLIDE PERSONALIZADO: DIAGNÓSTICO OPERACIONAL & FROTA DO CLIENTE
+  const buildDiagnosisSlide = (slideNum: number) => {
+    const pageStr = `${String(slideNum).padStart(2, "0")} / ${String(totalSlides).padStart(2, "0")}`;
+    return {
+      id: `slide-${String(slideNum).padStart(2, "0")}`,
+      title: `Diagnóstico Operacional · ${nomeCliente}`,
+      chapter: "Proposta Personalizada",
+      isCustom: true,
+      customKey: "diagnosis" as const,
+      notes: `Confirmar com ${cliente.destinatarioNome || "o cliente"} os dados mapeados da frota (${frota.numColhedoras} máquinas · ${frota.marcaFrota}), o modelo de prensa (${frota.prensa}) e os pontos críticos atuais.`,
+      sources: `Ficha técnica do cliente ${nomeCliente} no Tawper CRM.`,
+      visual: "Layout editorial inspirado no slide 'Como a Tawper surgiu', conectando dados cadastrais do cliente e diagnóstico de frota.",
+      html: `<section aria-hidden="true" aria-label="Diagnóstico Operacional ${esc(nomeCliente)}" class="slide white company-story proposal-diagnosis" data-chapter="Proposta Personalizada" data-title="Diagnóstico Operacional · ${esc(nomeCliente)}" id="slide-${String(slideNum).padStart(2, "0")}">
+<header class="topbar"><img alt="Tawper — mangueiras e conexões" class="logo" src="${baseUrl}/assets/marca/tawper.svg"/><span class="topic">DIAGNÓSTICO DO CLIENTE · ${esc(termos.codigo)}</span></header>
+<div class="title-block"><p class="eyebrow kicker">Cenário operacional mapeado</p><h2>A operação da <span class="blue-text">${esc(nomeCliente)}</span><br/>no centro da proposta.</h2></div>
+<div class="proposal-diag-left">
+  <div class="proposal-meta-grid">
+    <div class="proposal-meta-cell">
+      <span class="meta-idx">01 · UNIDADE / EMPRESA</span>
+      <strong>${esc(cliente.razaoSocial || nomeCliente)}</strong>
+      <span>CNPJ: ${esc(cliente.cnpj || "Sob cadastro")}</span>
     </div>
-
-    <div class="alert-box">
-      <span class="red-kicker">FOCO PRIORITÁRIO DO PROJETO</span>
-      <p>${esc(frota.gargaloPrincipal)}</p>
+    <div class="proposal-meta-cell">
+      <span class="meta-idx">02 · LOCALIZAÇÃO</span>
+      <strong>${esc(cliente.cidadeUf || "Operação Agroindustrial")}</strong>
+      <span>${esc(cliente.endereco || "Unidade operacional")}${cliente.cep ? ` · CEP ${esc(cliente.cep)}` : ""}</span>
     </div>
-
-    <h3 class="sec-sub">Por que a mangueira é peça crítica na disponibilidade de colheita?</h3>
-    <div class="risk-stack">
-      <div class="risk-card">
-        <strong>1. Parada em pico de safra</strong>
-        <p>Um único rompimento hidráulico trava a colhedora no talhão, exige deslocamento de mecânico e reduz o ritmo da frente de corte.</p>
-      </div>
-      <div class="risk-card">
-        <strong>2. Erro de montagem ou prensagem</strong>
-        <p>Prensagem sem precisão, comprimento incorreto ou terminal fora do padrão causam vazamento precoce sob pico de pressão.</p>
-      </div>
-      <div class="risk-card">
-        <strong>3. Falta de padronização visual na oficina</strong>
-        <p>Sem identificação rápida de bitola e aplicação, o time perde minutos preciosos medindo peças ou mantendo estoque ocioso.</p>
-      </div>
+    <div class="proposal-meta-cell">
+      <span class="meta-idx">03 · DESTINATÁRIO / INTERLOCUTOR</span>
+      <strong>${esc(cliente.destinatarioNome || "Gestão de Manutenção e Compras")}</strong>
+      <span>${esc(cliente.destinatarioCargo || "Responsável Técnico / Comercial")}</span>
+    </div>
+    <div class="proposal-meta-cell">
+      <span class="meta-idx">04 · CONSULTOR DEDICADO</span>
+      <strong>${esc(vendedor.nome)}</strong>
+      <span>WhatsApp: ${esc(vendedor.telefone || "Atendimento direto")}</span>
     </div>
   </div>
-  <footer class="slide-foot">
-    <span>${esc(termos.codigo)} · ${esc(nomeCliente)} · Consultor: ${esc(vendedor.nome)}</span>
-    <span>02 / 08</span>
-  </footer>
+  <div class="proposal-diag-Focus">
+    <span class="focus-label">OBJETIVO TÉCNICO E DIRETRIZES DA IMPLANTAÇÃO</span>
+    <p>${esc(frota.gargaloPrincipal || termos.observacoes || "Padronização da montagem de conjuntos hidráulicos na unidade, redução do tempo de máquina parada por rompimento e rastreabilidade individual HydraSense.")}</p>
+  </div>
+</div>
+<div class="story-path proposal-fleet-panel">
+  <div>
+    <p class="story-number">01</p>
+    <h3>Frota mapeada: ${esc(frota.numColhedoras || "Sob medição")} máquina(s)</h3>
+    <p>Equipamentos de referência: <strong>${esc(frota.marcaFrota || "Colhedoras, tratores e transbordos")}</strong>.</p>
+  </div>
+  <div>
+    <p class="story-number">02</p>
+    <h3>Estrutura de prensagem na oficina</h3>
+    <p>Configuração prevista: <strong>${esc(frota.prensa || "Prensa Hidráulica Tawper com Sensor")}</strong> com sistema visual de cores.</p>
+  </div>
+  <div>
+    <p class="story-number">03</p>
+    <h3>Padrão atual e evolução Tawper</h3>
+    <p>Referência atual (<strong>${esc(frota.fornecedorAtual || "Multimarcas")}</strong>) → Padronização Tawper + Lacre + HydraSense.</p>
+  </div>
+</div>
+<footer class="slide-footer"><span>TAWPER · DIAGNÓSTICO OPERACIONAL · ${esc(nomeCliente.toUpperCase())}</span><span class="page">${pageStr}</span></footer>
 </section>`,
-    },
+    };
+  };
 
-    // SLIDE 03 — PORTFÓLIO TÉCNICO TAWPER
-    {
-      id: "slide-03",
-      title: "Engenharia de Linha Tawper",
-      chapter: "Portfólio",
-      customKey: "scope",
-      html: `<section class="slide page-light" id="slide-03">
-  <header class="band-head">
-    <div class="band-meta"><span class="red-kicker">03 · ENGENHARIA DE LINHA TAWPER</span><span>03 / 08</span></div>
-    <h2>Mangueiras de alta performance, terminais e proteção externa</h2>
-  </header>
-  <div class="page-pad">
-    <div class="photo-banner">
-      <img src="${baseUrl}/assets/geradas/17-mangueiras-catalogo.png" alt="Mangueiras Tawper"/>
-    </div>
-    <div class="quad-grid">
-      <div class="pillar-card">
-        <span class="red-kicker">MANGUEIRA 2 TRAMAS (15x ISO)</span>
-        <h4>Resistência à fadiga por impulso</h4>
-        <p>Desenvolvida para suportar ciclos severos de vibração e pressão muito acima do requisito ISO padrão em sistemas agrícolas.</p>
-      </div>
-      <div class="pillar-card">
-        <span class="red-kicker">ESPIRALADA 4SH / R13</span>
-        <h4>Alta pressão para linha pesada</h4>
-        <p>Estabilidade térmica, raio de curvatura controlado e confiabilidade em circuitos principais de colhedoras e tratores.</p>
-      </div>
-      <div class="pillar-card">
-        <span class="red-kicker">TERMINAIS JIC / ORFS / SAE</span>
-        <h4>Vedação precisa sem gambiarras</h4>
-        <p>Compatibilidade direta com plataformas Case, John Deere e implementos pesados para montagem limpa e segura.</p>
-      </div>
-      <div class="pillar-card">
-        <span class="red-kicker">ESPIRAL ANTICHAMA & CAPA</span>
-        <h4>Proteção contra abrasão e calor</h4>
-        <p>Preserva o conjunto montado contra atrito mecânico contínuo, radiação solar e áreas quentes de motor e transmissão.</p>
-      </div>
-    </div>
-    <div class="dark-strip">
-      <strong>Modalidades flexíveis de atendimento:</strong> Venda Direta, Comodato de Prensa/Estrutura, Locação ou Programas Técnicos — itens e valores oficiais no orçamento ERP anexo.
+  // SLIDE PERSONALIZADO: ORÇAMENTO ERP & CONDIÇÕES COMERCIAIS
+  const buildCommercialSlide = (slideNum: number) => {
+    const pageStr = `${String(slideNum).padStart(2, "0")} / ${String(totalSlides).padStart(2, "0")}`;
+    const hasValor = Boolean(termos.mostrarValores && orcamento.valorTotal && orcamento.valorTotal > 0);
+    const destaquesList = (orcamento.destaques ?? []).slice(0, 3);
+    const erpBadge = orcamento.numeroExterno
+      ? `ORÇAMENTO ERP Nº ${orcamento.numeroExterno}`
+      : "ESCOPO & CONDIÇÕES COMERCIAIS";
+
+    return {
+      id: `slide-${String(slideNum).padStart(2, "0")}`,
+      title: `Investimento & Condições Comerciais · ${termos.codigo}`,
+      chapter: "Proposta Personalizada",
+      isCustom: true,
+      customKey: "commercial" as const,
+      notes: `Apresentar o orçamento oficial (${orcamento.numeroExterno || "ERP Tawper"}) e as condições comerciais da proposta ${termos.codigo}: pagamento (${termos.condicaoPagamento}), prazo de entrega (${termos.prazoEntrega}), frete (${termos.frete}) e validade (${termos.validadeDias} dias).`,
+      sources: `Condições comerciais Tawper · Proposta ${termos.codigo}.`,
+      visual: "Diagramação baseada nos slides 'A mangueira é apenas uma parte da conta' e 'Mais simples e mais lucrativo'.",
+      html: `<section aria-hidden="true" aria-label="Investimento e Condições Comerciais" class="slide white simulation proposal-commercial" data-chapter="Proposta Personalizada" data-title="Investimento &amp; Condições Comerciais · ${esc(termos.codigo)}" id="slide-${String(slideNum).padStart(2, "0")}">
+<header class="topbar"><img alt="Tawper — mangueiras e conexões" class="logo" src="${baseUrl}/assets/marca/tawper.svg"/><span class="topic">INVESTIMENTO E CONDIÇÕES · ${esc(termos.codigo)}</span></header>
+<div class="title-block"><p class="eyebrow kicker">Fornecimento direto de importadora · sem intermediação</p><h2 style="font-size:62px;">Condições comerciais e<br/><span class="blue-text">orçamento oficial Tawper.</span></h2></div>
+<div class="proposal-commercial-left">
+  <span class="comm-kicker">${esc(erpBadge)}</span>
+  ${
+    hasValor && orcamento.valorTotal
+      ? `<div class="comm-amount">${esc(fmtMoney(orcamento.valorTotal))}</div>`
+      : `<div class="comm-amount comm-text-mode">${esc(orcamento.numeroExterno ? `Orçamento #${orcamento.numeroExterno}` : "Fornecimento & Comodato")}</div>`
+  }
+  <p class="comm-caption">${esc(orcamento.resumoEscopo || `Fornecimento programado de mangueiras, terminais, estruturação de oficina e rastreabilidade para ${nomeCliente}.`)}</p>
+  <div class="comm-direct-callout">
+    <strong>${
+      orcamento.paginasAnexo > 0
+        ? `Orçamento ERP original anexo (${orcamento.paginasAnexo} página${orcamento.paginasAnexo > 1 ? "s" : ""})`
+        : `Importação direta Tawper → ${esc(nomeCliente)}`
+    }</strong>
+    <p>${
+      destaquesList.length > 0
+        ? esc(destaquesList.join(" · "))
+        : "Detalhamento de itens, códigos e quantidades conforme orçamento emitido no ERP da Tawper."
+    }</p>
+  </div>
+</div>
+<div class="proposal-terms-grid">
+  <div class="proposal-term-card">
+    <span class="term-idx">01 · CONDIÇÃO DE PAGAMENTO</span>
+    <h3>${esc(termos.condicaoPagamento)}</h3>
+    <p>Faturamento direto pela Tawper conforme cronograma acordado com compras.</p>
+  </div>
+  <div class="proposal-term-card">
+    <span class="term-idx">02 · PRAZO DE ENTREGA E IMPLANTAÇÃO</span>
+    <h3>${esc(termos.prazoEntrega)}</h3>
+    <p>Inclui entrega técnica, orientação de bancada e capacitação da equipe na unidade.</p>
+  </div>
+  <div class="proposal-term-card">
+    <span class="term-idx">03 · FRETE E LOGÍSTICA</span>
+    <h3>${esc(termos.frete)}</h3>
+    <p>Atendimento logístico pelas unidades de Monte Aprazível/SP e Maceió/AL.</p>
+  </div>
+  <div class="proposal-term-card">
+    <span class="term-idx">04 · VALIDADE DA PROPOSTA</span>
+    <h3>${termos.validadeDias} dias corridos</h3>
+    <p>Emitida em ${esc(emissaoFmt)} · Válida até <strong>${esc(validadeFmt)}</strong>.</p>
+  </div>
+</div>
+<p class="sim-note">Proposta Comercial Nº ${esc(termos.codigo)}${orcamento.numeroExterno ? ` · Orçamento ERP Nº ${esc(orcamento.numeroExterno)}` : ""} · Destinada a ${esc(nomeCliente)} (CNPJ ${esc(cliente.cnpj || "sob consulta")}) · Responsável Tawper: ${esc(vendedor.nome)}.</p>
+<footer class="slide-footer"><span>TAWPER · CONDIÇÕES COMERCIAIS · ${esc(termos.codigo)}</span><span class="page">${pageStr}</span></footer>
+</section>`,
+    };
+  };
+
+  if (mode === "executive") {
+    builtSections.push(buildDiagnosisSlide(2));
+    selectedInstitutional.forEach((inst) => {
+      const num = builtSections.length + 1;
+      builtSections.push({
+        id: `slide-${String(num).padStart(2, "0")}`,
+        title: inst.title,
+        chapter: inst.chapter,
+        notes: inst.notes,
+        sources: inst.sources,
+        visual: inst.visual,
+        html: rewriteSlideAssets(inst.html, baseUrl, num, totalSlides),
+      });
+    });
+    builtSections.push(buildCommercialSlide(builtSections.length + 1));
+  } else {
+    selectedInstitutional.forEach((inst) => {
+      const num = builtSections.length + 1;
+      builtSections.push({
+        id: `slide-${String(num).padStart(2, "0")}`,
+        title: inst.title,
+        chapter: inst.chapter,
+        notes: inst.notes,
+        sources: inst.sources,
+        visual: inst.visual,
+        html: rewriteSlideAssets(inst.html, baseUrl, num, totalSlides),
+      });
+    });
+    builtSections.push(buildDiagnosisSlide(builtSections.length + 1));
+    builtSections.push(buildCommercialSlide(builtSections.length + 1));
+  }
+
+  // SLIDE FINAL (09): CONTATO PERSONALIZADO & ACEITE FORMAL (Substitui o Slide 32 e elimina o Sorteio)
+  const closingNum = builtSections.length + 1;
+  const closingPage = `${String(closingNum).padStart(2, "0")} / ${String(totalSlides).padStart(2, "0")}`;
+  builtSections.push({
+    id: `slide-${String(closingNum).padStart(2, "0")}`,
+    title: `Fale com a Tawper & Aceite · ${vendedor.nome}`,
+    chapter: "Fechamento & Contato",
+    isCustom: true,
+    customKey: "closing",
+    notes: `Slide final de fechamento comercial com os dados diretos do consultor ${vendedor.nome}, contatos da diretoria Tawper e bloco de aceite da proposta ${termos.codigo}.`,
+    sources: `Proposta Comercial ${termos.codigo} · Contatos oficiais Tawper.`,
+    visual: "Layout oficial de contatos da Tawper personalizado com o consultor responsável e termo de aceite.",
+    html: `<section aria-hidden="true" aria-label="Fale com a Tawper e Formalização" class="slide white contacts-only proposal-closing" data-chapter="Contato" data-title="Fale com a Tawper · ${esc(vendedor.nome)}" id="slide-${String(closingNum).padStart(2, "0")}">
+<header class="topbar"><img alt="Tawper — mangueiras e conexões" class="logo" src="${baseUrl}/assets/marca/tawper.svg"/><span class="topic">CONTATO E FORMALIZAÇÃO · ${esc(termos.codigo)}</span></header>
+<div class="title-block"><p class="eyebrow kicker">Próximo passo com a ${esc(nomeCliente)}</p><h2>Fale com a Tawper</h2></div>
+<div class="contact-names">
+  <div class="contact-name featured-consultant">
+    <span class="consultant-pill">CONSULTOR RESPONSÁVEL</span>
+    <h3>${esc(vendedor.nome || "Consultor Tawper")}</h3>
+    <span class="region">${esc(vendedor.cargo || "Consultor Técnico Comercial")} · ${esc(vendedor.regiao || "Atendimento Dedicado")}</span>
+    <a href="https://wa.me/${cleanPhone(vendedor.telefone)}" rel="noopener" target="_blank">${esc(vendedor.telefone || "(17) 9 9125-2896")}</a>
+    <span class="consultant-email">${esc(vendedor.email || "tawper@tawper.com.br")}</span>
+  </div>
+  <div class="contact-name">
+    <span class="consultant-pill muted-pill">COORDENAÇÃO SÃO PAULO</span>
+    <h3>Murilo &amp; Nilton</h3>
+    <span class="region">Monte Aprazível · São Paulo</span>
+    <a href="https://wa.me/5517991252896" rel="noopener" target="_blank">(17) 9 9125-2896</a>
+    <span class="consultant-email">Nilton: (17) 9 8230-2700</span>
+  </div>
+  <div class="contact-name">
+    <span class="consultant-pill muted-pill">UNIDADE NORDESTE</span>
+    <h3>Douglas</h3>
+    <span class="region">Maceió · Alagoas</span>
+    <a href="https://wa.me/5517981640028" rel="noopener" target="_blank">(17) 9 8164-0028</a>
+    <span class="consultant-email">Ponto de apoio Nordeste</span>
+  </div>
+</div>
+<div class="proposal-closing-footer">
+  <div class="closing-address">
+    <a href="mailto:tawper@tawper.com.br">tawper@tawper.com.br</a>
+    Av. Santos Dumont, 1845 · Jardim Melo · Monte Aprazível, São Paulo
+  </div>
+  <div class="closing-acceptance">
+    <span class="acc-title">DE ACORDO / ACEITE DA PROPOSTA ${esc(termos.codigo)}</span>
+    <p><strong>${esc(nomeCliente)}</strong> · A/C ${esc(cliente.destinatarioNome || "Responsável")}</p>
+    <div class="acc-sign-row">
+      <span>Assinatura / Carimbo: ___________________________</span>
+      <span>Data: ____/____/2026</span>
     </div>
   </div>
-  <footer class="slide-foot">
-    <span>${esc(termos.codigo)} · ${esc(nomeCliente)} · Consultor: ${esc(vendedor.nome)}</span>
-    <span>03 / 08</span>
-  </footer>
+</div>
+<footer class="slide-footer"><span>TAWPER · MANGUEIRAS E CONEXÕES</span><span class="page">${closingPage}</span></footer>
 </section>`,
-    },
+  });
 
-    // SLIDE 04 — SISTEMA DE CORES & LACRE
-    {
-      id: "slide-04",
-      title: "Sistema de Cores & Lacre",
-      chapter: "Padronização",
-      html: `<section class="slide page-light" id="slide-04">
-  <header class="band-head">
-    <div class="band-meta"><span class="red-kicker">04 · PADRONIZAÇÃO VISUAL EM CAMPO</span><span>04 / 08</span></div>
-    <h2>Sistema de Cores Tawper, Pistola Térmica e Lacre de Proteção</h2>
-  </header>
-  <div class="page-pad">
-    <div class="photo-banner tall">
-      <img src="${baseUrl}/assets/geradas/06-sistema-cores.png" alt="Sistema de Cores Tawper"/>
-    </div>
-    <div class="stack-cards">
-      <div class="border-card red-left">
-        <h4>01. Identificação visual instantânea por cor</h4>
-        <p>Cada bitola e linha recebe cor padronizada. Mecânico e almoxarife identificam o conjunto certo em segundos, eliminando erro de separação.</p>
-      </div>
-      <div class="border-card dark-left">
-        <h4>02. Pistola Térmica & Lacre Termoencolhível Tawper</h4>
-        <p>Sela a junção contra entrada de poeira, umidade e contaminação durante o transporte ao talhão e protege a gravação técnica da peça.</p>
-      </div>
-      <div class="border-card gray-left">
-        <h4>03. Bancada organizada & reposição ágil</h4>
-        <p>Reduz o estoque parado por erro de compra e acelera a entrega no balcão da oficina em turnos de safra 24 horas.</p>
-      </div>
-    </div>
-  </div>
-  <footer class="slide-foot">
-    <span>${esc(termos.codigo)} · ${esc(nomeCliente)} · Consultor: ${esc(vendedor.nome)}</span>
-    <span>04 / 08</span>
-  </footer>
-</section>`,
-    },
+  const clampedInitial = Math.max(0, Math.min(builtSections.length - 1, initialIndex));
 
-    // SLIDE 05 — PRENSA COM SENSOR FIM DE CURSO
-    {
-      id: "slide-05",
-      title: "Prensa com Sensor Fim de Curso",
-      chapter: "Oficina",
-      html: `<section class="slide page-light" id="slide-05">
-  <header class="band-head">
-    <div class="band-meta"><span class="red-kicker">05 · OFICINA DE ALTA CONFIABILIDADE</span><span>05 / 08</span></div>
-    <h2>Prensa Hidráulica Tawper com Sensor Fim de Curso</h2>
-  </header>
-  <div class="page-pad">
-    <div class="photo-banner tall">
-      <img src="${baseUrl}/assets/geradas/18-prensa-catalogo.png" alt="Prensa Hidráulica Tawper"/>
-    </div>
-    <div class="dark-banner">
-      <span class="mini-label">PRECISÃO REPETITIVA</span>
-      <p>O sensor de fim de curso interrompe o ciclo exatamente no diâmetro calibrado pela engenharia Tawper — padronizando a qualidade da montagem independente do turno ou operador.</p>
-    </div>
-    <div class="quad-grid">
-      <div class="spec-box"><span>Zero subprensagem</span><p>Evita escape de terminal ou vazamento prematuro sob pico de pressão.</p></div>
-      <div class="spec-box"><span>Implantação assistida</span><p>Modelos sob medida para aquisição ou comodato conforme projeto aprovado.</p></div>
-      <div class="spec-box"><span>Troca ágil de castanhas</span><p>Tabela visual junto à máquina para operação rápida em emergências.</p></div>
-      <div class="spec-box"><span>Disponibilidade da frota</span><p>Menos retrabalho na oficina significa mais horas efetivas no campo.</p></div>
-    </div>
-  </div>
-  <footer class="slide-foot">
-    <span>${esc(termos.codigo)} · ${esc(nomeCliente)} · Consultor: ${esc(vendedor.nome)}</span>
-    <span>05 / 08</span>
-  </footer>
-</section>`,
-    },
-
-    // SLIDE 06 — TAWPER ACADEMY & HYDRASENSE
-    {
-      id: "slide-06",
-      title: "Tawper Academy & HydraSense",
-      chapter: "Capacitação & Digital",
-      html: `<section class="slide page-light" id="slide-06">
-  <header class="band-head">
-    <div class="band-meta"><span class="red-kicker">06 · CAPACITAÇÃO & INTELIGÊNCIA DIGITAL</span><span>06 / 08</span></div>
-    <h2>Tawper Academy + HydraSense: equipe treinada e frota rastreada</h2>
-  </header>
-  <div class="page-pad">
-    <div class="split-photos">
-      <img src="${baseUrl}/assets/geradas/20-academy-catalogo.png" alt="Tawper Academy"/>
-      <img src="${baseUrl}/assets/geradas/22-hydrasense-vertical.png" alt="HydraSense"/>
-    </div>
-    <div class="two-cols">
-      <div class="col-card light">
-        <span class="red-kicker">TAWPER ACADEMY</span>
-        <h4>Treinamento prático in-loco</h4>
-        <ul>
-          <li>Capacitação presencial de mecânicos e almoxarifes na própria oficina.</li>
-          <li>Boas práticas de corte, descascamento, prensagem e roteamento sem torção.</li>
-          <li>Certificação prática da equipe para manter o padrão em todos os turnos.</li>
-        </ul>
-      </div>
-      <div class="col-card dark">
-        <span class="mini-label">HYDRASENSE</span>
-        <h4>Rastreabilidade por máquina</h4>
-        <ul>
-          <li>Identificação individual de pontos críticos por QR Code / tag na colhedora.</li>
-          <li>Histórico de trocas por equipamento para manutenção preventiva inteligente.</li>
-          <li>Consulta imediata em campo e relatórios de confiabilidade para a usina.</li>
-        </ul>
-      </div>
-    </div>
-  </div>
-  <footer class="slide-foot">
-    <span>${esc(termos.codigo)} · ${esc(nomeCliente)} · Consultor: ${esc(vendedor.nome)}</span>
-    <span>06 / 08</span>
-  </footer>
-</section>`,
-    },
-
-    // SLIDE 07 — ORÇAMENTO ERP & CONDIÇÕES COMERCIAIS
-    {
-      id: "slide-07",
-      title: "Orçamento ERP & Condições Comerciais",
-      chapter: "Comercial",
-      customKey: "commercial",
-      html: `<section class="slide page-light" id="slide-07">
-  <header class="band-head">
-    <div class="band-meta"><span class="red-kicker">07 · INVESTIMENTO & CONDIÇÕES</span><span>07 / 08</span></div>
-    <h2>Orçamento oficial do ERP Tawper e diretrizes comerciais</h2>
-  </header>
-  <div class="page-pad">
-    <div class="erp-card">
-      <div class="erp-head">
-        <div>
-          <span class="red-kicker">ORÇAMENTO VINCULADO (ERP TAWPER)</span>
-          <h3>${orcamento.numeroExterno ? `Orçamento Nº ${esc(orcamento.numeroExterno)}` : "Escopo Oficial conforme Orçamento ERP Anexo"}</h3>
-        </div>
-        ${showValor ? `<div class="erp-total">${esc(valorFmt)}</div>` : ""}
-      </div>
-      <p class="erp-summary">${esc(orcamento.resumoEscopo)}</p>
-      <ul class="erp-bullets">
-        ${orcamento.destaques.slice(0, 4).map((d) => `<li>+ ${esc(d)}</li>`).join("")}
-      </ul>
-      <div class="erp-attach">
-        ${orcamento.paginasAnexo > 0
-          ? `Anexo integrante no PDF: ${orcamento.paginasAnexo} página(s) original(is) do orçamento ERP anexada(s) ao final do documento.`
-          : "Detalhamento de códigos, quantidades e valores unitários conforme orçamento emitido no ERP Tawper."}
-      </div>
-    </div>
-
-    <h3 class="sec-sub">Condições Comerciais</h3>
-    <table class="terms-table">
-      <tbody>
-        <tr><th>Pagamento</th><td>${esc(termos.condicaoPagamento)}</td></tr>
-        <tr><th>Validade</th><td>${termos.validadeDias} dias corridos (até ${esc(validadeFmt)})</td></tr>
-        <tr><th>Frete & Logística</th><td>${esc(termos.frete)}</td></tr>
-        <tr><th>Prazo de Entrega</th><td>${esc(termos.prazoEntrega)}</td></tr>
-        <tr><th>Garantia</th><td>${esc(termos.garantia)}</td></tr>
-      </tbody>
-    </table>
-    ${termos.observacoes ? `<p class="obs-line"><strong>Observações:</strong> ${esc(termos.observacoes)}</p>` : ""}
-  </div>
-  <footer class="slide-foot">
-    <span>${esc(termos.codigo)} · ${esc(nomeCliente)} · Consultor: ${esc(vendedor.nome)}</span>
-    <span>07 / 08</span>
-  </footer>
-</section>`,
-    },
-
-    // SLIDE 08 — PRÓXIMOS PASSOS & CONTATO / ACEITE
-    {
-      id: "slide-08",
-      title: "Próximos Passos & Aceite",
-      chapter: "Fechamento",
-      customKey: "closing",
-      html: `<section class="slide page-light" id="slide-08">
-  <header class="band-head">
-    <div class="band-meta"><span class="red-kicker">08 · PRÓXIMOS PASSOS & ACEITE</span><span>08 / 08</span></div>
-    <h2>Implantação em 4 etapas e contato direto Tawper</h2>
-  </header>
-  <div class="page-pad">
-    <div class="steps-list">
-      <div class="step-row"><span>01</span><div><strong>Aprovação do Orçamento ERP & Frota</strong><p>Validação do orçamento ${esc(orcamento.numeroExterno || "oficial")} e criticidades das ${frota.numColhedoras} máquinas.</p></div></div>
-      <div class="step-row"><span>02</span><div><strong>Entrega Programada & Oficina</strong><p>Envio conforme prazo (${esc(termos.prazoEntrega)}), instalação de prensa e kits por sistema de cores.</p></div></div>
-      <div class="step-row"><span>03</span><div><strong>Capacitação Tawper Academy</strong><p>Treinamento prático presencial da equipe mecânica e aplicação dos lacres de proteção.</p></div></div>
-      <div class="step-row"><span>04</span><div><strong>Acompanhamento HydraSense</strong><p>Revisões periódicas, indicadores de reposição e suporte direto ao time da unidade.</p></div></div>
-    </div>
-
-    <div class="dark-banner cta-box">
-      <span class="mini-label">ATENDIMENTO DIRETO TAWPER</span>
-      <h3>${esc(vendedor.nome)} — ${esc(vendedor.cargo)}</h3>
-      <p>WhatsApp Comercial: <strong>${esc(vendedor.telefone || "Solicitar número")}</strong> · E-mail: <strong>${esc(vendedor.email)}</strong></p>
-    </div>
-
-    <div class="sign-grid">
-      <div class="sign-col">
-        <div class="sign-line"></div>
-        <strong>${esc(cliente.destinatarioNome || nomeCliente)}</strong>
-        <span>${esc(nomeCliente)} · Data: ____/____/______</span>
-      </div>
-      <div class="sign-col">
-        <div class="sign-line"></div>
-        <strong>${esc(vendedor.nome)}</strong>
-        <span>Tawper Mangueiras e Conexões</span>
-      </div>
-    </div>
-  </div>
-  <footer class="slide-foot">
-    <span>${esc(termos.codigo)} · ${esc(nomeCliente)} · Documento A4 Sem Bordas</span>
-    <span>08 / 08</span>
-  </footer>
-</section>`,
-    },
-  ];
-
-  const slidesMeta: SlideDescriptor[] = sections.map((sec, idx) => ({
+  const slidesMeta: SlideDescriptor[] = builtSections.map((s, idx) => ({
     index: idx,
-    id: sec.id,
-    title: sec.title,
-    chapter: sec.chapter,
-    isCustom: Boolean(sec.customKey),
-    customKey: sec.customKey,
+    id: s.id,
+    title: s.title,
+    chapter: s.chapter,
+    isCustom: s.isCustom,
+    customKey: s.customKey,
   }));
 
-  const slidesHtml = sections
-    .map((sec, idx) =>
-      sec.html
-        .replace('class="slide ', idx === initialIndex ? 'class="slide active ' : 'class="slide ')
-        .replace("active active", "active")
-    )
+  const speakerJson = JSON.stringify(
+    builtSections.map((s) => ({
+      title: s.title,
+      chapter: s.chapter,
+      notes: s.notes,
+      sources: s.sources,
+      visual: s.visual,
+    })),
+  ).replace(/</g, "\\u003c");
+
+  const customProposalCss = `
+/* Extensões do Design System Oficial Tawper para os Slides Personalizados da Proposta */
+@font-face{font-family:Manrope;src:url('${baseUrl}/assets/fontes/Manrope-Variable.ttf') format('truetype');font-weight:200 800;font-display:swap}
+.failures-reference .failure-reference-photo{background-image:url('${baseUrl}/assets/referencias/falhas-mangueiras-referencia.png')!important}
+.reliability-statement .reliability-photo{position:absolute;inset:0;width:1600px;height:900px;object-fit:cover;z-index:-3}
+.reliability-statement .reliability-shade{position:absolute;inset:0;z-index:-2;background:linear-gradient(90deg,#29387f 0%,#29387f 42%,rgba(41,56,127,.94) 48%,rgba(41,56,127,.48) 59%,rgba(14,26,51,.12) 75%,rgba(14,26,51,.1) 100%)}
+.reliability-statement .title-block{right:auto;width:760px}
+.reliability-statement .title-block h2{font-size:52px}
+.reliability-statement .reliability-copy{position:absolute;left:80px;width:710px;top:350px}
+.reliability-statement .reliability-copy h3{font-size:46px;line-height:1.24;letter-spacing:-.035em;font-weight:500;color:#fff}
+.reliability-statement .reliability-years{display:block;font-size:87px;line-height:1.13;font-weight:800;letter-spacing:-.055em}
+.reliability-statement .topbar .topic{color:#fff;opacity:1;text-shadow:0 1px 5px #141d35}
+.reliability-statement .slide-footer .page{color:#fff;text-shadow:0 1px 5px #141d35}
+.reliability-statement .quality-foot{font-size:17px;bottom:84px}
+
+.proposal-cover-kicker{color:#fff;margin-bottom:18px;font-size:16px!important;letter-spacing:.15em}
+.proposal-cover .cover-title{top:210px;width:1020px}
+.proposal-cover .subtitle{width:760px;margin-top:26px;font-size:28px;line-height:1.38;color:#e4e9f5}
+.proposal-cover .subtitle strong{color:#fff}
+.proposal-cover .cover-bottom{bottom:102px;background:#141d35d9;padding:14px 24px;border-left:5px solid var(--red)}
+.proposal-cover .cover-bottom:before{display:none}
+.proposal-cover .cover-bottom p{font-size:19px;color:#dbe3f4}
+.proposal-cover .cover-bottom strong{color:#fff}
+
+/* Slide Diagnóstico do Cliente */
+.proposal-diagnosis .proposal-diag-left{position:absolute;left:80px;top:330px;width:675px}
+.proposal-meta-grid{display:grid;grid-template-columns:1fr 1fr;gap:22px 32px}
+.proposal-meta-cell{border-top:2px solid var(--blue);padding-top:14px;display:flex;flex-direction:column;gap:5px}
+.proposal-meta-cell .meta-idx{font-size:13px;font-weight:800;letter-spacing:.12em;color:var(--red);text-transform:uppercase}
+.proposal-meta-cell strong{font-size:22px;line-height:1.22;color:var(--ink);letter-spacing:-.025em}
+.proposal-meta-cell span:last-child{font-size:17px;color:var(--muted);line-height:1.3}
+.proposal-diag-Focus{margin-top:28px;border-left:5px solid var(--red);background:var(--paper);padding:18px 22px}
+.proposal-diag-Focus .focus-label{display:block;font-size:13px;font-weight:800;letter-spacing:.12em;color:var(--blue);margin-bottom:8px}
+.proposal-diag-Focus p{font-size:20px!important;line-height:1.38!important;color:var(--ink)}
+.proposal-fleet-panel strong{color:#fff;font-weight:800}
+
+/* Slide Comercial & Investimento */
+.proposal-commercial-left{position:absolute;left:80px;top:340px;width:540px}
+.comm-kicker{display:block;font-size:16px;font-weight:800;letter-spacing:.14em;color:var(--red);text-transform:uppercase}
+.comm-amount{font-size:74px;line-height:1.04;font-weight:800;letter-spacing:-.055em;color:var(--blue);margin-top:10px}
+.comm-amount.comm-text-mode{font-size:56px;line-height:1.08}
+.comm-caption{font-size:20px!important;line-height:1.38!important;color:var(--ink);margin-top:16px}
+.comm-direct-callout{margin-top:26px;border-left:5px solid var(--red);padding:14px 20px;background:var(--paper)}
+.comm-direct-callout strong{display:block;font-size:20px;color:var(--ink);letter-spacing:-.02em}
+.comm-direct-callout p{font-size:17px!important;line-height:1.36!important;color:var(--muted);margin-top:6px}
+.proposal-terms-grid{position:absolute;left:680px;right:80px;top:340px;display:grid;grid-template-columns:1fr 1fr;gap:26px 38px}
+.proposal-term-card{border-top:2px solid var(--blue);padding-top:16px}
+.proposal-term-card .term-idx{display:block;font-size:13px;font-weight:800;letter-spacing:.12em;color:var(--red);margin-bottom:10px}
+.proposal-term-card h3{font-size:26px;line-height:1.18;color:var(--ink)}
+.proposal-term-card p{font-size:18px!important;line-height:1.36!important;color:var(--muted);margin-top:10px}
+
+/* Slide Fechamento e Aceite */
+.proposal-closing .contact-names{top:338px!important}
+.proposal-closing .contact-name{border-top:2px solid var(--line);padding-top:20px}
+.proposal-closing .contact-name.featured-consultant{border-top:4px solid var(--red);background:var(--paper);padding:20px 24px 22px}
+.consultant-pill{display:inline-block;font-size:12px;font-weight:800;letter-spacing:.12em;padding:4px 10px;background:var(--red);color:#fff;margin-bottom:12px;text-transform:uppercase}
+.consultant-pill.muted-pill{background:#e4e8f0;color:var(--blue)}
+.proposal-closing .contact-name h3{font-size:34px!important;line-height:1.15}
+.proposal-closing .contact-name a{font-size:26px!important;color:var(--blue);margin-top:18px!important}
+.consultant-email{display:block;font-size:17px;color:var(--muted);margin-top:8px}
+.proposal-closing-footer{position:absolute;left:80px;right:80px;bottom:86px;border-top:1px solid var(--line);padding-top:20px;display:flex;align-items:flex-end;justify-content:space-between;gap:40px}
+.closing-address{font-size:20px;line-height:1.45;color:#657084}
+.closing-address a{display:block;text-decoration:none;color:var(--blue);font-size:26px;font-weight:800;margin-bottom:6px}
+.closing-acceptance{background:var(--paper);border-left:4px solid var(--blue);padding:14px 22px;min-width:620px}
+.closing-acceptance .acc-title{display:block;font-size:12px;font-weight:800;letter-spacing:.12em;color:var(--blue);margin-bottom:4px}
+.closing-acceptance p{font-size:18px!important;color:var(--ink)}
+.closing-acceptance .acc-sign-row{display:flex;justify-content:space-between;gap:24px;margin-top:10px;font-size:15px;color:var(--muted);font-weight:600}
+`;
+
+  const sectionsJoined = builtSections
+    .map((s, idx) => {
+      if (idx === clampedInitial) {
+        return s.html
+          .replace(/class="slide\s+/, 'class="slide active ')
+          .replace(/aria-hidden="true"/, 'aria-hidden="false"');
+      }
+      return s.html;
+    })
     .join("\n");
 
-  const html = `<!doctype html>
+  const html = `<!DOCTYPE html>
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"/>
-<meta name="viewport" content="width=device-width,initial-scale=1"/>
-<title>Proposta Comercial ${esc(termos.codigo)} · ${esc(nomeCliente)}</title>
-<style>
-  @page { size: A4 portrait; margin: 0; }
-  * { box-sizing: border-box; margin: 0; padding: 0; -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-  html, body { background: #14171f; color: #161922; font-family: "Manrope", "Inter", system-ui, -apple-system, sans-serif; }
-  .deck-toolbar {
-    position: fixed; top: 0; left: 0; right: 0; z-index: 40; height: 50px;
-    background: #0d1016; border-bottom: 1px solid #262b38; color: #fff;
-    display: flex; align-items: center; justify-content: space-between; padding: 0 20px; font-size: 13px;
-  }
-  .deck-toolbar .grp { display: flex; align-items: center; gap: 8px; }
-  .deck-toolbar button {
-    background: #1d222e; color: #fff; border: 1px solid #30374a; border-radius: 6px;
-    padding: 6px 12px; font-size: 12px; font-weight: 600; cursor: pointer;
-  }
-  .deck-toolbar button.primary { background: #c81421; border-color: #c81421; }
-  .deck-stage {
-    padding: 68px 16px 32px; display: flex; flex-direction: column; align-items: center; gap: 24px;
-  }
-  .slide {
-    width: 210mm; min-height: 297mm; height: 297mm; background: #fff; position: relative;
-    overflow: hidden; box-shadow: 0 18px 45px rgba(0,0,0,0.45); display: flex; flex-direction: column;
-    page-break-after: always; break-after: page;
-  }
-  .slide:last-child { page-break-after: auto; break-after: auto; }
-  .page-dark { background: #0e1016; color: #fff; }
-  .accent-bar { position: absolute; left: 0; top: 0; bottom: 0; width: 4.5mm; background: #c81421; z-index: 4; }
-  .cover-hero { position: relative; height: 118mm; overflow: hidden; padding: 12mm 15mm 10mm 18mm; display: flex; flex-direction: column; justify-content: space-between; }
-  .cover-photo { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; z-index: 1; }
-  .cover-scrim { position: absolute; inset: 0; background: linear-gradient(180deg, rgba(14,16,22,0.72), rgba(14,16,22,0.88)); z-index: 2; }
-  .cover-top, .cover-copy { position: relative; z-index: 3; }
-  .cover-top { display: flex; justify-content: space-between; align-items: center; }
-  .logo-svg { height: 28px; width: auto; }
-  .badge-code { font-size: 10px; font-weight: 700; letter-spacing: .12em; color: #b8c0cc; }
-  .kicker { font-size: 10.5px; font-weight: 800; letter-spacing: .12em; color: #ff8a92; margin-bottom: 8px; }
-  .cover-copy h1 { font-size: 31px; line-height: 1.15; font-weight: 800; color: #fff; margin-bottom: 10px; }
-  .cover-copy .lead { font-size: 13px; line-height: 1.48; color: #cbd2dd; max-width: 92%; }
-  .cover-body { flex: 1; padding: 9mm 15mm 6mm 18mm; display: flex; flex-direction: column; gap: 5mm; }
-  .dark-panel { background: #1a1d26; border: 1px solid #2b3140; border-radius: 6px; padding: 4.5mm 5mm; }
-  .highlight-left { border-left: 4px solid #c81421; }
-  .mini-label { display: block; font-size: 9px; font-weight: 800; letter-spacing: .1em; color: #ff8a92; margin-bottom: 4px; text-transform: uppercase; }
-  .dark-panel h2 { font-size: 19px; color: #fff; margin-bottom: 4px; }
-  .dark-panel h3 { font-size: 16px; color: #fff; margin-bottom: 4px; }
-  .muted-light { font-size: 11px; color: #9ea8b8; margin-bottom: 6px; }
-  .white-line { font-size: 11.5px; color: #eef2f7; }
-  .metrics-row { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4mm; }
-  .metrics-row strong { display: block; font-size: 15px; color: #fff; margin: 3px 0; }
-  .metrics-row p { font-size: 10.5px; color: #9ea8b8; line-height: 1.35; }
-  .seller-panel { display: flex; justify-content: space-between; align-items: center; gap: 12px; margin-top: auto; }
-  .date-col { text-align: right; font-size: 11px; color: #cbd2dd; display: flex; flex-direction: column; gap: 3px; white-space: nowrap; }
-
-  .band-head { background: #0e1016; color: #fff; padding: 9mm 14mm 8mm; border-bottom: 3.5px solid #c81421; }
-  .band-meta { display: flex; justify-content: space-between; align-items: center; font-size: 10px; font-weight: 700; color: #b8c0cc; margin-bottom: 5px; }
-  .red-kicker { font-size: 9.5px; font-weight: 800; letter-spacing: .11em; color: #c81421; text-transform: uppercase; display: block; margin-bottom: 3px; }
-  .band-head .red-kicker { color: #ff8a92; margin-bottom: 0; }
-  .band-head h2 { font-size: 21px; line-height: 1.22; font-weight: 800; }
-
-  .page-pad { flex: 1; padding: 8mm 14mm 5mm; display: flex; flex-direction: column; gap: 4.5mm; }
-  .spec-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 3.5mm; }
-  .spec-box { background: #f6f7fa; border: 1px solid #e0e4ec; border-radius: 6px; padding: 3.5mm 4.5mm; }
-  .spec-box span { display: block; font-size: 9.5px; font-weight: 700; text-transform: uppercase; color: #5f6878; margin-bottom: 2px; }
-  .spec-box strong { font-size: 13px; color: #161922; }
-  .spec-box p { font-size: 11px; color: #5f6878; line-height: 1.4; margin-top: 3px; }
-  .alert-box { background: #fef2f2; border: 1px solid #f5c3c6; border-left: 4px solid #c81421; border-radius: 6px; padding: 4mm 5mm; }
-  .alert-box p { font-size: 12px; color: #161922; line-height: 1.45; }
-  .sec-sub { font-size: 12px; font-weight: 800; text-transform: uppercase; letter-spacing: .04em; color: #161922; margin-top: 2px; }
-  .risk-stack { display: flex; flex-direction: column; gap: 3mm; }
-  .risk-card { border: 1px solid #e0e4ec; border-radius: 6px; padding: 3.5mm 4.5mm; }
-  .risk-card strong { display: block; font-size: 12px; color: #c81421; margin-bottom: 3px; }
-  .risk-card p { font-size: 11px; color: #363d4d; line-height: 1.4; }
-
-  .photo-banner { height: 58mm; border-radius: 6px; overflow: hidden; border-bottom: 3px solid #c81421; }
-  .photo-banner.tall { height: 74mm; }
-  .photo-banner img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .quad-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 3.5mm; }
-  .pillar-card { background: #f6f7fa; border: 1px solid #e0e4ec; border-top: 3px solid #c81421; border-radius: 6px; padding: 4mm; }
-  .pillar-card h4 { font-size: 13px; color: #161922; margin: 4px 0 5px; }
-  .pillar-card p { font-size: 11px; color: #525b6d; line-height: 1.42; }
-  .dark-strip { background: #0e1016; color: #fff; border-radius: 6px; padding: 3.8mm 4.5mm; font-size: 11px; line-height: 1.42; margin-top: auto; }
-  .dark-banner { background: #0e1016; color: #fff; border-radius: 6px; padding: 4.5mm 5mm; border-left: 4px solid #c81421; }
-  .dark-banner p { font-size: 11.5px; color: #e2e7f0; line-height: 1.45; }
-
-  .stack-cards { display: flex; flex-direction: column; gap: 4mm; }
-  .border-card { background: #f6f7fa; border: 1px solid #e0e4ec; border-radius: 6px; padding: 4.5mm 5mm; }
-  .red-left { border-left: 5px solid #c81421; }
-  .dark-left { border-left: 5px solid #0e1016; }
-  .gray-left { border-left: 5px solid #5f6878; }
-  .border-card h4 { font-size: 14px; color: #161922; margin-bottom: 4px; }
-  .border-card p { font-size: 11.5px; color: #464e60; line-height: 1.45; }
-
-  .split-photos { display: grid; grid-template-columns: 1fr 1fr; gap: 3.5mm; height: 64mm; }
-  .split-photos img { width: 100%; height: 100%; object-fit: cover; border-radius: 6px; border-bottom: 3px solid #c81421; }
-  .two-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 4mm; flex: 1; }
-  .col-card { border-radius: 6px; padding: 5mm; border-top: 4px solid #c81421; }
-  .col-card.light { background: #f6f7fa; border: 1px solid #e0e4ec; border-top: 4px solid #c81421; }
-  .col-card.dark { background: #0e1016; color: #fff; }
-  .col-card h4 { font-size: 15px; margin: 4px 0 8px; }
-  .col-card ul { padding-left: 16px; display: flex; flex-direction: column; gap: 7px; font-size: 11.5px; line-height: 1.42; }
-  .col-card.dark ul { color: #cfd6e3; }
-
-  .erp-card { background: #f6f7fa; border: 1px solid #d5dbe6; border-top: 4px solid #c81421; border-radius: 6px; padding: 5mm; }
-  .erp-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin-bottom: 8px; }
-  .erp-head h3 { font-size: 17px; color: #161922; }
-  .erp-total { font-size: 20px; font-weight: 800; color: #c81421; white-space: nowrap; }
-  .erp-summary { font-size: 11.5px; color: #2b3140; line-height: 1.45; margin-bottom: 8px; }
-  .erp-bullets { list-style: none; display: flex; flex-direction: column; gap: 4px; font-size: 11px; font-weight: 600; color: #161922; margin-bottom: 8px; }
-  .erp-attach { font-size: 10.5px; font-weight: 700; color: #167a44; padding-top: 6px; border-top: 1px solid #dce1ea; }
-
-  .terms-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
-  .terms-table th, .terms-table td { border: 1px solid #e0e4ec; padding: 3mm 4mm; text-align: left; }
-  .terms-table th { width: 34%; background: #f6f7fa; color: #4f5869; font-weight: 700; }
-  .terms-table td { font-weight: 600; color: #161922; }
-  .obs-line { font-size: 10.5px; color: #5f6878; line-height: 1.4; }
-
-  .steps-list { display: flex; flex-direction: column; gap: 3.5mm; }
-  .step-row { display: flex; align-items: stretch; border: 1px solid #e0e4ec; border-radius: 6px; overflow: hidden; background: #f6f7fa; }
-  .step-row span { width: 13mm; background: #0e1016; color: #fff; font-size: 16px; font-weight: 800; display: flex; align-items: center; justify-content: center; }
-  .step-row div { padding: 3.5mm 4.5mm; flex: 1; }
-  .step-row strong { display: block; font-size: 12.5px; color: #161922; margin-bottom: 2px; }
-  .step-row p { font-size: 11px; color: #525b6d; line-height: 1.38; }
-  .cta-box h3 { font-size: 17px; color: #fff; margin: 2px 0 4px; }
-  .sign-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10mm; border: 1px solid #e0e4ec; border-radius: 6px; padding: 8mm 6mm 5mm; margin-top: auto; }
-  .sign-col { display: flex; flex-direction: column; gap: 3px; font-size: 10.5px; color: #5f6878; }
-  .sign-col strong { color: #161922; font-size: 11.5px; }
-  .sign-line { border-top: 1px solid #161922; margin-bottom: 5px; margin-top: 8mm; }
-
-  .slide-foot {
-    height: 10mm; padding: 0 14mm; background: #f6f7fa; border-top: 1px solid #e0e4ec;
-    display: flex; align-items: center; justify-content: space-between; font-size: 9.5px; font-weight: 700; color: #5f6878;
-  }
-  .slide-foot.dark-foot { background: #0e1016; border-top-color: #262b38; color: #9ea8b8; }
-
-  @media print {
-    html, body { background: #fff !important; }
-    .deck-toolbar { display: none !important; }
-    .deck-stage { padding: 0 !important; gap: 0 !important; }
-    .slide { box-shadow: none !important; margin: 0 !important; width: 210mm !important; height: 297mm !important; }
-  }
-</style>
+<meta content="width=device-width,initial-scale=1" name="viewport"/>
+<meta content="#29387f" name="theme-color"/>
+<title>Tawper — Proposta Comercial ${esc(termos.codigo)} · ${esc(nomeCliente)}</title>
+<link href="${baseUrl}/apresentacao.css" rel="stylesheet"/>
+<link href="${baseUrl}/refinamentos.css" rel="stylesheet"/>
+<style>${customProposalCss}</style>
 </head>
 <body>
-<div class="deck-toolbar">
-  <div class="grp">
-    <strong>Tawper A4 Executivo (8 páginas)</strong>
-    <span style="color:#9ea8b8">· ${esc(nomeCliente)}</span>
+<main aria-label="Apresentação e Proposta Comercial Tawper" id="viewport">
+  <div id="stage">
+    ${sectionsJoined}
   </div>
-  <div class="grp">
-    <button onclick="window.print()" class="primary">Imprimir A4 Sem Bordas</button>
-  </div>
-</div>
-<main class="deck-stage">
-${slidesHtml}
 </main>
+<div aria-hidden="true" id="progress"></div>
+<nav aria-label="Controles da apresentação" id="toolbar">
+  <div class="toolbar-group">
+    <button aria-label="Slide anterior" id="prev" title="Anterior (←)">←</button>
+    <span aria-live="polite" id="slide-counter">${String(clampedInitial + 1).padStart(2, "0")} / ${String(totalSlides).padStart(2, "0")}</span>
+    <button aria-label="Próximo slide" id="next" title="Próximo (→)">→</button>
+    <span id="slide-title">${esc(builtSections[clampedInitial]?.title || "")}</span>
+  </div>
+  <div class="toolbar-group">
+    <button id="overview-button" title="Todos os slides (G)">▦ <span class="toolbar-label">Slides</span></button>
+    <button aria-expanded="false" id="notes-button" title="Notas do apresentador (N)">≡ <span class="toolbar-label">Notas</span></button>
+    <button id="fullscreen-button" title="Tela cheia (F)">⛶ <span class="toolbar-label">Tela cheia</span></button>
+    <button id="print-button" title="Imprimir ou salvar como PDF">↓ <span class="toolbar-label">Salvar PDF</span></button>
+  </div>
+</nav>
+<aside aria-label="Notas do apresentador" id="notes-panel">
+  <button aria-label="Fechar notas" id="close-notes">×</button>
+  <h2 id="notes-title"></h2>
+  <p id="notes-text"></p>
+  <p class="source-note" id="notes-sources"></p>
+</aside>
+<dialog id="overview">
+  <div class="overview-top">
+    <h2>Proposta Comercial ${esc(termos.codigo)} · ${esc(nomeCliente)} (${totalSlides} slides)</h2>
+    <button id="close-overview">Fechar ×</button>
+  </div>
+  <div class="overview-grid" id="overview-grid"></div>
+</dialog>
+<div id="toast" role="status"></div>
+<script id="speaker-data" type="application/json">${speakerJson}</script>
+<script>
+(() => {
+  'use strict';
+  const slides = [...document.querySelectorAll('.slide')];
+  const notes = JSON.parse(document.getElementById('speaker-data').textContent);
+  const $ = (id) => document.getElementById(id);
+  const overview = $('overview');
+  let index = ${clampedInitial};
+
+  function fit() {
+    const rect = $('viewport').getBoundingClientRect();
+    document.documentElement.style.setProperty('--scale', Math.min(rect.width / 1600, rect.height / 900));
+  }
+  function updateNotes() {
+    const n = notes[index] || { title: '', notes: '', sources: '', visual: '' };
+    $('notes-title').textContent = String(index + 1).padStart(2, '0') + '. ' + n.title;
+    $('notes-text').textContent = n.notes;
+    $('notes-sources').textContent = 'Fontes: ' + n.sources + '\\n\\nVisual: ' + n.visual;
+  }
+  function show(n, notifyParent = true) {
+    index = Math.max(0, Math.min(slides.length - 1, n));
+    slides.forEach((slide, i) => {
+      const active = i === index;
+      slide.classList.toggle('active', active);
+      slide.setAttribute('aria-hidden', String(!active));
+      slide.inert = !active;
+    });
+    $('slide-counter').textContent = String(index + 1).padStart(2, '0') + ' / ' + String(slides.length).padStart(2, '0');
+    $('slide-title').textContent = notes[index] ? notes[index].title : '';
+    $('prev').disabled = index === 0;
+    $('next').disabled = index === slides.length - 1;
+    $('progress').style.width = ((index + 1) / slides.length * 100) + '%';
+    updateNotes();
+    document.querySelectorAll('.overview-card').forEach((card, i) => card.setAttribute('aria-current', String(i === index)));
+    if (notifyParent && window.parent && window.parent !== window) {
+      window.parent.postMessage({
+        type: 'TAWPER_DECK_SLIDE_CHANGE',
+        index,
+        total: slides.length,
+        title: notes[index] ? notes[index].title : '',
+        chapter: notes[index] ? notes[index].chapter : ''
+      }, '*');
+    }
+  }
+  function toggleNotes() {
+    const open = $('notes-panel').classList.toggle('open');
+    $('notes-button').setAttribute('aria-expanded', String(open));
+    updateNotes();
+  }
+  function openOverview() {
+    if (!overview.open) overview.showModal();
+    overview.querySelector('[aria-current="true"]')?.focus();
+  }
+  async function fullscreen() {
+    try {
+      if (document.fullscreenElement) await document.exitFullscreen();
+      else await document.documentElement.requestFullscreen();
+    } catch {}
+  }
+  const grid = $('overview-grid');
+  notes.forEach((n, i) => {
+    const button = document.createElement('button');
+    button.className = 'overview-card';
+    button.style.padding = '14px';
+    const badge = document.createElement('div');
+    badge.style.cssText = 'font-size:11px;text-transform:uppercase;letter-spacing:.12em;color:#ff8da3;font-weight:800;margin-bottom:6px';
+    badge.textContent = String(i + 1).padStart(2, '0') + ' · ' + (n.chapter || 'Tawper');
+    const label = document.createElement('span');
+    label.style.cssText = 'padding:0;font-size:13.5px;font-weight:700;min-height:42px;color:#fff';
+    label.textContent = n.title;
+    button.append(badge, label);
+    button.addEventListener('click', () => { show(i); overview.close(); });
+    grid.append(button);
+  });
+  $('prev').addEventListener('click', () => show(index - 1));
+  $('next').addEventListener('click', () => show(index + 1));
+  $('notes-button').addEventListener('click', toggleNotes);
+  $('close-notes').addEventListener('click', toggleNotes);
+  $('overview-button').addEventListener('click', openOverview);
+  $('close-overview').addEventListener('click', () => overview.close());
+  $('fullscreen-button').addEventListener('click', fullscreen);
+  $('print-button').addEventListener('click', () => window.print());
+  overview.addEventListener('click', (event) => { if (event.target === overview) overview.close(); });
+  document.addEventListener('keydown', (event) => {
+    if (event.defaultPrevented || event.target.isContentEditable) return;
+    if (event.ctrlKey || event.metaKey || event.altKey || /INPUT|TEXTAREA|SELECT/.test(event.target.tagName)) return;
+    if (overview.open) return;
+    const actions = {
+      ArrowRight: () => show(index + 1), PageDown: () => show(index + 1),
+      ArrowLeft: () => show(index - 1), PageUp: () => show(index - 1),
+      ' ': () => show(index + 1), Home: () => show(0), End: () => show(slides.length - 1),
+      n: toggleNotes, N: toggleNotes, g: openOverview, G: openOverview, f: fullscreen, F: fullscreen
+    };
+    if (actions[event.key]) { event.preventDefault(); actions[event.key](); }
+  });
+  window.addEventListener('message', (event) => {
+    const data = event.data;
+    if (!data || typeof data !== 'object') return;
+    if (data.type === 'TAWPER_DECK_GOTO' && typeof data.index === 'number') {
+      show(data.index, true);
+    } else if (data.type === 'TAWPER_DECK_PRINT') {
+      window.print();
+    } else if (data.type === 'TAWPER_DECK_OVERVIEW') {
+      openOverview();
+    } else if (data.type === 'TAWPER_DECK_NOTES') {
+      toggleNotes();
+    } else if (data.type === 'TAWPER_DECK_FULLSCREEN') {
+      fullscreen();
+    }
+  });
+  window.addEventListener('resize', fit);
+  fit();
+  show(index, true);
+})();
+</script>
 </body>
 </html>`;
 
