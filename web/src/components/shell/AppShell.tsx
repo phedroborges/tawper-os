@@ -6,7 +6,6 @@ import {
   Building2,
   ChevronDown,
   LogOut,
-  ClipboardCheck,
   Columns3,
   FileText,
   LayoutDashboard,
@@ -56,7 +55,7 @@ interface NavItem {
 }
 
 /** Telas de dados que aproveitam toda a largura do monitor. */
-const FLUID_ROUTES = ["/funis", "/carteira", "/configuracoes/auditoria", "/dashboard", "/propostas", "/registros", "/gestao", "/conversas"];
+const FLUID_ROUTES = ["/funis", "/carteira", "/configuracoes/auditoria", "/dashboard", "/propostas", "/gestao", "/conversas"];
 const COCKPIT_ROUTES = ["/gestao", "/funis"];
 
 function useNav(): NavItem[] {
@@ -83,9 +82,8 @@ function useNav(): NavItem[] {
     { href: "/metas", label: "Metas", icon: <Target size={18} /> },
     { href: "/gestao", label: "Gestão", icon: <ShieldCheck size={18} />, badge: exceptions, manager: true },
     { href: "/dashboard", label: "Painel", icon: <LayoutDashboard size={18} />, manager: true },
-    // Atendimento IA & Registros: gerenciamento da IA no WhatsApp e auditoria do que a equipe reportou. Só gestor.
+    // Atendimento IA: gerenciamento da IA no WhatsApp e, na aba Registros, a auditoria do que a equipe reportou. Só gestor.
     { href: "/conversas", label: "Atendimento IA", icon: <Bot size={18} />, manager: true },
-    { href: "/registros", label: "Registros", icon: <ClipboardCheck size={18} />, manager: true },
   ];
 }
 
