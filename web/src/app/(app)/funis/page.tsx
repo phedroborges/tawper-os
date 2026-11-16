@@ -6,7 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AIBadge } from "@/components/ai/ai";
 import { DaysInStage, DueLabel, PeriodFilter, RegionSelect, UserAvatar } from "@/components/crm/crm";
-import { Badge, Input, PageHeader, Segmented, Select } from "@/components/ui/primitives";
+import { Badge, CountUp, Input, PageHeader, Segmented, Select } from "@/components/ui/primitives";
 import { FUNNELS, isManager, saleLabel, stageIndex } from "@/lib/constants";
 import { stageKeyToUi } from "@/lib/crm-map";
 import { daysSince, fmtDateShort, inPeriod, NO_PERIOD, type Period } from "@/lib/dates";
@@ -229,40 +229,40 @@ function Kanban() {
         }
       />
       {/* Resumo rápido do funil */}
-      <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
-        <div className="rounded-[10px] border border-line bg-white px-3.5 py-2.5">
+      <div className="stagger mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+        <div className="rounded-[10px] border border-line bg-white px-3.5 py-2.5 shadow-card">
           <div className="text-[11.5px] font-medium text-muted">Em aberto</div>
-          <div className="mt-0.5 text-[22px] font-bold tracking-tight text-ink">{openDeals.length}</div>
+          <div className="mt-0.5 text-[22px] font-bold tracking-tight text-ink tabular-nums"><CountUp value={openDeals.length} /></div>
           <div className="truncate text-[11px] text-muted">negócios no funil</div>
         </div>
-        <div className="rounded-[10px] border border-line bg-white px-3.5 py-2.5">
+        <div className="rounded-[10px] border border-line bg-white px-3.5 py-2.5 shadow-card">
           <div className="text-[11.5px] font-medium text-muted">Pipeline em aberto</div>
-          <div className="mt-0.5 text-[22px] font-bold tracking-tight text-ink">{openTotal ? moneyShort(openTotal) : "—"}</div>
+          <div className="mt-0.5 text-[22px] font-bold tracking-tight text-ink tabular-nums"><CountUp value={openTotal ? moneyShort(openTotal) : "—"} /></div>
           <div className="truncate text-[11px] text-muted">soma dos valores estimados</div>
         </div>
         <button
           type="button"
           onClick={() => setOnlyRisk((v) => !v)}
           className={cn(
-            "rounded-[10px] border px-3.5 py-2.5 text-left transition hover:border-navy-3/40",
+            "lift rounded-[10px] border px-3.5 py-2.5 text-left hover:border-navy-3/40 active:scale-[0.98]",
             onlyRisk
-              ? "border-navy bg-navy text-white shadow-sm"
+              ? "border-navy bg-navy text-white shadow-[0_8px_18px_-8px_rgba(10,29,63,0.55)]"
               : riskCount > 0
-              ? "border-brand/30 bg-brand-soft/40 text-ink"
-              : "border-line bg-white text-ink",
+              ? "border-brand/30 bg-brand-soft/40 text-ink shadow-card"
+              : "border-line bg-white text-ink shadow-card",
           )}
         >
           <div className={cn("text-[11.5px] font-medium", onlyRisk ? "text-white/80" : "text-muted")}>Em risco / parados</div>
           <div className={cn("mt-0.5 text-[22px] font-bold tracking-tight", onlyRisk ? "text-white" : riskCount > 0 ? "text-brand" : "text-ink")}>
-            {riskCount}
+            <CountUp value={riskCount} />
           </div>
           <div className={cn("truncate text-[11px]", onlyRisk ? "text-white/70" : "text-muted")}>
             {onlyRisk ? "clique para mostrar todos" : "clique para filtrar"}
           </div>
         </button>
-        <div className="rounded-[10px] border border-line bg-white px-3.5 py-2.5">
+        <div className="rounded-[10px] border border-line bg-white px-3.5 py-2.5 shadow-card">
           <div className="text-[11.5px] font-medium text-muted">Vendas ganhas</div>
-          <div className="mt-0.5 text-[22px] font-bold tracking-tight text-ok">{wonTotal ? moneyShort(wonTotal) : "—"}</div>
+          <div className="mt-0.5 text-[22px] font-bold tracking-tight text-ok tabular-nums"><CountUp value={wonTotal ? moneyShort(wonTotal) : "—"} /></div>
           <div className="truncate text-[11px] text-muted">
             {wonDeals.length} {wonDeals.length === 1 ? "venda" : "vendas"} · {hasPeriod ? "no período" : "últimos 90 dias"}
           </div>
@@ -303,7 +303,7 @@ function Kanban() {
 
       <div ref={boardRef} className={cn("no-scrollbar -mx-4 overflow-x-auto px-4 pb-1 md:-mx-6 md:px-6 2xl:-mx-8 2xl:px-8 lg:min-h-0 lg:flex-1 lg:overflow-y-hidden", drag?.active && "select-none cursor-grabbing")}>
         {/* Cada etapa ganha uma fatia igual da largura, nunca menos que 240px: telas largas mostram todas. */}
-        <div className="grid h-full auto-cols-[minmax(240px,1fr)] grid-flow-col gap-3">
+        <div className="stagger grid h-full auto-cols-[minmax(240px,1fr)] grid-flow-col gap-3">
           {stages.map((st, stIdx) => {
             const col = deals
               .filter((d) => stageKeyToUi(d.stageId) === st.id && (!onlyRisk || (d.status === "aberta" && risky(d))))

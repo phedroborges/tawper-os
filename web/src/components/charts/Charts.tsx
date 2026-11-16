@@ -40,7 +40,7 @@ export function ColumnChart({ rows, target, targetLabel, color = CATEGORY_COLORS
             <span className="absolute -top-4 right-0 bg-surface pl-1 text-[10.5px] text-muted">{targetLabel}</span>
           </div>
         )}
-        {rows.map((r) => {
+        {rows.map((r, i) => {
           const Comp = r.onClick ? "button" : "div";
           return (
             <Comp
@@ -57,8 +57,8 @@ export function ColumnChart({ rows, target, targetLabel, color = CATEGORY_COLORS
             >
               {rows.length <= 8 && <span className="mb-1 text-[11px] font-semibold whitespace-nowrap text-ink tabular-nums">{r.value > 0 ? r.display : ""}</span>}
               <span
-                className={cn("w-full max-w-[46px] rounded-t-[4px] transition-[height,filter] duration-500", hover === r.key && "brightness-110")}
-                style={{ height: `${(r.value / top) * 100}%`, minHeight: r.value > 0 ? 3 : 0, background: color }}
+                className={cn("w-full max-w-[46px] origin-bottom animate-grow-y rounded-t-[4px] transition-[height,filter] duration-500", hover === r.key && "brightness-110")}
+                style={{ height: `${(r.value / top) * 100}%`, minHeight: r.value > 0 ? 3 : 0, background: color, animationDelay: `${i * 40}ms` }}
               />
               {hover === r.key && <Tip className="bottom-full left-1/2 mb-1 -translate-x-1/2">{r.tooltip ?? `${r.label}: ${r.display}`}</Tip>}
             </Comp>

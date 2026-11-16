@@ -178,7 +178,7 @@ export default function GestaoPage() {
       </div>
 
       {/* Pulso da equipe 100% visual (bater o olho e entender quem cobrar, quem lidera e produtividade) */}
-      <div className="grid shrink-0 gap-3 lg:grid-cols-3">
+      <div className="stagger grid shrink-0 gap-3 lg:grid-cols-3">
         {/* 1. Gargalo / Quem cobrar hoje */}
         <Card className="flex items-center justify-between gap-3 px-3.5 py-2.5">
           {pulse.focus ? (
@@ -231,7 +231,7 @@ export default function GestaoPage() {
               Média {avgExec}%
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-2.5">
+          <div className="stagger grid grid-cols-2 gap-2.5">
             {pulse.leader && (
               <button
                 type="button"

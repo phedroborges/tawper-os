@@ -1,8 +1,9 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import type { ButtonHTMLAttributes, InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTMLAttributes } from "react";
-import { cn } from "@/lib/utils";
+import { cn, splitNumber } from "@/lib/utils";
 
 type Variant = "primary" | "dark" | "outline" | "ghost" | "ai" | "subtle" | "danger" | "success";
 type Size = "xs" | "sm" | "md" | "lg";
@@ -107,7 +108,43 @@ export function Badge({ tone = "neutral", className, children }: { tone?: Tone; 
 }
 
 export function Card({ className, children, as: As = "div" }: { className?: string; children: ReactNode; as?: "div" | "section" | "article" }) {
-  return <As className={cn("rounded-[8px] border border-line bg-white", className)}>{children}</As>;
+  return <As className={cn("rounded-[10px] border border-line bg-white shadow-card", className)}>{children}</As>;
+}
+
+/**
+ * Número que conta até o valor quando aparece e quando muda ("R$ 1,2 mi", "37%", 12).
+ * Texto que não é um número só (datas, "—", JSX) é mostrado como veio; no fim mostra o valor original exato.
+ */
+export function CountUp({ value }: { value: ReactNode }) {
+  const parts = splitNumber(value);
+  const target = parts?.n;
+  const [shown, setShown] = useState(0);
+  const current = useRef(0);
+  useEffect(() => {
+    if (target === undefined) return;
+    const from = current.current;
+    const ms = from === target || window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 750;
+    let t0 = -1;
+    let raf = 0;
+    const step = (t: number) => {
+      if (t0 < 0) t0 = t;
+      const p = ms ? Math.min(1, (t - t0) / ms) : 1;
+      const v = p === 1 ? target : from + (target - from) * (1 - (1 - p) ** 3);
+      current.current = v;
+      setShown(v);
+      if (p < 1) raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+  }, [target]);
+  if (!parts || shown === target) return <>{value}</>;
+  return (
+    <>
+      {parts.pre}
+      {shown.toLocaleString("pt-BR", { minimumFractionDigits: parts.dec, maximumFractionDigits: parts.dec })}
+      {parts.post}
+    </>
+  );
 }
 
 export function CardHeader({ title, kicker, action, className }: { title?: ReactNode; kicker?: ReactNode; action?: ReactNode; className?: string }) {
@@ -275,8 +312,8 @@ export function Stat({
       type={onClick ? "button" : undefined}
       onClick={onClick}
       className={cn(
-        "rounded-[8px] border border-line bg-white px-4 py-3.5 text-left transition",
-        onClick && "cursor-pointer hover:border-navy-3/30 hover:bg-soft/40 active:scale-[0.985]",
+        "rounded-[10px] border border-line bg-white px-4 py-3.5 text-left shadow-card transition",
+        onClick && "lift cursor-pointer hover:border-navy-3/30 active:scale-[0.985]",
         className,
       )}
     >
@@ -284,7 +321,9 @@ export function Stat({
         {icon && <span className={cn("text-muted", tone === "bad" && "text-brand", tone === "warn" && "text-warn")}>{icon}</span>}
         <span className="label line-clamp-2 leading-snug">{label}</span>
       </div>
-      <div className={cn("mt-1.5 text-[24px] leading-none font-semibold tracking-[-0.01em]", valueColor)}>{value}</div>
+      <div className={cn("mt-1.5 text-[24px] leading-none font-semibold tracking-[-0.01em] tabular-nums", valueColor)}>
+        <CountUp value={value} />
+      </div>
       {sub && <div className="mt-1.5 truncate text-[12px] text-muted">{sub}</div>}
     </Comp>
   );

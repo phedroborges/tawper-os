@@ -24,7 +24,7 @@ import { CATEGORY_COLORS, ColumnChart, DonutChart, LineChart } from "@/component
 import { HBarChart } from "@/components/charts/HBar";
 import { PeriodFilter, UserAvatar } from "@/components/crm/crm";
 import { TvModeOverlay } from "@/components/dashboard/TvModeOverlay";
-import { Button, Card, CardHeader, Empty, PageHeader, Segmented, Select, Stat } from "@/components/ui/primitives";
+import { Button, Card, CardHeader, CountUp, Empty, PageHeader, Segmented, Select, Stat } from "@/components/ui/primitives";
 import { FUNNELS, isManager, saleLabel } from "@/lib/constants";
 import { activitiesByType, cumulativeSales, lossesByReason, MONTH_LABELS, salesByMonth, scopeData, sellerDetail, type SellerDetail } from "@/lib/dashboard";
 import { fmtDateShort, inPeriod, presetPeriod, type Period } from "@/lib/dates";
@@ -275,7 +275,7 @@ export default function DashboardPage() {
       </div>
 
       {/* Psicologia de avanço + Inteligência empresarial */}
-      <div className="mb-4 grid gap-3 xl:grid-cols-[1.35fr_1fr]">
+      <div className="stagger mb-4 grid gap-3 xl:grid-cols-[1.35fr_1fr]">
         <Card className="p-4">
           <div className="flex flex-wrap items-start justify-between gap-2">
             <div>
@@ -284,7 +284,7 @@ export default function DashboardPage() {
                 Ritmo da meta · Mês atual
               </div>
               <div className="mt-1 flex items-baseline gap-2">
-                <span className="text-[24px] font-bold leading-none tabular-nums text-ink">{moneyShort(pace.monthSold)}</span>
+                <span className="text-[24px] font-bold leading-none tabular-nums text-ink"><CountUp value={moneyShort(pace.monthSold)} /></span>
                 {pace.monthGoal > 0 ? (
                   <span className="text-[13px] text-muted">de {moneyShort(pace.monthGoal)}</span>
                 ) : (
@@ -347,13 +347,13 @@ export default function DashboardPage() {
             <div className="flex items-center gap-1 text-[11px] font-semibold uppercase tracking-wide text-muted">
               <TrendingUp size={12} className="text-navy-3" /> Forecast
             </div>
-            <div className="mt-1 text-[15px] font-bold tabular-nums text-ink sm:text-[18px]">{moneyShort(insights.forecast)}</div>
+            <div className="mt-1 text-[15px] font-bold tabular-nums text-ink sm:text-[18px]"><CountUp value={moneyShort(insights.forecast)} /></div>
             <div className="mt-0.5 text-[11px] text-muted">{insights.openCount} negócios ponderados</div>
           </div>
 
           <div className="px-3">
             <div className="text-[11px] font-semibold uppercase tracking-wide text-muted">Ticket & Ciclo</div>
-            <div className="mt-1 text-[15px] font-bold tabular-nums text-ink sm:text-[18px]">{insights.ticketMedio > 0 ? moneyShort(insights.ticketMedio) : "—"}</div>
+            <div className="mt-1 text-[15px] font-bold tabular-nums text-ink sm:text-[18px]"><CountUp value={insights.ticketMedio > 0 ? moneyShort(insights.ticketMedio) : "—"} /></div>
             <div className="mt-0.5 text-[11px] text-muted">
               {insights.avgCycle !== null ? `Ciclo médio ${insights.avgCycle}d` : `${insights.wonCount} vendas no período`}
             </div>
@@ -376,13 +376,13 @@ export default function DashboardPage() {
       </div>
 
       {/* 6 Cards principais alinhados: Avanço + Saúde */}
-      <div className="mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1500px]:grid-cols-6">
+      <div className="stagger mb-3 grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1500px]:grid-cols-6">
         <Stat label="Em negociação" value={m.negociacao.value} sub={m.negociacao.sub} icon={<Handshake size={15} />} onClick={() => drill(m.negociacao)} />
         {["ativas", "ganhos", "propostas", "execucao", "atrasadas"].map(tile)}
       </div>
 
       {/* Faixa secundária dividida entre Avanço e Risco/Saúde */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-[8px] border border-line bg-white px-4 py-2.5 text-[12.5px]">
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-[10px] border border-line bg-white px-4 py-2.5 text-[12.5px] shadow-card">
         <div className="flex flex-wrap items-center gap-x-5 gap-y-1.5">
           <span className="text-[10.5px] font-bold uppercase tracking-wider text-muted">Avanço</span>
           {["conversao", "feitas", "recorrencia"].map((k) => (
@@ -404,7 +404,7 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="mb-5 grid gap-5 xl:grid-cols-2">
+      <div className="stagger mb-5 grid gap-5 xl:grid-cols-2">
         <Card className="min-w-0">
           <CardHeader kicker="Últimos 6 meses" title="Vendas por mês" />
           <div className="px-4 pt-2 pb-4">
@@ -443,7 +443,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="mb-5 grid gap-5 xl:grid-cols-2">
+      <div className="stagger mb-5 grid gap-5 xl:grid-cols-2">
         <Card className="min-w-0">
           <CardHeader
             kicker={FUNNELS[funnel].subtitulo}
@@ -527,7 +527,7 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      <div className="mb-5 grid gap-5 xl:grid-cols-3">
+      <div className="stagger mb-5 grid gap-5 xl:grid-cols-3">
         <Card className="min-w-0">
           <CardHeader kicker="Concluídas no período" title="Atividades por tipo" />
           <div className="px-4 pb-4">

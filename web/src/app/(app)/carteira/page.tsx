@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { DaysInStage, DueLabel, StagePill, StatusBadge, UserAvatar, userName, RegionSelect } from "@/components/crm/crm";
-import { Badge, Card, Input, LinkButton, PageHeader, Segmented, Select } from "@/components/ui/primitives";
+import { Badge, Card, CountUp, Input, LinkButton, PageHeader, Segmented, Select } from "@/components/ui/primitives";
 import { FUNNELS, MARCAS, PRENSAS, isManager } from "@/lib/constants";
 import { matchesRegionFilter } from "@/lib/regions";
 import { dayDiff, fmtAgo } from "@/lib/dates";
@@ -36,17 +36,17 @@ function KpiCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-[10px] border p-3.5 text-left transition duration-200 hover:border-navy-3/40 active:scale-[0.98]",
+        "lift rounded-[10px] border p-3.5 text-left hover:border-navy-3/40 active:scale-[0.98]",
         active
-          ? "border-navy bg-navy text-white shadow-sm"
+          ? "border-navy bg-navy text-white shadow-[0_8px_18px_-8px_rgba(10,29,63,0.55)]"
           : tone === "danger" && value > 0
-          ? "border-brand/30 bg-brand-soft/40 text-ink"
-          : "border-line bg-white text-ink"
+          ? "border-brand/30 bg-brand-soft/40 text-ink shadow-card"
+          : "border-line bg-white text-ink shadow-card"
       )}
     >
       <div className={cn("text-[11.5px] font-medium", active ? "text-white/80" : "text-muted")}>{label}</div>
-      <div className={cn("mt-1 text-[26px] font-bold tracking-tight", active ? "text-white" : tone === "danger" && value > 0 ? "text-brand" : "text-ink")}>
-        {value}
+      <div className={cn("mt-1 text-[26px] font-bold tracking-tight tabular-nums", active ? "text-white" : tone === "danger" && value > 0 ? "text-brand" : "text-ink")}>
+        <CountUp value={value} />
       </div>
       <div className={cn("mt-0.5 truncate text-[11px]", active ? "text-white/70" : "text-muted")}>{sub}</div>
     </button>
@@ -195,7 +195,7 @@ export default function CarteiraPage() {
       />
 
       {/* Cards de métricas rápidas e filtros da carteira */}
-      <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="stagger mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
         <KpiCard
           label="Total da carteira"
           value={countTotal}
@@ -335,7 +335,7 @@ export default function CarteiraPage() {
                   <th className="label px-4 py-2.5 text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="stagger">
                 {rows.map(({ c, deal, next, last }) => {
                   const risk = riskIds.has(c.id);
                   const daysAgo = last ? dayDiff(last, now) : null;
@@ -445,13 +445,13 @@ export default function CarteiraPage() {
           {rows.length === 0 && <div className="px-4 py-12 text-center text-[13px] text-muted">Nenhuma conta com esses filtros.</div>}
         </Card>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map(({ c, deal, next, last }) => (
             <Link
               key={c.id}
               href={`/empresas/${c.id}`}
               className={cn(
-                "min-w-0 rounded-[8px] border bg-white p-4 shadow-card transition duration-200 hover:-translate-y-0.5 hover:shadow-pop active:translate-y-0 active:scale-[0.99]",
+                "lift min-w-0 rounded-[10px] border bg-white p-4 shadow-card active:scale-[0.99]",
                 riskIds.has(c.id) ? "border-brand/40 bg-brand-soft/10" : "border-line"
               )}
             >
