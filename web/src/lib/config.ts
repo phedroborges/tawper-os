@@ -44,6 +44,25 @@ export interface RecordGoalConfig {
   porVendedor?: Record<string, number>;
 }
 
+export interface AwardWeightsConfig {
+  /** Peso da meta de vendas (0-100). */
+  pesoVendas: number;
+  /** Peso de atividades concluídas com clientes e pontualidade (0-100). */
+  pesoAtividades: number;
+  /** Peso de registros no CRM / uso ativo do sistema (0-100). */
+  pesoRegistros: number;
+  /** Peso de conversas no WhatsApp e qualidade dos pedidos à IA (0-100). */
+  pesoQualidadeIA: number;
+  /** Nota mínima de clareza/qualidade nos pedidos à IA (0-100%). */
+  metaQualidadeIA: number;
+  /** Quantidade esperada de registros pelo WhatsApp IA no mês. */
+  metaConversasWhatsApp: number;
+  /** % mínimo de atividades concluídas no prazo (0-100%). */
+  metaPontualidade: number;
+  /** Descrição opcional do prêmio ou campanha vigente. */
+  premioDescricao?: string;
+}
+
 export interface Goals {
   ano: number;
   /** Meta anual da empresa, em reais. */
@@ -55,6 +74,8 @@ export interface Goals {
   atividades: ActivityTarget[];
   /** Meta de registros comerciais por vendedor (base da regressão para bater a meta financeira). */
   registros?: RecordGoalConfig;
+  /** Parâmetros da premiação multidimensional (Vendas + Atividades + Registros + Qualidade IA). */
+  premiacao?: AwardWeightsConfig;
 }
 
 export interface ProposalStandardConfig {

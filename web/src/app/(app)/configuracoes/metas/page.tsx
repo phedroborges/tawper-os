@@ -4,9 +4,9 @@ import { Plus, Save, Trash2 } from "lucide-react";
 import { useMemo, useState } from "react";
 import { UserAvatar } from "@/components/crm/crm";
 import { Button, Card, CardHeader, Checkbox, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
-import type { ActivityTarget, Goals, RecordGoalConfig } from "@/lib/config";
+import type { ActivityTarget, AwardWeightsConfig, Goals, RecordGoalConfig } from "@/lib/config";
 import { ACTIVITY_TYPES } from "@/lib/constants";
-import { annualGoalOf, DEFAULT_RECORD_GOAL, periodGoal, salesOf, sellersOf, TARGET_UNIT } from "@/lib/goals";
+import { annualGoalOf, DEFAULT_AWARD_CONFIG, DEFAULT_RECORD_GOAL, periodGoal, salesOf, sellersOf, TARGET_UNIT } from "@/lib/goals";
 import { useNow } from "@/lib/hooks";
 import { useStore } from "@/lib/store";
 import type { ActivityType } from "@/lib/types";
@@ -43,6 +43,9 @@ export default function MetasConfigPage() {
   );
   const regCfg: RecordGoalConfig = g.registros ?? DEFAULT_RECORD_GOAL;
   const setRegCfg = (patch: Partial<RecordGoalConfig>) => setG({ ...g, registros: { ...regCfg, ...patch } });
+  const awardCfg: AwardWeightsConfig = { ...DEFAULT_AWARD_CONFIG, ...(g.premiacao ?? {}) };
+  const setAwardCfg = (patch: Partial<AwardWeightsConfig>) => setG({ ...g, premiacao: { ...awardCfg, ...patch } });
+  const somaPesos = awardCfg.pesoVendas + awardCfg.pesoAtividades + awardCfg.pesoRegistros + awardCfg.pesoQualidadeIA;
   const sellers = useMemo(() => sellersOf(users, g.participantes), [users, g.participantes]);
   const gestores = useMemo(() => users.filter((u) => u.role === "admin" || u.role === "gestor"), [users]);
   const sales = useMemo(() => salesOf(deals), [deals]);
@@ -218,7 +221,7 @@ export default function MetasConfigPage() {
         )}
       </Card>
 
-      <Card>
+      <Card className="mb-5">
         <CardHeader title="Metas de atividade" kicker="O que cada vendedor precisa fazer para chegar na venda" />
         <ul>
           {g.atividades.map((t, i) => (
@@ -255,6 +258,96 @@ export default function MetasConfigPage() {
             <Plus size={14} /> Incluir meta de atividade
           </Button>
           <p className="mt-2 text-[12px] text-muted">Exemplo: 10 ligações por dia, 2 visitas por mês, 3 reuniões por mês. Cada vendedor vê o próprio andamento na tela Metas.</p>
+        </div>
+      </Card>
+
+      <Card>
+        <CardHeader
+          title="Premiação multidimensional e qualidade"
+          kicker="Como os pontos do vendedor são calculados além da venda (peso ideal = 100%)"
+          action={
+            <span className={`rounded-full px-2.5 py-0.5 text-[11.5px] font-semibold ${somaPesos === 100 ? "bg-ok-soft text-ok" : "bg-amber-100 text-amber-900"}`}>
+              Soma dos pesos: {somaPesos}%
+            </span>
+          }
+        />
+        <div className="grid gap-3 px-4 pb-4 sm:grid-cols-2 lg:grid-cols-4">
+          <Field label="Peso · Vendas (%)" hint="Faturamento">
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={awardCfg.pesoVendas}
+              onChange={(e) => setAwardCfg({ pesoVendas: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+            />
+          </Field>
+          <Field label="Peso · Atividades (%)" hint="Volume + no prazo">
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={awardCfg.pesoAtividades}
+              onChange={(e) => setAwardCfg({ pesoAtividades: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+            />
+          </Field>
+          <Field label="Peso · Registros (%)" hint="Uso ativo no CRM">
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={awardCfg.pesoRegistros}
+              onChange={(e) => setAwardCfg({ pesoRegistros: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+            />
+          </Field>
+          <Field label="Peso · WhatsApp & IA (%)" hint="Conversas + clareza">
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={awardCfg.pesoQualidadeIA}
+              onChange={(e) => setAwardCfg({ pesoQualidadeIA: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+            />
+          </Field>
+        </div>
+
+        <div className="grid gap-3 border-t border-line px-4 py-4 sm:grid-cols-3">
+          <Field label="Meta de clareza com a IA (%)" hint="Pedidos bem estruturados">
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={awardCfg.metaQualidadeIA}
+              onChange={(e) => setAwardCfg({ metaQualidadeIA: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+            />
+          </Field>
+          <Field label="Meta de registros no WhatsApp" hint="Por mês">
+            <Input
+              type="number"
+              min={1}
+              max={500}
+              value={awardCfg.metaConversasWhatsApp}
+              onChange={(e) => setAwardCfg({ metaConversasWhatsApp: Math.max(1, Math.min(500, Number(e.target.value) || 1)) })}
+            />
+          </Field>
+          <Field label="Pontualidade mínima (%)" hint="Atividades no prazo">
+            <Input
+              type="number"
+              min={0}
+              max={100}
+              value={awardCfg.metaPontualidade}
+              onChange={(e) => setAwardCfg({ metaPontualidade: Math.max(0, Math.min(100, Number(e.target.value) || 0)) })}
+            />
+          </Field>
+        </div>
+
+        <div className="border-t border-line px-4 py-3">
+          <Field label="Título / Regra da premiação exibida em Metas">
+            <Input
+              value={awardCfg.premioDescricao ?? ""}
+              onChange={(e) => setAwardCfg({ premioDescricao: e.target.value })}
+              placeholder="Ex.: Bônus Integral Tawper — Vendas, Execução, Registros e Qualidade IA"
+            />
+          </Field>
         </div>
       </Card>
     </div>

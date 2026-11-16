@@ -1,6 +1,6 @@
 // Metas: da meta anual sai o que falta por mês, trimestre e semestre, o ranking e o caminho em atividades.
 
-import type { ActivityTarget, Goals, RecordGoalConfig } from "./config";
+import type { ActivityTarget, AwardWeightsConfig, Goals, RecordGoalConfig } from "./config";
 import type { Activity, Deal, Interaction, User } from "./types";
 
 export type GoalPeriod = "mes" | "trimestre" | "semestre" | "ano";
@@ -231,4 +231,188 @@ export function recordRegressionPace(done: number, target: number, range: { from
     neededPerWorkday,
     status,
   };
+}
+
+export const DEFAULT_AWARD_CONFIG: AwardWeightsConfig = {
+  pesoVendas: 40,
+  pesoAtividades: 20,
+  pesoRegistros: 20,
+  pesoQualidadeIA: 20,
+  metaQualidadeIA: 80,
+  metaConversasWhatsApp: 15,
+  metaPontualidade: 80,
+  premioDescricao: "Premiação Integral Tawper (Vendas + Execução + Registros + Qualidade IA)",
+};
+
+export interface SellerIaSnapshot {
+  whatsappGravados: number;
+  /** Média de clareza dos pedidos à IA (0..100) ou null se não houve pedidos auditados. */
+  qualidadeMedia: number | null;
+}
+
+export interface MultidimensionalRankRow {
+  user: User;
+  vendido: number;
+  metaVenda: number;
+  vendasScore: number;
+  atividadesConcluidas: number;
+  pontualidadePct: number;
+  atividadesScore: number;
+  registrosFeitos: number;
+  metaRegistros: number;
+  registrosScore: number;
+  whatsappGravados: number;
+  qualidadeIaPct: number | null;
+  qualidadeIaScore: number;
+  scoreGeral: number;
+  elegivelPremio: boolean;
+}
+
+function clamp100(n: number) {
+  return Math.max(0, Math.min(100, Math.round(n)));
+}
+
+/**
+ * Ranking multidimensional de metas e premiação:
+ * combina Vendas, Atividades + Pontualidade, Registros no CRM e Conversas/Qualidade com a IA.
+ */
+export function multidimensionalRanking(params: {
+  goals: Goals;
+  users: User[];
+  sales: Sale[];
+  activities: Activity[];
+  interactions: Interaction[];
+  iaByUser?: Record<string, SellerIaSnapshot>;
+  period: GoalPeriod;
+  now: Date;
+}): MultidimensionalRankRow[] {
+  const { goals, users, sales, activities, interactions, iaByUser = {}, period, now } = params;
+  const cfg: AwardWeightsConfig = { ...DEFAULT_AWARD_CONFIG, ...(goals.premiacao ?? {}) };
+  const totalWeight = Math.max(1, cfg.pesoVendas + cfg.pesoAtividades + cfg.pesoRegistros + cfg.pesoQualidadeIA);
+  const sellers = sellersOf(users, goals.participantes);
+  const range = periodRange(period, now);
+  const fromMs = range.from.getTime();
+  const toMs = range.to.getTime();
+  const monthsScale = MONTHS_IN[period];
+
+  const expectedActivitiesBase = Math.max(
+    1,
+    goals.atividades.reduce((sum, t) => {
+      if (t.por === "dia") return sum + t.quantidade * 20 * monthsScale;
+      if (t.por === "semana") return sum + t.quantidade * 4 * monthsScale;
+      return sum + t.quantidade * monthsScale;
+    }, 0) || 20 * monthsScale,
+  );
+  const expectedWhatsapp = Math.max(1, cfg.metaConversasWhatsApp * monthsScale);
+
+  return sellers
+    .map((user) => {
+      const annual = annualGoalOf(goals, sellers, user.id);
+      const metaVenda = basePeriodGoal(annual, period);
+      const vendido = sold(sales, range, user.id);
+      const vendasScore = metaVenda > 0 ? clamp100((vendido / metaVenda) * 100) : vendido > 0 ? 100 : 0;
+
+      const userDoneActs = activities.filter((a) => {
+        if (a.ownerId !== user.id || a.status !== "concluida") return false;
+        const stamp = new Date(a.completedAt ?? a.dueAt).getTime();
+        return stamp >= fromMs && stamp < toMs;
+      });
+      const onTimeActs = userDoneActs.filter((a) => {
+        if (!a.completedAt) return true;
+        return new Date(a.completedAt).getTime() <= new Date(a.dueAt).getTime();
+      }).length;
+      const pontualidadePct = userDoneActs.length > 0 ? Math.round((onTimeActs / userDoneActs.length) * 100) : 0;
+      const actVolumeScore = clamp100((userDoneActs.length / expectedActivitiesBase) * 100);
+      const atividadesScore = clamp100(actVolumeScore * 0.6 + pontualidadePct * 0.4);
+
+      const registrosFeitos = sellerRecordsDone(activities, interactions, user.id, range);
+      const metaRegistros = recordGoalForSeller(goals, user.id, period, now).meta;
+      const registrosScore = clamp100((registrosFeitos / Math.max(1, metaRegistros)) * 100);
+
+      const ia = iaByUser[user.id];
+      const whatsappGravados = ia?.whatsappGravados ?? 0;
+      const qualidadeIaPct = ia?.qualidadeMedia ?? null;
+      const waVolumeScore = clamp100((whatsappGravados / expectedWhatsapp) * 100);
+      const qualidadeIaScore =
+        qualidadeIaPct !== null ? clamp100(qualidadeIaPct * 0.65 + waVolumeScore * 0.35) : waVolumeScore;
+
+      const scoreGeral = Math.round(
+        (vendasScore * cfg.pesoVendas +
+          atividadesScore * cfg.pesoAtividades +
+          registrosScore * cfg.pesoRegistros +
+          qualidadeIaScore * cfg.pesoQualidadeIA) /
+          totalWeight,
+      );
+
+      const elegivelPremio =
+        scoreGeral >= 70 &&
+        (userDoneActs.length === 0 || pontualidadePct >= cfg.metaPontualidade * 0.8) &&
+        (qualidadeIaPct === null || qualidadeIaPct >= cfg.metaQualidadeIA * 0.8);
+
+      return {
+        user,
+        vendido,
+        metaVenda,
+        vendasScore,
+        atividadesConcluidas: userDoneActs.length,
+        pontualidadePct,
+        atividadesScore,
+        registrosFeitos,
+        metaRegistros,
+        registrosScore,
+        whatsappGravados,
+        qualidadeIaPct,
+        qualidadeIaScore,
+        scoreGeral,
+        elegivelPremio,
+      };
+    })
+    .sort((a, b) => b.scoreGeral - a.scoreGeral || b.vendido - a.vendido);
+}
+
+/**
+ * Matriz diária (últimos `days` dias) de ações por vendedor (atividades concluídas + registros),
+ * pronta para alimentar o gráfico de pontinhos (DotMatrixChart).
+ */
+export function sellerDailyActivityMatrix(params: {
+  sellers: User[];
+  activities: Activity[];
+  interactions: Interaction[];
+  now: Date;
+  days?: number;
+}) {
+  const { sellers, activities, interactions, now, days = 14 } = params;
+  const dayBuckets: { key: string; label: string; from: number; to: number }[] = [];
+  for (let i = days - 1; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth(), now.getDate() - i);
+    const next = new Date(d.getFullYear(), d.getMonth(), d.getDate() + 1);
+    const key = d.toISOString().slice(0, 10);
+    const label = `${String(d.getDate()).padStart(2, "0")}/${String(d.getMonth() + 1).padStart(2, "0")}`;
+    dayBuckets.push({ key, label, from: d.getTime(), to: next.getTime() });
+  }
+
+  return sellers.map((seller) => {
+    let total = 0;
+    const cells = dayBuckets.map((b) => {
+      const actCount = activities.filter((a) => {
+        if (a.ownerId !== seller.id || a.status !== "concluida") return false;
+        const t = new Date(a.completedAt ?? a.dueAt).getTime();
+        return t >= b.from && t < b.to;
+      }).length;
+      const intCount = interactions.filter((i) => {
+        if (i.autorId !== seller.id || i.kind === "cobranca") return false;
+        const t = new Date(i.at).getTime();
+        return t >= b.from && t < b.to;
+      }).length;
+      const value = actCount + intCount;
+      total += value;
+      return { key: b.key, label: b.label, value };
+    });
+    return {
+      key: seller.id,
+      label: seller.short || seller.name.split(" ")[0],
+      total,
+      cells,
+    };
+  });
 }

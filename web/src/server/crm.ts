@@ -6,7 +6,7 @@ import "server-only";
 import { regionForUf } from "@/lib/regions";
 import { checklistFromRequirements, hasRetornoNote, stageKeyToUi } from "@/lib/crm-map";
 import { getSupabaseAdmin, TAWPER_ORG_ID } from "@/lib/supabase/admin";
-import type { Activity, AuditEntry, Canal, Company, Contact, Deal, DemoData, Interaction, InteractionKind, Strategy, User } from "@/lib/types";
+import type { Activity, AuditEntry, Canal, Company, Contact, Deal, DemoData, Interaction, InteractionKind, Strategy, User, WidgetGridPrefs } from "@/lib/types";
 import { FUNNELS, USERS } from "@/lib/constants";
 import { buildAgentPhoneLookup } from "@/server/auth/whatsapp-phone-fallback";
 import { ensureOperators } from "@/server/persist";
@@ -108,7 +108,7 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
     sb.from("stages").select("id, key, funnel_id").eq("organization_id", TAWPER_ORG_ID),
     pagedRes("activities", "*", { order: "due_at", desc: true, max: 6000 }),
     sb.from("memberships").select("profile_id, role").eq("organization_id", TAWPER_ORG_ID).eq("is_active", true),
-    sb.from("profiles").select("id, email, full_name, short_name, title, phone_e164, avatar_color, avatar_url"),
+    sb.from("profiles").select("id, email, full_name, short_name, title, phone_e164, avatar_color, avatar_url, dashboard_layout"),
     sb.from("funnels").select("id, key").eq("organization_id", TAWPER_ORG_ID),
     sb.from("stage_requirements").select("id, key").eq("organization_id", TAWPER_ORG_ID),
     pagedRes("opportunity_requirement_values", "opportunity_id, requirement_id, is_met", { order: "updated_at" }),
@@ -158,6 +158,10 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
           email: (p?.email as string) || undefined,
           phone,
           regions: [],
+          dashboardLayout:
+            p?.dashboard_layout && typeof p.dashboard_layout === "object"
+              ? (p.dashboard_layout as Record<string, WidgetGridPrefs>)
+              : undefined,
         };
       })
     : USERS;

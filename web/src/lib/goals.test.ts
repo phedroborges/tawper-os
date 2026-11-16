@@ -3,12 +3,14 @@ import type { Goals } from "./config";
 import {
   annualGoalOf,
   elapsed,
+  multidimensionalRanking,
   periodGoal,
   periodRange,
   ranking,
   recordGoalForSeller,
   recordRegressionPace,
   salesPath,
+  sellerDailyActivityMatrix,
   sellerRecordsDone,
   sellersOf,
   sold,
@@ -110,5 +112,44 @@ describe("metas", () => {
     expect(pace.remainingWorkdays).toBeGreaterThan(0);
     expect(pace.neededPerWorkday).toBeGreaterThan(pace.basePerWorkday);
     expect(pace.status).toBe("atrasado");
+  });
+
+  it("ranking multidimensional combina vendas, atividades, registros e qualidade IA e gera matriz diária", () => {
+    const sales = [sale("a", 50_000, "2026-11-05"), sale("b", 25_000, "2026-11-06")];
+    const acts = [
+      { ownerId: "a", status: "concluida", dueAt: "2026-11-10T18:00:00", completedAt: "2026-11-10T14:00:00" } as Activity,
+      { ownerId: "b", status: "concluida", dueAt: "2026-11-04T18:00:00", completedAt: "2026-11-10T14:00:00" } as Activity,
+    ];
+    const ints = [
+      { id: "i1", companyId: "c1", canal: "Nota", autorId: "a", titulo: "Visita", kind: "note", at: "2026-11-11T10:00:00" } as Interaction,
+    ];
+    const multi = multidimensionalRanking({
+      goals,
+      users,
+      sales,
+      activities: acts,
+      interactions: ints,
+      iaByUser: {
+        a: { whatsappGravados: 15, qualidadeMedia: 95 },
+        b: { whatsappGravados: 2, qualidadeMedia: 60 },
+      },
+      period: "mes",
+      now,
+    });
+    expect(multi[0].user.id).toBe("a");
+    expect(multi[0].pontualidadePct).toBe(100);
+    expect(multi[0].qualidadeIaPct).toBe(95);
+    expect(multi[0].scoreGeral).toBeGreaterThan(multi[1].scoreGeral);
+
+    const matrix = sellerDailyActivityMatrix({
+      sellers: users.filter((u) => u.role === "vendedor"),
+      activities: acts,
+      interactions: ints,
+      now,
+      days: 7,
+    });
+    expect(matrix).toHaveLength(3);
+    expect(matrix[0].cells).toHaveLength(7);
+    expect(matrix[0].total).toBe(2);
   });
 });

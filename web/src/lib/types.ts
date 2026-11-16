@@ -3,6 +3,14 @@
 
 export type Role = "admin" | "gestor" | "vendedor" | "representante";
 
+export type WidgetSize = "sm" | "md" | "lg";
+
+export interface WidgetGridPrefs {
+  order: string[];
+  sizes?: Record<string, WidgetSize>;
+  hidden?: string[];
+}
+
 export interface User {
   id: string;
   name: string;
@@ -15,6 +23,7 @@ export interface User {
   email?: string;
   phone: string;
   regions: string[];
+  dashboardLayout?: Record<string, WidgetGridPrefs>;
 }
 
 export type FunnelId = "aquisicao" | "recorrencia";
