@@ -232,7 +232,7 @@ export async function processVisitCommunications() {
     } else if (phase === "warn") {
       await sql.begin(async (tx) => {
         const updated =
-          await tx`update public.visit_confirmations set warned_at=now() where id=${v.id} and status='waiting' and warned_at is null and sent_at<=now()-interval '2 hours' returning id`;
+          await tx`update public.visit_confirmations set warned_at=now() where id=${v.id} and status='waiting' and warned_at is null and sent_at<=now()-interval '2 hours' and not exists(select 1 from public.visit_communication_jobs j where j.confirmation_id=visit_confirmations.id and j.kind='inbound') returning id`;
         if (updated.length)
           await tx`insert into public.visit_communication_jobs(confirmation_id,dedupe_key,kind,phone,body) values(${v.id},${v.id + ":2h"},'seller',${v.seller_phone},${`${v.seller_name}, ${v.client_name} ainda não respondeu. Continuo acompanhando até ${fmtWhen(v.due_at)}.`}) on conflict(dedupe_key) do nothing`;
       });
