@@ -13,7 +13,8 @@ describe("sessão assinada", () => {
     const session = createSessionForUser("u-murilo");
     const token = encodeSession(session);
     expect(decodeSession(token)?.userId).toBe("u-murilo");
-    expect(decodeSession(token)?.role).toBe("admin");
+    expect(decodeSession(token)?.role).toBe("vendedor");
+    expect(decodeSession(token)?.isAdmin).toBe(true);
   });
 
   it("com Supabase: vale o id do perfil no banco e o cookie antigo da demo pede login de novo", () => {

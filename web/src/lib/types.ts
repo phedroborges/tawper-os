@@ -16,6 +16,8 @@ export interface User {
   name: string;
   short: string;
   role: Role;
+  /** Permissão plus de administrador (independente da função: gestor, vendedor ou representante). */
+  isAdmin?: boolean;
   title: string;
   initials: string;
   color: string;

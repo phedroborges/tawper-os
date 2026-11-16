@@ -24,7 +24,8 @@ export async function POST(request: Request) {
     } else {
       const key = body.key as keyof AppConfig;
       if (!ADMIN_KEYS.includes(key)) throw new Error("Configuração desconhecida.");
-      if (session.role !== "admin") {
+      const canSave = Boolean(session.isAdmin || session.role === "admin") || (key === "goals" && session.role === "gestor");
+      if (!canSave) {
         const denied = new AuthError("Só o administrador altera esta configuração.");
         denied.status = 403;
         throw denied;

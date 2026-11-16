@@ -42,7 +42,7 @@ import {
   Textarea,
 } from "@/components/ui/primitives";
 import { DEFAULT_PROPOSAL_STANDARD, type ProposalStandardConfig } from "@/lib/config";
-import { papelRotulo } from "@/lib/constants";
+import { isAdmin as checkIsAdmin, papelRotulo } from "@/lib/constants";
 import {
   buildInitialProposalInput,
   buildProposalPdfBytes,
@@ -161,7 +161,7 @@ function PropostasInner() {
   const params = useSearchParams();
   const initialCompanyId = params.get("empresa");
 
-  const isAdmin = user.role === "admin";
+  const isAdmin = checkIsAdmin(user);
   const [adminUnlocked, setAdminUnlocked] = useState(false);
   const canEditStandard = isAdmin && adminUnlocked;
   const [savingStandard, setSavingStandard] = useState(false);

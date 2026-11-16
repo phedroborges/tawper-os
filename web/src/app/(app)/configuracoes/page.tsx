@@ -5,7 +5,7 @@ import { useState } from "react";
 import { AvatarPicker } from "@/components/ui/AvatarPicker";
 import { Badge, Button, Card, CardHeader, Field, Input, PageHeader } from "@/components/ui/primitives";
 import { formatWhatsApp } from "@/lib/br-ids";
-import { ROLE_LABEL } from "@/lib/constants";
+import { isAdmin, ROLE_LABEL } from "@/lib/constants";
 import { refreshCrm, useCurrentUser } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
 import { useAction } from "@/lib/use-action";
@@ -66,9 +66,12 @@ export default function MinhaContaPage() {
         <div className="border-b border-line px-4 py-4">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge tone={user.role === "admin" ? "navy" : "neutral"}>
-                <ShieldCheck size={12} /> {ROLE_LABEL[user.role]}
-              </Badge>
+              <Badge tone="neutral">{ROLE_LABEL[user.role]}</Badge>
+              {isAdmin(user) && (
+                <Badge tone="navy">
+                  <ShieldCheck size={12} /> Administrador
+                </Badge>
+              )}
               {user.email && (
                 <span className="inline-flex items-center gap-1.5 text-[12px] text-muted">
                   <Mail size={12} /> {user.email}

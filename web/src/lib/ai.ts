@@ -670,7 +670,7 @@ export function copilotFor(d: Data, companyId: string, now = new Date()) {
 const lcFirst = (t: string) => (t.length > 1 && t[1] === t[1].toUpperCase() && /[A-Z]/.test(t[1]) ? t : t.charAt(0).toLowerCase() + t.slice(1));
 
 export function dailyBriefing(d: Data, user: User, now = new Date()) {
-  const manager = user.role === "admin" || user.role === "gestor";
+  const manager = Boolean(user.isAdmin || user.role === "admin" || user.role === "gestor");
   const mine = d.activities.filter((a) => a.ownerId === user.id && a.status === "pendente").sort((a, b) => a.dueAt.localeCompare(b.dueAt));
   const overdue = mine.filter((a) => dayDiff(a.dueAt, now) < 0);
   const today = mine.filter((a) => dayDiff(a.dueAt, now) === 0);
@@ -809,7 +809,7 @@ export const ASSISTANT_HELP =
 
 export function assistantAnswer(d: Data, user: User, question: string, now = new Date()): AssistantAnswer {
   const q = normalize(question);
-  const manager = user.role === "admin" || user.role === "gestor";
+  const manager = Boolean(user.isAdmin || user.role === "admin" || user.role === "gestor");
   const ownerId = manager ? undefined : user.id;
   const al = alertsOf(d, { ownerId, now });
   const cname = (id: string) => d.companies.find((c) => c.id === id)?.nome ?? id;

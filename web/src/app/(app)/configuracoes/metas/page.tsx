@@ -5,7 +5,7 @@ import { useMemo, useState } from "react";
 import { UserAvatar } from "@/components/crm/crm";
 import { Button, Card, CardHeader, Checkbox, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import type { ActivityTarget, AwardWeightsConfig, Goals, RecordGoalConfig } from "@/lib/config";
-import { ACTIVITY_TYPES } from "@/lib/constants";
+import { ACTIVITY_TYPES, isAdmin } from "@/lib/constants";
 import { annualGoalOf, DEFAULT_AWARD_CONFIG, DEFAULT_RECORD_GOAL, periodGoal, salesOf, sellersOf, TARGET_UNIT } from "@/lib/goals";
 import { useNow } from "@/lib/hooks";
 import { useStore } from "@/lib/store";
@@ -47,7 +47,7 @@ export default function MetasConfigPage() {
   const setAwardCfg = (patch: Partial<AwardWeightsConfig>) => setG({ ...g, premiacao: { ...awardCfg, ...patch } });
   const somaPesos = awardCfg.pesoVendas + awardCfg.pesoAtividades + awardCfg.pesoRegistros + awardCfg.pesoQualidadeIA;
   const sellers = useMemo(() => sellersOf(users, g.participantes), [users, g.participantes]);
-  const gestores = useMemo(() => users.filter((u) => u.role === "admin" || u.role === "gestor"), [users]);
+  const gestores = useMemo(() => users.filter((u) => u.role === "gestor" || u.role === "admin"), [users]);
   const sales = useMemo(() => salesOf(deals), [deals]);
   const somaVendedores = sellers.reduce((sum, u) => sum + annualGoalOf(g, sellers, u.id), 0);
   const setTarget = (i: number, patch: Partial<ActivityTarget>) => setG({ ...g, atividades: g.atividades.map((t, j) => (j === i ? { ...t, ...patch } : t)) });
@@ -96,7 +96,7 @@ export default function MetasConfigPage() {
 
       {gestores.length > 0 && (
         <Card className="mb-5">
-          <CardHeader title="Quem também vende" kicker="Administradores e gestores que têm carteira e entram nas metas e no pódio" />
+          <CardHeader title="Gestores com meta de vendas" kicker="Vendedores e representantes (inclusive administradores) já entram automaticamente. Marque aqui apenas se algum gestor também tiver meta individual." />
           <div className="flex flex-wrap gap-x-6 gap-y-2 px-4 pb-4">
             {gestores.map((u) => (
               <Checkbox
@@ -129,7 +129,11 @@ export default function MetasConfigPage() {
               <li key={u.id} className="flex flex-wrap items-center gap-3 border-t border-line/70 px-4 py-2.5">
                 <UserAvatar userId={u.id} size={28} />
                 <div className="min-w-0 flex-1">
-                  <div className="truncate text-[13.5px] font-medium text-ink">{u.name}</div>
+                  <div className="truncate text-[13.5px] font-medium text-ink">
+                    {u.name}
+                    {isAdmin(u) && <span className="ml-2 rounded-[4px] bg-navy/10 px-1.5 py-0.5 text-[10.5px] font-semibold text-navy">Admin</span>}
+                    {u.title && <span className="ml-2 text-[11.5px] font-normal text-muted">· {u.title}</span>}
+                  </div>
                   <div className="text-[11.5px] text-muted">
                     {money(anual / 12)} por mês em média · {money(periodGoal(anual, sales, "mes", now, u.id))} neste mês
                   </div>

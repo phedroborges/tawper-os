@@ -9,7 +9,7 @@ export async function withSession(request: Request): Promise<Session> {
   if (!supabaseOn()) return session;
   const member = await activeMember(session.userId);
   if (!member) throw new AuthError("Seu acesso foi desativado. Fale com o administrador.");
-  return { ...session, role: member.role };
+  return { ...session, role: member.role, isAdmin: Boolean(member.isAdmin || member.role === "admin") };
 }
 
 export function jsonAuthError(error: unknown) {

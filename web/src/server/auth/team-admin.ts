@@ -14,8 +14,7 @@ import { invalidateTeam, loadTeam, type TeamMember } from "./team";
 export type Carteira = { empresas: number; negocios: number; tarefas: number; conversas: number };
 export type TeamRow = TeamMember & { carteira: Carteira };
 
-const ROLES: User["role"][] = ["admin", "gestor", "vendedor", "representante"];
-const COLORS = ["#123a7b", "#d41624", "#0f7a5a", "#8a5a00", "#5b3fa6", "#2b4a78"];
+const ROLES: User["role"][] = ["gestor", "vendedor", "representante", "admin"];
 
 function fail(message: string): never {
   throw new Error(message);
@@ -24,6 +23,16 @@ function fail(message: string): never {
 function text(value: unknown, max = 120) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
+
+function roleAndAdmin(rawRole: unknown, rawIsAdmin: unknown): { access: User["role"]; isAdmin: boolean } {
+  if (!ROLES.includes(rawRole as User["role"])) fail("Escolha a função na empresa.");
+  if (rawRole === "admin") {
+    return { access: "gestor", isAdmin: true };
+  }
+  return { access: rawRole as User["role"], isAdmin: Boolean(rawIsAdmin) };
+}
+
+const COLORS = ["#123a7b", "#d41624", "#0f7a5a", "#8a5a00", "#5b3fa6", "#2b4a78"];
 
 function avatarUrl(value: unknown): string | null | undefined {
   if (value === undefined) return undefined;
@@ -42,10 +51,6 @@ function avatarColor(value: unknown): string | undefined {
   if (typeof value !== "string") return undefined;
   const trimmed = value.trim();
   return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : undefined;
-}
-
-function role(value: unknown): User["role"] {
-  return ROLES.includes(value as User["role"]) ? (value as User["role"]) : fail("Escolha o perfil de acesso.");
 }
 
 function password(value: unknown) {
@@ -98,7 +103,7 @@ export async function createMember(input: Record<string, unknown>) {
   const short = text(input.curto, 40) || name.split(" ")[0];
   const email = text(input.email, 200).toLowerCase();
   if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) fail("E-mail inválido.");
-  const access = role(input.papel);
+  const { access, isAdmin } = roleAndAdmin(input.papel, input.isAdmin);
   const phone = whatsapp(input.whatsapp, team);
   const pass = password(input.senha);
   const sb = getSupabaseAdmin();
@@ -125,7 +130,9 @@ export async function createMember(input: Record<string, unknown>) {
     { onConflict: "id" },
   );
   if (profile.error) fail(profile.error.message);
-  const membership = await sb.from("memberships").upsert({ organization_id: TAWPER_ORG_ID, profile_id: id, role: access, is_active: true }, { onConflict: "organization_id,profile_id" });
+  const membership = await sb
+    .from("memberships")
+    .upsert({ organization_id: TAWPER_ORG_ID, profile_id: id, role: access, is_admin: isAdmin, is_active: true }, { onConflict: "organization_id,profile_id" });
   if (membership.error) fail(membership.error.message);
   changed();
   return id;
@@ -136,8 +143,8 @@ export async function updateMember(actorId: string, input: Record<string, unknow
   const id = text(input.id, 40);
   const member = team.find((item) => item.id === id) ?? fail("Pessoa não encontrada.");
   const name = text(input.nome) || fail("Informe o nome.");
-  const access = role(input.papel);
-  if (id === actorId && access !== "admin") fail("Você não pode tirar o seu próprio acesso de administrador.");
+  const { access, isAdmin } = roleAndAdmin(input.papel, input.isAdmin);
+  if (id === actorId && !isAdmin) fail("Você não pode tirar o seu próprio acesso de administrador.");
   const sb = getSupabaseAdmin();
   const parsedAvatar = avatarUrl(input.avatarUrl);
   const parsedColor = avatarColor(input.cor);
@@ -152,7 +159,11 @@ export async function updateMember(actorId: string, input: Record<string, unknow
 
   const profile = await sb.from("profiles").update(updatePayload).eq("id", member.id);
   if (profile.error) fail(profile.error.message);
-  const membership = await sb.from("memberships").update({ role: access }).eq("organization_id", TAWPER_ORG_ID).eq("profile_id", member.id);
+  const membership = await sb
+    .from("memberships")
+    .update({ role: access, is_admin: isAdmin })
+    .eq("organization_id", TAWPER_ORG_ID)
+    .eq("profile_id", member.id);
   if (membership.error) fail(membership.error.message);
   changed();
 }

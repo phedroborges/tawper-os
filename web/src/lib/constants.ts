@@ -6,8 +6,9 @@ export const USERS: User[] = [
     id: "u-murilo",
     name: "Murilo Louis",
     short: "Murilo",
-    role: "admin",
-    title: "Proprietário · Gestor comercial",
+    role: "vendedor",
+    isAdmin: true,
+    title: "Proprietário · Vendedor e Gestor",
     initials: "ML",
     color: "#d41624",
     phone: "(17) 99701-2201",
@@ -61,7 +62,8 @@ export const USERS: User[] = [
     id: "u-phedro",
     name: "Phedro Borges",
     short: "Phedro",
-    role: "admin",
+    role: "gestor",
+    isAdmin: true,
     title: "Desenvolvedor",
     initials: "PB",
     color: "#123a7b",
@@ -82,8 +84,12 @@ export function saleLabel(deal: { funnel: FunnelId; ciclo: number }) {
   return `${deal.funnel === "aquisicao" ? 1 : deal.ciclo + 1}ª venda`;
 }
 
-export function isManager(u?: User) {
-  return u?.role === "admin" || u?.role === "gestor";
+export function isAdmin(u?: Pick<User, "role" | "isAdmin"> | null) {
+  return Boolean(u?.isAdmin || u?.role === "admin");
+}
+
+export function isManager(u?: Pick<User, "role" | "isAdmin"> | null) {
+  return isAdmin(u) || u?.role === "gestor";
 }
 
 /** Sem login real, a exclusão de empresa fica presa a esta pessoa, não ao papel genérico. */

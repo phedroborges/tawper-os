@@ -16,6 +16,7 @@ import {
   Textarea,
 } from "@/components/ui/primitives";
 import { DEFAULT_PROPOSAL_STANDARD, type ProposalStandardConfig } from "@/lib/config";
+import { isAdmin } from "@/lib/constants";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
 import { useAction } from "@/lib/use-action";
@@ -54,7 +55,7 @@ export default function ConfigPropostasPage() {
   const [newFreight, setNewFreight] = useState("");
   const [newDelivery, setNewDelivery] = useState("");
 
-  if (user?.role !== "admin") {
+  if (!isAdmin(user)) {
     return (
       <Empty
         icon={<FileSpreadsheet size={20} />}

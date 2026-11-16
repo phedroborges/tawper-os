@@ -6,7 +6,7 @@ import { DotMatrixChart, PillSparkBars, ProportionalBarList, SegmentedMixBar } f
 import { TypeIcon, UserAvatar } from "@/components/crm/crm";
 import { DraggableWidgetGrid, type DashboardWidgetDef } from "@/components/dashboard/DraggableWidgetGrid";
 import { Badge, Card, Empty, LinkButton, PageHeader, Progress, Segmented, Select } from "@/components/ui/primitives";
-import { isManager } from "@/lib/constants";
+import { isAdmin, isManager } from "@/lib/constants";
 import { salesByMonth } from "@/lib/dashboard";
 import {
   annualGoalOf,
@@ -142,6 +142,8 @@ export default function MetasPage() {
     [sellers, activities, interactions, now],
   );
 
+  const adminUser = isAdmin(user);
+
   if (!goals || goals.anual <= 0) {
     return (
       <div>
@@ -150,8 +152,8 @@ export default function MetasPage() {
           <Empty
             icon={<Target size={20} />}
             title="As metas ainda não foram definidas"
-            text={user.role === "admin" ? "Informe a meta anual da empresa. O sistema divide por vendedor, por mês, trimestre e semestre." : "O administrador ainda não informou a meta do ano."}
-            action={user.role === "admin" ? <LinkButton href="/configuracoes/metas" variant="primary">Definir metas</LinkButton> : undefined}
+            text={adminUser ? "Informe a meta anual da empresa. O sistema divide por vendedor, por mês, trimestre e semestre." : "O administrador ainda não informou a meta do ano."}
+            action={adminUser ? <LinkButton href="/configuracoes/metas" variant="primary">Definir metas</LinkButton> : undefined}
           />
         </Card>
       </div>
@@ -626,7 +628,7 @@ export default function MetasPage() {
         subtitle={`Meta de ${goals.ano}: ${money(goals.anual)}. Arraste os blocos pelos 6 pontinhos no canto superior esquerdo para organizar a sua visão.`}
         actions={
           <div className="flex flex-wrap items-center gap-2">
-            {user.role === "admin" && (
+            {adminUser && (
               <LinkButton href="/configuracoes/metas" size="sm" variant="outline">
                 Parâmetros das metas
               </LinkButton>

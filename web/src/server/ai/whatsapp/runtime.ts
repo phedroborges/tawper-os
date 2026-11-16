@@ -147,7 +147,7 @@ async function answerJob(job: WhatsAppAgentJob) {
   const history = turns.map(({ role, content }) => ({ role, content }));
   const fallback = assistantAnswer(data, resolved.user, question);
   const escopo = {
-    gestor: resolved.user.role === "admin" || resolved.user.role === "gestor",
+    gestor: Boolean(resolved.user.isAdmin || resolved.user.role === "admin" || resolved.user.role === "gestor"),
     telefones: snapshot.contacts.filter((contact) => allowed.has(contact.companyId) && contact.whatsapp).map((contact) => contact.whatsapp!),
   };
   const ask = (pergunta: string, skipActions: boolean) =>

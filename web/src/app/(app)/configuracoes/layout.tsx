@@ -4,7 +4,7 @@ import { Bell, Columns3, FileSpreadsheet, History, ListChecks, Target, UserRound
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import type { ReactNode } from "react";
-import { isManager } from "@/lib/constants";
+import { isAdmin, isManager } from "@/lib/constants";
 import { useCurrentUser } from "@/lib/store";
 import { cn } from "@/lib/utils";
 
@@ -26,7 +26,7 @@ const ITEMS: { href: string; label: string; icon: ReactNode; access: Access; gro
 export default function ConfiguracoesLayout({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const user = useCurrentUser();
-  const can = (access: Access) => access === "todos" || (access === "gestor" && isManager(user)) || user.role === "admin";
+  const can = (access: Access) => access === "todos" || (access === "gestor" && isManager(user)) || isAdmin(user);
   const items = ITEMS.filter((i) => can(i.access));
   const current = ITEMS.find((i) => i.href === pathname);
   const groups = [...new Set(items.map((i) => i.group))];

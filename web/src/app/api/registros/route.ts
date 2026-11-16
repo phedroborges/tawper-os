@@ -15,7 +15,7 @@ const list = (v: unknown) => (Array.isArray(v) ? v.filter((x): x is string => ty
 export async function GET(request: Request) {
   try {
     const session = await withSession(request);
-    if (session.role !== "admin" && session.role !== "gestor") {
+    if (!session.isAdmin && session.role !== "admin" && session.role !== "gestor") {
       const denied = new AuthError("Os registros são só para gestores.");
       denied.status = 403;
       throw denied;

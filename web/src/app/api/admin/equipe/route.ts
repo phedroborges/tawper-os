@@ -9,7 +9,7 @@ export const runtime = "nodejs";
 
 async function admin(request: Request) {
   const session = await withSession(request);
-  if (session.role !== "admin") {
+  if (!session.isAdmin && session.role !== "admin") {
     const denied = new AuthError("Só o administrador mexe na equipe.");
     denied.status = 403;
     throw denied;

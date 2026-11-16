@@ -28,7 +28,7 @@ export async function loadTeam(fresh = false): Promise<TeamMember[]> {
   if (!fresh && cache && Date.now() - cache.at < TTL_MS) return cache.team;
   const sb = getSupabaseAdmin();
   const [members, profiles] = await Promise.all([
-    sb.from("memberships").select("profile_id, role, is_active").eq("organization_id", TAWPER_ORG_ID),
+    sb.from("memberships").select("profile_id, role, is_admin, is_active").eq("organization_id", TAWPER_ORG_ID),
     sb.from("profiles").select("id, email, full_name, short_name, title, phone_e164, avatar_color, avatar_url, is_active"),
   ]);
   if (members.error) throw new Error(members.error.message);
@@ -47,6 +47,7 @@ export async function loadTeam(fresh = false): Promise<TeamMember[]> {
         name,
         short,
         role: m.role as User["role"],
+        isAdmin: Boolean((m as { is_admin?: boolean }).is_admin) || m.role === "admin",
         title: (p.title as string) ?? "",
         initials: initials(name),
         color: (p.avatar_color as string) ?? "#123a7b",

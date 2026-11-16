@@ -6,7 +6,7 @@ import { AvatarPicker } from "@/components/ui/AvatarPicker";
 import { Modal } from "@/components/ui/overlay";
 import { Avatar, Badge, Button, Card, Empty, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import { formatWhatsApp } from "@/lib/br-ids";
-import { ROLE_LABEL } from "@/lib/constants";
+import { isAdmin, ROLE_LABEL } from "@/lib/constants";
 import { refreshCrm, useCurrentUser } from "@/lib/store";
 import type { User } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
@@ -15,7 +15,7 @@ type Carteira = { empresas: number; negocios: number; tarefas: number; conversas
 type Member = User & { email: string; ativo: boolean; carteira: Carteira };
 type Dialog = { kind: "criar" } | { kind: "editar"; member: Member } | { kind: "senha"; member: Member } | { kind: "desativar"; member: Member } | null;
 
-const ROLES: User["role"][] = ["admin", "gestor", "vendedor", "representante"];
+const ROLES: User["role"][] = ["gestor", "vendedor", "representante"];
 
 async function call(body: Record<string, unknown>) {
   const res = await fetch("/api/admin/equipe", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
@@ -67,7 +67,7 @@ export default function EquipePage() {
     };
   }, [version]);
 
-  if (user?.role !== "admin") return <Empty icon={<Users size={20} />} title="Área do administrador" text="Só o administrador gerencia quem tem acesso ao sistema." />;
+  if (!isAdmin(user)) return <Empty icon={<Users size={20} />} title="Área do administrador" text="Só o administrador gerencia quem tem acesso ao sistema." />;
 
   const done = async (message: string, sub?: string) => {
     setDialog(null);
@@ -137,7 +137,8 @@ function MemberList({ title, members, selfId, onDialog, onReactivate }: { title:
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[14px] font-medium text-ink">{m.name}</span>
                 {m.id === selfId && <Badge tone="muted">você</Badge>}
-                <Badge tone={m.role === "admin" ? "navy" : "neutral"}>{ROLE_LABEL[m.role]}</Badge>
+                <Badge tone="neutral">{ROLE_LABEL[m.role === "admin" ? "gestor" : m.role]}</Badge>
+                {isAdmin(m) && <Badge tone="navy">Admin</Badge>}
                 {m.ativo && m.phone && <Badge tone="green">Fala com o agente</Badge>}
               </div>
               <div className="mt-0.5 text-[12px] text-muted">
@@ -185,7 +186,8 @@ function MemberForm({ member, selfId, onClose, onSaved }: { member?: Member; sel
     curto: member?.short ?? "",
     email: member?.email ?? "",
     cargo: member?.title ?? "",
-    papel: member?.role ?? "vendedor",
+    papel: member ? (member.role === "admin" ? "gestor" : member.role) : ("vendedor" as User["role"]),
+    isAdmin: member ? isAdmin(member) : false,
     whatsapp: member?.phone ? formatWhatsApp(member.phone) : "",
     senha: "",
     avatarUrl: member?.avatarUrl as string | undefined,
@@ -248,8 +250,8 @@ function MemberForm({ member, selfId, onClose, onSaved }: { member?: Member; sel
           <Input type="email" value={form.email} onChange={set("email")} disabled={Boolean(member)} placeholder="nome@tawper.com.br" />
         </Field>
         <div className="grid gap-3 sm:grid-cols-2">
-          <Field label="Perfil de acesso" required>
-            <Select value={form.papel} onChange={set("papel")} disabled={member?.id === selfId}>
+          <Field label="Função na empresa" required>
+            <Select value={form.papel} onChange={set("papel")}>
               {ROLES.map((role) => (
                 <option key={role} value={role}>
                   {ROLE_LABEL[role]}
@@ -261,6 +263,21 @@ function MemberForm({ member, selfId, onClose, onSaved }: { member?: Member; sel
             <Input value={form.cargo} onChange={set("cargo")} placeholder="Vendedor interno" />
           </Field>
         </div>
+        <label className="flex cursor-pointer items-start gap-2.5 rounded-[8px] border border-line bg-soft/30 px-3 py-2.5 text-[13px]">
+          <input
+            type="checkbox"
+            className="mt-0.5 size-4 shrink-0 accent-navy"
+            checked={form.isAdmin}
+            disabled={member?.id === selfId}
+            onChange={(e) => setForm({ ...form, isAdmin: e.target.checked })}
+          />
+          <span>
+            <span className="font-medium text-ink">Administrador do sistema (plus)</span>
+            <span className="block text-[11.5px] text-muted">
+              Acesso total a Configurações, Metas, Equipe e Regras, sem tirar a função comercial da pessoa.
+            </span>
+          </span>
+        </label>
         <Field label="WhatsApp" hint="Com o número, a pessoa passa a falar com o agente. Deixe vazio para tirar o acesso ao agente.">
           <Input value={form.whatsapp} onChange={set("whatsapp")} placeholder="(64) 99999-9999" inputMode="tel" />
         </Field>
@@ -319,7 +336,7 @@ function PasswordForm({ member, onClose, onSaved }: { member: Member; onClose: (
 function DeactivateForm({ member, others, onClose, onSaved }: { member: Member; others: Member[]; onClose: () => void; onSaved: (message: string, sub?: string) => Promise<void> }) {
   const c = member.carteira;
   const hasCarteira = c.empresas + c.negocios + c.tarefas + c.conversas > 0;
-  const [para, setPara] = useState(hasCarteira ? (others.find((m) => m.role === "admin")?.id ?? others[0]?.id ?? "") : "");
+  const [para, setPara] = useState(hasCarteira ? (others.find((m) => isAdmin(m))?.id ?? others[0]?.id ?? "") : "");
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const target = others.find((m) => m.id === para);
