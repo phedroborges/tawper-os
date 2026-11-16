@@ -282,7 +282,7 @@ export function NextStepCard({ company, next, onDefine }: { company: Company; ne
         <span className="grid size-9 shrink-0 place-items-center rounded-full bg-white text-brand">
           <AlertTriangle size={16} />
         </span>
-        <div className="min-w-0 flex-1">
+        <div className="min-w-[180px] flex-1">
           <div className="text-[14px] font-medium text-ink">Esta conta está sem próximo passo</div>
           <div className="text-[12.5px] text-muted">Toda conta ativa precisa de uma ação com dono e prazo.</div>
         </div>
@@ -298,7 +298,8 @@ export function NextStepCard({ company, next, onDefine }: { company: Company; ne
       <span className={cn("grid size-9 shrink-0 place-items-center rounded-full", st === "atrasada" ? "bg-brand-soft text-brand" : "bg-soft text-navy")}>
         <TypeIcon tipo={next.tipo} size={16} />
       </span>
-      <div className="min-w-0 flex-1">
+      {/* Largura mínima: no celular os botões descem para a linha de baixo em vez de espremer o texto. */}
+      <div className="min-w-[180px] flex-1">
         <div className="label">Próximo passo</div>
         <div className="flex flex-wrap items-center gap-2">
           <span className="text-[14.5px] text-ink">{next.titulo}</span>
@@ -309,7 +310,7 @@ export function NextStepCard({ company, next, onDefine }: { company: Company; ne
           <span>{userName(users, next.ownerId)}</span>
         </div>
       </div>
-      <div className="flex gap-2">
+      <div className="ml-auto flex gap-2">
         <Button size="sm" variant="ghost" onClick={() => open({ kind: "reschedule", activityId: next.id })}>
           Reagendar
         </Button>

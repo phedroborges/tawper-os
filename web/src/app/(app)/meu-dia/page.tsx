@@ -4,7 +4,7 @@ import { ArrowRight, CalendarCheck, CalendarClock, Check, CircleAlert, Clock, Ma
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { TypeIcon } from "@/components/crm/crm";
-import { Card, CardHeader, Empty, PageHeader, Progress } from "@/components/ui/primitives";
+import { Card, CardHeader, CountUp, Empty, PageHeader, Progress } from "@/components/ui/primitives";
 import { dailyBriefing, type DailyBriefing } from "@/lib/ai";
 import { ALERT_LABEL, alertsOf, byDueAsc, type AlertType } from "@/lib/selectors";
 import { isManager } from "@/lib/constants";
@@ -55,12 +55,14 @@ function Tile({
         <span className={cn("grid size-7 place-items-center rounded-full", tone === "bad" ? "bg-brand-soft text-brand" : "bg-soft text-navy-3")}>{icon}</span>
         {label}
       </div>
-      <div className={cn("mt-2 text-[30px] leading-none font-semibold tracking-[-0.02em]", tone === "bad" ? "text-brand" : "text-ink")}>{value}</div>
+      <div className={cn("mt-2 text-[30px] leading-none font-semibold tracking-[-0.02em] tabular-nums", tone === "bad" ? "text-brand" : "text-ink")}>
+        <CountUp value={value} />
+      </div>
       {progress !== undefined && <Progress value={progress} tone={progress >= 100 ? "green" : "navy"} className="mt-2.5" />}
       {sub && <div className="mt-1.5 truncate text-[12px] text-muted">{sub}</div>}
     </>
   );
-  const className = cn("rounded-[10px] border border-line bg-white px-4 py-3.5 text-left block", (onClick || href) && "transition hover:border-navy-3/30 cursor-pointer");
+  const className = cn("block rounded-[10px] border border-line bg-white px-4 py-3.5 text-left shadow-card", (onClick || href) && "lift cursor-pointer hover:border-navy-3/30 active:scale-[0.98]");
   if (href) {
     return (
       <Link href={href} className={className}>
@@ -79,8 +81,7 @@ function Tile({
 /** Linha da agenda: hora, tipo em destaque, cliente, atalho de zap, reagendar e concluir. */
 function AgendaRow({ a, late }: { a: Activity; late?: boolean }) {
   const company = useStore((s) => s.companies.find((c) => c.id === a.companyId));
-  const contacts = useStore((s) => s.contacts.filter((c) => c.companyId === a.companyId && c.ativo));
-  const contact = contacts[0];
+  const contact = useStore((s) => s.contacts.find((c) => c.companyId === a.companyId && c.ativo));
   const { open, openInbox } = useUI();
   return (
     <li className="group flex flex-wrap items-center gap-3 border-b border-line/70 px-4 py-2.5 last:border-b-0 hover:bg-soft/40">
@@ -284,7 +285,7 @@ export default function MeuDiaPage() {
     <div>
       <PageHeader title={brief.saudacao} subtitle={longToday(now)} />
 
-      <div className="mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="stagger mb-5 grid grid-cols-2 gap-3 xl:grid-cols-4">
         <Tile
           icon={<CalendarCheck size={15} />}
           label="Hoje"
@@ -357,7 +358,10 @@ export default function MeuDiaPage() {
                   key={offset}
                   type="button"
                   onClick={() => setPick(offset)}
-                  className={cn("min-w-[84px] flex-1 rounded-[8px] border px-3 py-2 text-left transition", on ? "border-navy bg-navy text-white" : "border-line bg-white text-ink hover:border-navy-3/40")}
+                  className={cn(
+                  "min-w-[84px] flex-1 rounded-[8px] border px-3 py-2 text-left transition duration-200 active:scale-[0.97]",
+                  on ? "border-navy bg-navy text-white shadow-[0_8px_18px_-8px_rgba(10,29,63,0.55)]" : "border-line bg-white text-ink hover:-translate-y-px hover:border-navy-3/40",
+                )}
                 >
                   <div className={cn("text-[11px] font-medium capitalize", on ? "text-white/80" : "text-muted")}>{offset === 0 ? "Hoje" : date.toLocaleDateString("pt-BR", { weekday: "short", day: "2-digit" })}</div>
                   <div className="flex items-end gap-1.5">
@@ -412,12 +416,12 @@ export default function MeuDiaPage() {
                 text={
                   selected === -2
                     ? "As tarefas concluídas hoje aparecerão aqui para você conferir seus desfechos."
-                    : "Use Registrar, no topo, para lançar o que aconteceu ou marcar o próximo passo."
+                    : "Use Registrar para lançar o que aconteceu ou marcar o próximo passo."
                 }
               />
             </div>
           ) : (
-            <ul className="border-t border-line">
+            <ul key={selected} className="stagger border-t border-line">
               {selected === -2
                 ? list.map((a) => <ConcluidaRow key={a.id} a={a} />)
                 : list.map((a) => <AgendaRow key={a.id} a={a} late={selected === -1} />)}
@@ -435,7 +439,7 @@ export default function MeuDiaPage() {
             {brief.prioridades.length === 0 ? (
               <div className="border-t border-line px-4 py-5 text-[13px] text-muted">Nenhuma pendência crítica. Bom momento para prospectar.</div>
             ) : (
-              <ol className="border-t border-line">
+              <ol className="stagger border-t border-line">
                 {brief.prioridades.slice(0, 3).map((p, i) => (
                   <li key={`${p.companyId}-${i}`}>
                     <Link href={`/empresas/${p.companyId}`} className="flex items-start gap-3 border-b border-line/70 px-4 py-2.5 last:border-b-0 hover:bg-soft/50">
@@ -454,15 +458,17 @@ export default function MeuDiaPage() {
             {alertGroups.length === 0 ? (
               <div className="border-t border-line px-4 py-5 text-[12.5px] text-muted">Nenhum ponto de atenção.</div>
             ) : (
-              <div className="grid grid-cols-2 gap-2 border-t border-line p-3">
+              <div className="stagger grid grid-cols-2 gap-2 border-t border-line p-3">
                 {alertGroups.map(([tipo, ids]) => (
                   <button
                     key={tipo}
                     type="button"
                     onClick={() => open({ kind: "drill", title: ALERT_LABEL[tipo], companyIds: [...new Set(ids)] })}
-                    className="rounded-[8px] border border-line px-3 py-2.5 text-left transition hover:border-navy-3/40 hover:bg-soft/40"
+                    className="lift rounded-[8px] border border-line px-3 py-2.5 text-left hover:border-navy-3/40 active:scale-[0.97]"
                   >
-                    <div className="text-[22px] leading-none font-semibold text-ink">{new Set(ids).size}</div>
+                    <div className="text-[22px] leading-none font-semibold text-ink tabular-nums">
+                      <CountUp value={new Set(ids).size} />
+                    </div>
                     <div className="mt-1 text-[12px] leading-snug text-muted">{ALERT_LABEL[tipo]}</div>
                   </button>
                 ))}
@@ -471,7 +477,7 @@ export default function MeuDiaPage() {
           </Card>
 
           {brief.equipe && (
-            <Link href="/gestao" className="flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[8px] border border-line bg-white px-4 py-3 text-[12.5px] text-muted hover:border-navy-3/30">
+            <Link href="/gestao" className="lift flex flex-wrap items-center gap-x-4 gap-y-1 rounded-[10px] border border-line bg-white px-4 py-3 text-[12.5px] text-muted shadow-card hover:border-navy-3/30">
               <span className="font-medium text-ink">Equipe</span>
               <span>{brief.equipe.atrasadas} atrasadas</span>
               <span>{brief.equipe.semProximo} sem próximo passo</span>

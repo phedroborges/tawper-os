@@ -51,8 +51,8 @@ export async function sendDailyReminders(now = new Date()) {
       await sendWhatsAppAgentText(phone, text);
       result.sent += 1;
     } catch (e) {
-      // Falhou o envio: solta a trava para a próxima chamada do dia tentar de novo.
-      await sb.from("notifications").delete().eq("organization_id", TAWPER_ORG_ID).eq("dedupe_key", `lembrete:${member.id}:${dayKey(now)}`);
+      // Sem idempotência no provedor, uma falha de rede pode ocorrer depois da entrega: não repetir automaticamente.
+      await sb.from("notifications").update({ title: "Envio do lembrete não confirmado", body: `${text}\n\nNão foi possível comprovar a entrega. Confira o WhatsApp antes de repetir.` }).eq("organization_id", TAWPER_ORG_ID).eq("dedupe_key", `lembrete:${member.id}:${dayKey(now)}`);
       result.failed.push(`${member.short}: ${e instanceof Error ? e.message : "falha no envio"}`);
     }
   }

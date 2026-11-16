@@ -5,7 +5,7 @@ import {
   Bot,
   Building2,
   ChevronDown,
-  ClipboardCheck,
+  LogOut,
   Columns3,
   FileText,
   LayoutDashboard,
@@ -28,7 +28,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useMemo, useState, type ReactNode } from "react";
 import { BrandLogo } from "@/components/ui/BrandLogo";
 import { Avatar } from "@/components/ui/primitives";
-import { MenuItem, Popover } from "@/components/ui/overlay";
+import { MenuItem, Popover, useOverlay } from "@/components/ui/overlay";
 import { ROLE_LABEL, isManager } from "@/lib/constants";
 import { fmtAgo } from "@/lib/dates";
 import { useMounted } from "@/lib/hooks";
@@ -55,7 +55,7 @@ interface NavItem {
 }
 
 /** Telas de dados que aproveitam toda a largura do monitor. */
-const FLUID_ROUTES = ["/funis", "/carteira", "/configuracoes/auditoria", "/dashboard", "/propostas", "/registros", "/gestao", "/conversas"];
+const FLUID_ROUTES = ["/funis", "/carteira", "/configuracoes/auditoria", "/dashboard", "/propostas", "/gestao", "/conversas"];
 const COCKPIT_ROUTES = ["/gestao", "/funis"];
 
 function useNav(): NavItem[] {
@@ -82,9 +82,8 @@ function useNav(): NavItem[] {
     { href: "/metas", label: "Metas", icon: <Target size={18} /> },
     { href: "/gestao", label: "Gestão", icon: <ShieldCheck size={18} />, badge: exceptions, manager: true },
     { href: "/dashboard", label: "Painel", icon: <LayoutDashboard size={18} />, manager: true },
-    // Atendimento IA & Registros: gerenciamento da IA no WhatsApp e auditoria do que a equipe reportou. Só gestor.
+    // Atendimento IA: gerenciamento da IA no WhatsApp e, na aba Registros, a auditoria do que a equipe reportou. Só gestor.
     { href: "/conversas", label: "Atendimento IA", icon: <Bot size={18} />, manager: true },
-    { href: "/registros", label: "Registros", icon: <ClipboardCheck size={18} />, manager: true },
   ];
 }
 
@@ -108,12 +107,13 @@ function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavig
         title={collapsed ? n.label : undefined}
         aria-label={collapsed ? n.label : undefined}
         className={cn(
-          "relative flex items-center rounded-[6px] py-2 text-[13.5px] transition-colors",
+          "relative flex items-center rounded-[6px] py-2 text-[13.5px] transition-colors duration-150 active:bg-soft-2/70",
           collapsed ? "justify-center px-0" : "gap-3 px-2.5",
           active ? "bg-soft font-medium text-ink" : "text-muted hover:bg-soft/70 hover:text-ink",
         )}
       >
-        <span className={cn(active ? "text-navy" : "text-muted")}>{n.icon}</span>
+        {active && !collapsed && <span className="absolute top-1.5 bottom-1.5 left-0 w-[3px] rounded-full bg-brand animate-fade-in" aria-hidden />}
+        <span className={cn("transition-colors", active ? "text-navy" : "text-muted")}>{n.icon}</span>
         {!collapsed && <span className="flex-1">{n.label}</span>}
         {Boolean(n.badge) &&
           (collapsed ? (
@@ -136,6 +136,11 @@ function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavig
           )}
         </Link>
       </div>
+      {onNavigate && (
+        <div className="px-2.5 pb-3">
+          <GlobalSearch mobile onPick={onNavigate} />
+        </div>
+      )}
       <nav className={cn("flex-1 space-y-0.5 overflow-y-auto", collapsed ? "px-2" : "px-2.5")}>
         {nav.filter((n) => !n.manager).map(item)}
         {manager && (
@@ -160,13 +165,55 @@ function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavig
           </button>
         )}
       </div>
+      {/* No celular a conta não cabe na barra de cima: fica aqui, com tema e sair. */}
+      {onNavigate && (
+        <div className="flex items-center gap-2.5 border-t border-line px-3 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <Avatar name={user.name} initials={user.initials} color={user.color} size={34} />
+          <div className="min-w-0 flex-1 leading-tight">
+            <div className="truncate text-[13px] font-medium text-ink">{user.name}</div>
+            <div className="truncate text-[11.5px] text-muted">{ROLE_LABEL[user.role]}</div>
+          </div>
+          <ThemeToggleButton />
+          <LogoutButton />
+        </div>
+      )}
+    </div>
+  );
+}
+
+function useLogout() {
+  const router = useRouter();
+  return async () => {
+    await fetch("/api/auth/logout", { method: "POST" });
+    router.push("/entrar");
+    router.refresh();
+  };
+}
+
+function LogoutButton() {
+  const logout = useLogout();
+  return (
+    <button type="button" onClick={() => void logout()} className="grid size-10 place-items-center rounded-[6px] text-muted transition-colors hover:bg-soft hover:text-ink" aria-label="Sair" title="Sair">
+      <LogOut size={18} />
+    </button>
+  );
+}
+
+/** Menu do celular: desliza da esquerda, fecha no Esc, no toque fora e ao escolher uma tela. */
+function MobileNav({ onClose, onConversasIntent }: { onClose: () => void; onConversasIntent?: () => void }) {
+  const { closing, close, panel } = useOverlay(onClose);
+  return (
+    <div className={cn("fixed inset-0 z-[75] bg-ink/40 backdrop-blur-[2px] md:hidden", closing ? "animate-fade-out" : "animate-fade-in")} onClick={close}>
+      <aside ref={panel} tabIndex={-1} role="dialog" aria-modal="true" aria-label="Menu" className="h-full w-[272px] max-w-[84vw] shadow-pop outline-none animate-slide-right" onClick={(e) => e.stopPropagation()}>
+        <Sidebar onNavigate={close} onConversasIntent={onConversasIntent} />
+      </aside>
     </div>
   );
 }
 
 function UserSwitcher() {
   const user = useCurrentUser();
-  const router = useRouter();
+  const logout = useLogout();
   return (
     <Popover
       className="w-64 py-1.5"
@@ -196,12 +243,8 @@ function UserSwitcher() {
               type="button"
               className="text-[12.5px] text-muted hover:text-ink"
               onClick={() => {
-                void (async () => {
-                  await fetch("/api/auth/logout", { method: "POST" });
-                  close();
-                  router.push("/entrar");
-                  router.refresh();
-                })();
+                close();
+                void logout();
               }}
             >
               Sair
@@ -222,7 +265,7 @@ function Notifications() {
   const unread = mine.filter((n) => !n.lida).length;
   return (
     <Popover
-      className="w-[340px] max-w-[calc(100vw-2rem)]"
+      className="w-[340px] max-sm:fixed max-sm:top-[60px] max-sm:right-3 max-sm:left-3 max-sm:mt-0 max-sm:w-auto"
       trigger={() => (
         <button type="button" className="relative grid size-9 place-items-center rounded-[6px] text-muted hover:bg-soft hover:text-ink" aria-label="Notificações">
           <Bell size={18} />
@@ -271,7 +314,7 @@ function Notifications() {
   );
 }
 
-function GlobalSearch() {
+function GlobalSearch({ mobile, onPick }: { mobile?: boolean; onPick?: () => void }) {
   const user = useCurrentUser();
   const companies = useStore((s) => s.companies);
   const contacts = useStore((s) => s.contacts);
@@ -294,7 +337,7 @@ function GlobalSearch() {
       .slice(0, 7);
   }, [q, companies, contacts, user]);
   return (
-    <div className="relative hidden w-full max-w-sm md:block">
+    <div className={cn("relative w-full", !mobile && "hidden max-w-sm md:block")}>
       <Search size={15} className="pointer-events-none absolute top-1/2 left-3 -translate-y-1/2 text-muted" />
       <input
         value={q}
@@ -305,13 +348,14 @@ function GlobalSearch() {
           if (e.key === "Enter" && results[0]) {
             router.push(`/empresas/${results[0].id}`);
             setQ("");
+            onPick?.();
           }
         }}
         placeholder="Buscar cliente ou contato"
         className="h-10 w-full rounded-[6px] border border-transparent bg-soft pr-3 pl-9 text-[13.5px] outline-none transition focus:border-line focus:bg-white"
       />
       {focus && results.length > 0 && (
-        <div className="absolute top-full right-0 left-0 z-[60] mt-1.5 overflow-hidden rounded-[8px] border border-line bg-white shadow-pop animate-fade-in">
+        <div className="absolute top-full right-0 left-0 z-[60] mt-1.5 origin-top overflow-hidden rounded-[8px] border border-line bg-white shadow-pop animate-pop">
           {results.map((c) => (
             <button
               key={c.id}
@@ -319,12 +363,13 @@ function GlobalSearch() {
               onMouseDown={() => {
                 router.push(`/empresas/${c.id}`);
                 setQ("");
+                onPick?.();
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left hover:bg-soft"
             >
               <Building2 size={14} className="text-muted" />
-              <span className="flex-1 text-[13px] text-ink">{c.nome}</span>
-              <span className="text-[11.5px] text-muted">
+              <span className="min-w-0 flex-1 truncate text-[13px] text-ink">{c.nome}</span>
+              <span className="shrink-0 text-[11.5px] text-muted">
                 {c.cidade}/{c.uf}
               </span>
             </button>
@@ -368,7 +413,7 @@ function Topbar() {
   const manager = isManager(useCurrentUser());
   return (
     <header className="sticky top-0 z-40 flex h-16 items-center gap-2 border-b border-line bg-paper/95 px-3 backdrop-blur md:gap-4 md:px-6">
-      <button type="button" className="grid size-9 place-items-center rounded-[6px] text-muted hover:bg-soft md:hidden" onClick={() => setMobileNav(true)} aria-label="Menu">
+      <button type="button" className="grid size-10 place-items-center rounded-[6px] text-muted transition-colors hover:bg-soft active:bg-soft-2 md:hidden" onClick={() => setMobileNav(true)} aria-label="Menu">
         <Menu size={20} />
       </button>
       <Link href="/meu-dia" className="md:hidden">
@@ -385,13 +430,13 @@ function Topbar() {
           <Sparkles size={17} /> <span className="hidden xl:inline">Pergunte à IA</span>
         </button>
         {manager && <InboxButton />}
-        <ThemeToggleButton />
+        <div className="hidden md:block"><ThemeToggleButton /></div>
         <Notifications />
-        <button type="button" onClick={() => open({ kind: "quick" })} className="inline-flex size-10 items-center justify-center gap-2 rounded-[6px] bg-navy text-[13.5px] font-medium text-white hover:bg-navy-2 sm:h-10 sm:w-auto sm:px-3.5">
-          <Plus size={16} /> <span className="hidden sm:inline">Registrar</span>
+        <button type="button" onClick={() => open({ kind: "quick" })} className="hidden h-10 items-center justify-center gap-2 rounded-[6px] bg-navy px-3.5 text-[13.5px] font-medium text-white transition-[background-color,transform] duration-150 hover:bg-navy-2 active:scale-[0.97] md:inline-flex">
+          <Plus size={16} /> Registrar
         </button>
         <div className="mx-1 hidden h-6 w-px bg-line md:block" />
-        <div className="hidden sm:block"><UserSwitcher /></div>
+        <div className="hidden md:block"><UserSwitcher /></div>
       </div>
     </header>
   );
@@ -402,6 +447,7 @@ function MobileTabBar({ onConversasIntent }: { onConversasIntent?: () => void })
   const open = useUI((s) => s.open);
   const nav = useNav();
   const items = [nav[0], nav[1], null, nav[2], nav[4]];
+  const isActive = (href: string) => pathname.startsWith(href) || (href === "/carteira" && pathname.startsWith("/empresas"));
   return (
     <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-line bg-white/95 pb-[env(safe-area-inset-bottom)] backdrop-blur md:hidden">
       {items.map((n, i) =>
@@ -412,15 +458,17 @@ function MobileTabBar({ onConversasIntent }: { onConversasIntent?: () => void })
             onClick={() => {
               if (n.href === "/conversas") onConversasIntent?.();
             }}
-            className={cn("relative flex flex-col items-center gap-0.5 py-2 text-[10.5px]", pathname.startsWith(n.href) ? "font-medium text-navy" : "text-muted")}
+            aria-current={isActive(n.href) ? "page" : undefined}
+            className={cn("relative flex flex-col items-center gap-0.5 py-2 text-[10.5px] whitespace-nowrap transition-[color,transform] duration-150 active:scale-95", isActive(n.href) ? "font-medium text-navy" : "text-muted")}
           >
+            {isActive(n.href) && <span className="absolute top-0 h-[2px] w-8 rounded-full bg-brand animate-fade-in" aria-hidden />}
             {n.icon}
-            {n.label.split(" ")[0]}
+            {n.label}
             {Boolean(n.badge) && <span className="absolute top-1 right-[calc(50%-18px)] size-1.5 rounded-full bg-brand" />}
           </Link>
         ) : (
           <button key={`reg-${i}`} type="button" onClick={() => open({ kind: "quick" })} className="flex flex-col items-center justify-center" aria-label="Registrar">
-            <span className="-mt-5 grid size-12 place-items-center rounded-full bg-navy text-white shadow-pop">
+            <span className="-mt-5 grid size-12 place-items-center rounded-full bg-navy text-white shadow-pop transition-transform duration-150 active:scale-90">
               <Plus size={22} />
             </span>
           </button>
@@ -447,7 +495,7 @@ function Splash() {
       <div className="flex flex-col items-center gap-4">
         <BrandLogo width={293} height={83} className="h-auto w-[150px]" priority />
         <div className="h-0.5 w-32 overflow-hidden rounded bg-soft-2">
-          <div className="h-full w-1/2 animate-pulse bg-navy" />
+          <div className="h-full w-1/2 rounded bg-navy animate-loading-bar" />
         </div>
       </div>
     </div>
@@ -491,13 +539,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <aside className={cn("fixed inset-y-0 left-0 z-50 hidden transition-[width] duration-200 md:block", navCollapsed ? "w-[68px]" : "w-[224px]")}>
             <Sidebar onConversasIntent={onConversasIntent} collapsed={navCollapsed} />
           </aside>
-          {mobileNav && (
-            <div className="fixed inset-0 z-[75] bg-ink/30 md:hidden" onClick={() => setMobileNav(false)}>
-              <aside className="h-full w-[248px] animate-slide-up" onClick={(e) => e.stopPropagation()}>
-                <Sidebar onNavigate={() => setMobileNav(false)} onConversasIntent={onConversasIntent} />
-              </aside>
-            </div>
-          )}
+          {mobileNav && <MobileNav onClose={() => setMobileNav(false)} onConversasIntent={onConversasIntent} />}
           <div
             className={cn(
               "transition-[padding] duration-200",
@@ -508,8 +550,10 @@ export function AppShell({ children }: { children: ReactNode }) {
             <Topbar />
             <DbStatus />
             <main
+              // A chave é a seção: trocar de tela anima a entrada, trocar de aba dentro dela não.
+              key={pathname.split("/")[1]}
               className={cn(
-                "mx-auto w-full",
+                "mx-auto w-full animate-page-in",
                 // Telas de cockpit ocupam a viewport inteira; telas de dados usam largura fluida;
                 // telas de leitura crescem até 1680px para a linha não ficar longa demais.
                 COCKPIT_ROUTES.some((r) => pathname.startsWith(r))

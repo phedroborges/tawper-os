@@ -6,6 +6,7 @@ import {
   Building2,
   CheckCircle2,
   ChevronRight,
+  ClipboardCheck,
   Clock,
   MessageSquare,
   Mic,
@@ -19,9 +20,9 @@ import {
   Users,
   Zap,
 } from "lucide-react";
-import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { ConversasReady } from "@/components/chat/ConversasLoading";
+import { RegistrosPanel } from "@/components/chat/RegistrosPanel";
 import { UserAvatar } from "@/components/crm/crm";
 import { Modal } from "@/components/ui/overlay";
 import {
@@ -54,7 +55,7 @@ import { useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
 import { cn } from "@/lib/utils";
 
-type MainTab = "equipe" | "acesso" | "treinamento";
+type MainTab = "equipe" | "registros" | "acesso" | "treinamento";
 type FilterTab =
   | "todos"
   | "alerta_ia"
@@ -131,7 +132,7 @@ function initialsOf(name: string) {
   return `${parts[0][0] ?? ""}${parts[parts.length - 1][0] ?? ""}`.toUpperCase();
 }
 
-export function IaSessionsConsole() {
+export function IaSessionsConsole({ initialTab = "equipe" }: { initialTab?: "equipe" | "registros" }) {
   const users = useStore((s) => s.users);
   const companies = useStore((s) => s.companies);
   const interactions = useStore((s) => s.interactions);
@@ -158,7 +159,7 @@ export function IaSessionsConsole() {
 
   const [isLive, setIsLive] = useState(false);
   const [loading, setLoading] = useState(false);
-  const [mainTab, setMainTab] = useState<MainTab>("equipe");
+  const [mainTab, setMainTab] = useState<MainTab>(initialTab);
   const [filter, setFilter] = useState<FilterTab>("todos");
   const [search, setSearch] = useState("");
   const [selectedSessionId, setSelectedSessionId] = useState<string | null>(null);
@@ -475,12 +476,6 @@ export function IaSessionsConsole() {
               <RefreshCw size={14} className={cn(loading && "animate-spin")} />
               Atualizar
             </Button>
-            <Link
-              href="/registros"
-              className="inline-flex h-8.5 items-center gap-1.5 rounded-[6px] border border-line bg-white px-3 text-[12.5px] font-medium text-ink transition-colors hover:bg-soft"
-            >
-              Ver tabela de registros
-            </Link>
           </div>
         }
       />
@@ -635,6 +630,15 @@ export function IaSessionsConsole() {
                 <span className="inline-flex items-center gap-1.5">
                   <MessageSquare size={14} />
                   Atendimentos da Equipe ({sessions.length})
+                </span>
+              ),
+            },
+            {
+              value: "registros",
+              label: (
+                <span className="inline-flex items-center gap-1.5">
+                  <ClipboardCheck size={14} />
+                  Registros da Equipe
                 </span>
               ),
             },
@@ -953,6 +957,8 @@ export function IaSessionsConsole() {
       {/* =====================================================================
           ABA 2: LISTA DE ACESSO & OUTROS CONTATOS (PADRÃO TABELA/LISTA LIMPA)
          ===================================================================== */}
+      {mainTab === "registros" && <RegistrosPanel />}
+
       {mainTab === "acesso" && (
         <div className="grid grid-cols-1 gap-4 lg:grid-cols-12">
           {/* Equipe Autorizada */}

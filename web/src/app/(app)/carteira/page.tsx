@@ -5,11 +5,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
 import { DaysInStage, DueLabel, StagePill, StatusBadge, UserAvatar, userName, RegionSelect } from "@/components/crm/crm";
-import { Badge, Card, Input, LinkButton, PageHeader, Segmented, Select } from "@/components/ui/primitives";
+import { Badge, Card, CountUp, Input, LinkButton, PageHeader, Segmented, Select } from "@/components/ui/primitives";
 import { FUNNELS, MARCAS, PRENSAS, isManager } from "@/lib/constants";
 import { matchesRegionFilter } from "@/lib/regions";
 import { dayDiff, fmtAgo } from "@/lib/dates";
-import { useNow } from "@/lib/hooks";
+import { useIsMobile, useNow } from "@/lib/hooks";
 import { alertsOf, currentDealOf, isStagnant, lastInteractionAt, nextStepOf, visibleCompanies, inSupport } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
 import { useUI } from "@/lib/ui-store";
@@ -36,17 +36,17 @@ function KpiCard({
       type="button"
       onClick={onClick}
       className={cn(
-        "rounded-[10px] border p-3.5 text-left transition hover:border-navy-3/40",
+        "lift rounded-[10px] border p-3.5 text-left hover:border-navy-3/40 active:scale-[0.98]",
         active
-          ? "border-navy bg-navy text-white shadow-sm"
+          ? "border-navy bg-navy text-white shadow-[0_8px_18px_-8px_rgba(10,29,63,0.55)]"
           : tone === "danger" && value > 0
-          ? "border-brand/30 bg-brand-soft/40 text-ink"
-          : "border-line bg-white text-ink"
+          ? "border-brand/30 bg-brand-soft/40 text-ink shadow-card"
+          : "border-line bg-white text-ink shadow-card"
       )}
     >
       <div className={cn("text-[11.5px] font-medium", active ? "text-white/80" : "text-muted")}>{label}</div>
-      <div className={cn("mt-1 text-[26px] font-bold tracking-tight", active ? "text-white" : tone === "danger" && value > 0 ? "text-brand" : "text-ink")}>
-        {value}
+      <div className={cn("mt-1 text-[26px] font-bold tracking-tight tabular-nums", active ? "text-white" : tone === "danger" && value > 0 ? "text-brand" : "text-ink")}>
+        <CountUp value={value} />
       </div>
       <div className={cn("mt-0.5 truncate text-[11px]", active ? "text-white/70" : "text-muted")}>{sub}</div>
     </button>
@@ -60,7 +60,9 @@ export default function CarteiraPage() {
   const router = useRouter();
   const { open } = useUI();
   const manager = isManager(user);
-  const [view, setView] = useState<"tabela" | "cartoes">("tabela");
+  const [viewPref, setView] = useState<"tabela" | "cartoes">("tabela");
+  // Tabela de 6 colunas não cabe no celular: lá a carteira é sempre em cartões.
+  const view = useIsMobile() ? "cartoes" : viewPref;
   const [q, setQ] = useState("");
   const [owner, setOwner] = useState("");
   const [regiao, setRegiao] = useState("");
@@ -177,6 +179,7 @@ export default function CarteiraPage() {
         actions={
           <>
             <Segmented
+              className="max-md:hidden"
               value={view}
               onChange={setView}
               options={[
@@ -192,7 +195,7 @@ export default function CarteiraPage() {
       />
 
       {/* Cards de métricas rápidas e filtros da carteira */}
-      <div className="mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
+      <div className="stagger mb-4 grid grid-cols-2 gap-3 xl:grid-cols-4">
         <KpiCard
           label="Total da carteira"
           value={countTotal}
@@ -332,7 +335,7 @@ export default function CarteiraPage() {
                   <th className="label px-4 py-2.5 text-right">Ações</th>
                 </tr>
               </thead>
-              <tbody>
+              <tbody className="stagger">
                 {rows.map(({ c, deal, next, last }) => {
                   const risk = riskIds.has(c.id);
                   const daysAgo = last ? dayDiff(last, now) : null;
@@ -345,7 +348,7 @@ export default function CarteiraPage() {
                         risk && "bg-brand-soft/20 hover:bg-brand-soft/35"
                       )}
                     >
-                      <td className="px-4 py-3">
+                      <td className="min-w-[230px] px-4 py-3">
                         <div className="flex flex-wrap items-center gap-1.5">
                           <Link href={`/empresas/${c.id}`} className="text-[13.5px] font-semibold text-ink hover:text-brand" onClick={(e) => e.stopPropagation()}>
                             {c.nome}
@@ -379,7 +382,7 @@ export default function CarteiraPage() {
                           </div>
                         )}
                       </td>
-                      <td className="min-w-[220px] px-4 py-3">
+                      <td className="max-w-[300px] min-w-[220px] px-4 py-3">
                         {c.status === "espera" ? (
                           <span className="text-[12px] text-warn">Em espera · {c.standby?.motivo ?? "pausada"}</span>
                         ) : next ? (
@@ -425,7 +428,7 @@ export default function CarteiraPage() {
                           <button
                             type="button"
                             onClick={() => open({ kind: "quick", companyId: c.id })}
-                            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-navy/20 bg-navy/5 px-2.5 text-[12px] font-medium text-navy transition hover:border-navy hover:bg-navy hover:text-white"
+                            className="inline-flex h-8 items-center gap-1.5 rounded-[6px] border border-navy/20 bg-navy/5 px-2.5 text-[12px] font-medium whitespace-nowrap text-navy transition hover:border-navy hover:bg-navy hover:text-white"
                             title={`Registrar atividade com ${c.nome}`}
                           >
                             <Sparkles size={13} />
@@ -442,13 +445,13 @@ export default function CarteiraPage() {
           {rows.length === 0 && <div className="px-4 py-12 text-center text-[13px] text-muted">Nenhuma conta com esses filtros.</div>}
         </Card>
       ) : (
-        <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
+        <div className="stagger grid gap-3 sm:grid-cols-2 xl:grid-cols-3">
           {rows.map(({ c, deal, next, last }) => (
             <Link
               key={c.id}
               href={`/empresas/${c.id}`}
               className={cn(
-                "rounded-[6px] border bg-white p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-pop",
+                "lift min-w-0 rounded-[10px] border bg-white p-4 shadow-card active:scale-[0.99]",
                 riskIds.has(c.id) ? "border-brand/40 bg-brand-soft/10" : "border-line"
               )}
             >

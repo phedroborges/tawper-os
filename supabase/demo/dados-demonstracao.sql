@@ -1,206 +1,506 @@
 -- =============================================================================
--- Tawper OS — dados de demonstração
+-- Tawper OS — dados de demonstração (gerado por supabase/demo/gerar-demo.mjs; não edite à mão)
 -- =============================================================================
--- O QUE FAZ: apaga TODAS as empresas da organização Tawper (com contatos, negócios, tarefas, orçamentos,
--- vendas e histórico) e recria uma carteira fictícia completa de 26 clientes. Equipe, logins, configurações
--- e o agente do WhatsApp NÃO são tocados (conversas e atendimentos ficam, só sem vínculo com as empresas apagadas).
---
--- O QUE FICA DEPOIS:
---   - novembro fechando bem: quase tudo concluído no prazo, 4 tarefas atrasadas espalhadas em duas pessoas
---   - dezembro organizado: todo cliente ativo com próximo passo marcado em dia útil, das 8h às 18h
---   - nenhum cliente sem contato, sem localização ou com tarefa duplicada
---   - vendas dos últimos meses (alimentam Metas, pódio e Painel), orçamentos, estratégias e 3 contas paradas
---
--- COMO RODAR: cole o arquivo inteiro no SQL Editor do Supabase do projeto da Tawper e execute.
--- É uma transação só: se qualquer linha falhar, nada muda. Todas as datas são relativas a AGORA,
--- então rode de novo na véspera da apresentação (pode rodar quantas vezes quiser).
---
--- CÓPIA DE SEGURANÇA: na primeira execução, o estado atual das tabelas é copiado para o schema
--- backup_pre_demo (fora da API). Execuções seguintes não sobrescrevem essa cópia.
+-- O QUE FAZ: acrescenta uma carteira fictícia de 79 clientes, com atividades,
+-- vendas e histórico. Empresas já existentes (mesmo CNPJ ou nome) são preservadas.
+-- Não apaga dados, não altera logins, metas, políticas RLS ou gatilhos de auditoria.
+-- COMO RODAR: execute o arquivo INTEIRO no SQL Editor, como postgres.
+-- Uma transação: qualquer erro desfaz a carga. Repetir não duplica os clientes.
+-- demo_clientes não é uma tabela: os clientes abaixo são valores usados na carga.
 -- =============================================================================
 
 begin;
+select pg_advisory_xact_lock(hashtext('tawper-demo-2026'));
 
-create schema if not exists backup_pre_demo;
-revoke all on schema backup_pre_demo from public, anon, authenticated;
-
-do $$
-declare
-  t text;
-begin
-  foreach t in array array[
-    'companies', 'company_relationships', 'contacts', 'opportunities', 'opportunity_stage_history', 'opportunity_requirement_values',
-    'activities', 'interactions', 'standby_periods', 'sales', 'quotes', 'quote_items', 'strategies', 'strategy_versions', 'ai_suggestions', 'route_plans', 'route_stops',
-    'conversations', 'messages', 'ai_agent_sessions', 'ai_agent_runs'
-  ] loop
-    execute format('create table if not exists backup_pre_demo.%I as table public.%I', t, t);
-  end loop;
-end $$;
-
--- Dia útil a partir de hoje (p_dias negativo = passado), no horário de Brasília. Sábado e domingo
--- são empurrados para o dia útil mais próximo na mesma direção.
+-- Dia útil a partir de hoje (negativo = passado), no horário de Brasília; fim de semana vai para o dia útil mais próximo.
 create or replace function pg_temp.dia_util(p_dias integer, p_hora integer, p_minuto integer default 0)
-returns timestamptz language plpgsql as $$
-declare
-  d date := (now() at time zone 'America/Sao_Paulo')::date + p_dias;
+returns timestamptz language plpgsql as $f$
+declare d date := (now() at time zone 'America/Sao_Paulo')::date + p_dias;
 begin
-  if extract(dow from d) = 6 then d := d + case when p_dias < 0 then -1 else 2 end; end if;
-  if extract(dow from d) = 0 then d := d + case when p_dias < 0 then -2 else 1 end; end if;
+  if extract(isodow from d) = 6 then d := d + case when p_dias < 0 then -1 else 2 end; end if;
+  if extract(isodow from d) = 7 then d := d + case when p_dias < 0 then -2 else 1 end; end if;
   return (d + make_time(p_hora, p_minuto, 0)) at time zone 'America/Sao_Paulo';
-end $$;
+end $f$;
+
+-- "AAAA-MM-DD:valor" de uma venda → data e hora da venda (horário comercial de Brasília).
+create or replace function pg_temp.venda_ts(p text) returns timestamptz language sql immutable as $f$
+  select (split_part(p, ':', 1)::date + make_time(9 + extract(doy from split_part(p, ':', 1)::date)::int % 8, 0, 0)) at time zone 'America/Sao_Paulo'
+$f$;
+
+-- Ritmo diário de cada dono (0 = diretor): ligações, WhatsApps, e-mails e cotações por dia útil; reuniões e visitas por mês;
+-- registros pelo agente do WhatsApp por dia.
+create temp table pg_temp.demo_ritmo (dono int, ligacoes int, whatsapps int, emails int, cotacoes int, reunioes_mes int, visitas_mes int, agente_dia int) on commit drop;
+insert into pg_temp.demo_ritmo values (0, 4, 3, 2, 1, 14, 3, 1), (1, 15, 8, 2, 1, 11, 4, 4), (2, 14, 7, 2, 1, 10, 5, 3), (3, 11, 6, 1, 1, 8, 3, 2), (4, 13, 7, 2, 1, 10, 4, 3);
+
+create temp table pg_temp.demo_donos (dono int, owner_id uuid) on commit drop;
+create temp table pg_temp.demo_mapa (idx int, dono int, funil text, nome text, uf text, company_id uuid, opp_id uuid, owner_id uuid, contato_id uuid) on commit drop;
 
 do $$
 declare
   v_org      constant uuid := '00000000-0000-4000-8000-000000000001';
   v_admin    uuid;
-  v_sellers  uuid[];
+  v_murilo   uuid;
+  v_others   uuid[];
   aq         constant text[] := array['lead', 'qualificacao', 'apresentacao_empresa', 'apresentacao_tecnica', 'cadastro', 'homologacao', 'aprovado', 'orcamento', 'negociacao'];
   rc         constant text[] := array['posvenda', 'relacionamento', 'previsao', 'orcamento_r', 'negociacao_r'];
-  tipos      constant public.activity_type[] := array['call', 'whatsapp', 'visit', 'meeting', 'email', 'call']::public.activity_type[];
-  titulos    constant text[] := array['Ligar e alinhar o próximo passo', 'Enviar material técnico por WhatsApp', 'Visita técnica à oficina agrícola', 'Reunião com a manutenção', 'Enviar documentos por e-mail', 'Ligar para confirmar recebimento'];
-  resultados constant text[] := array[
-    'Falei com o responsável. Combinamos o próximo contato.', 'Material enviado e recebido. Vai repassar para a equipe.',
-    'Visita feita. Levantei as medidas das mangueiras nas colhedoras.', 'Reunião realizada com manutenção e compras. Interesse confirmado.',
-    'Documentos enviados. Aguardando conferência do cadastro.', 'Confirmou o recebimento e pediu retorno na próxima semana.'];
-  canais     constant public.interaction_channel[] := array['phone', 'whatsapp', 'visit', 'meeting', 'email', 'phone']::public.interaction_channel[];
-  decisores  constant text[] := array['Carlos Menezes', 'Roberto Almeida', 'Sérgio Nogueira', 'Marcelo Tavares', 'Antônio Furtado', 'Ricardo Pacheco', 'Fernando Lacerda', 'Eduardo Brandão'];
-  tecnicos   constant text[] := array['Júlio Bastos', 'Wagner Moreira', 'Leandro Pires', 'Cristiano Rocha', 'Adriano Teles', 'Márcio Cunha', 'Rafael Dantas'];
-  compras    constant text[] := array['Patrícia Lemos', 'Juliana Prado', 'Camila Rezende', 'Vanessa Couto', 'Aline Barros'];
   r          record;
   v_company  uuid;
   v_owner    uuid;
   v_opp      uuid;
   v_contact  uuid;
   v_quote    uuid;
+  v_sid      uuid;
   v_f_aq     uuid;
   v_f_rc     uuid;
-  v_ddd      text;
   v_pos      integer;
-  v_total    integer;
   v_t        timestamptz;
   v_last     timestamptz;
   v_alvo     timestamptz;
-  v_due      timestamptz;
-  v_done     timestamptz;
   v_sales    text[];
-  v_days     integer;
   v_amount   numeric;
-  v_cycle    integer;
   v_title    text;
   v_type     public.activity_type;
   j          integer;
   k          integer;
 begin
-  select m.profile_id into v_admin
-    from public.memberships m join public.profiles p on p.id = m.profile_id
-   where m.organization_id = v_org and m.is_active and p.is_active and m.role = 'admin'
-   order by p.full_name limit 1;
+  -- Pessoas: quem age na carga (um administrador), o diretor que também vende e os vendedores, cada um no seu território.
+  select m.profile_id into v_admin from public.memberships m join public.profiles p on p.id = m.profile_id
+   where m.organization_id = v_org and m.is_active and p.is_active and m.role = 'admin' order by p.full_name limit 1;
   if v_admin is null then raise exception 'Não achei administrador ativo na organização Tawper.'; end if;
-
-  select array_agg(s.profile_id order by s.full_name) into v_sellers
-    from (select m.profile_id, p.full_name from public.memberships m join public.profiles p on p.id = m.profile_id
-           where m.organization_id = v_org and m.is_active and p.is_active and m.role in ('vendedor', 'representante')) s;
-  if coalesce(array_length(v_sellers, 1), 0) < 2 then
-    -- Equipe ainda sem vendedores cadastrados: distribui a carteira entre todos os ativos.
-    select array_agg(s.profile_id order by s.full_name) into v_sellers
-      from (select m.profile_id, p.full_name from public.memberships m join public.profiles p on p.id = m.profile_id
-             where m.organization_id = v_org and m.is_active and p.is_active) s;
-  end if;
+  select m.profile_id into v_murilo from public.memberships m join public.profiles p on p.id = m.profile_id
+   where m.organization_id = v_org and m.is_active and p.is_active and p.full_name ilike 'murilo%' order by (m.role = 'admin') desc limit 1;
+  v_murilo := coalesce(v_murilo, v_admin);
+  select array_agg(s.profile_id order by s.full_name) into v_others from (
+    select m.profile_id, p.full_name from public.memberships m join public.profiles p on p.id = m.profile_id
+     where m.organization_id = v_org and m.is_active and p.is_active and m.role in ('vendedor', 'representante') and m.profile_id <> v_murilo) s;
+  if v_others is null then v_others := array[v_murilo]; end if;
+  insert into pg_temp.demo_donos values (0, v_murilo);
+  -- Território pelo primeiro nome (Douglas: Noroeste Paulista; Fernando: Triângulo; Nilton: MS e GO; Paulo: Oeste Paulista e PR).
+  insert into pg_temp.demo_donos
+  select s.slot, coalesce(
+           (select m.profile_id from public.memberships m join public.profiles p on p.id = m.profile_id
+             where m.organization_id = v_org and m.is_active and p.is_active and m.profile_id = any(v_others) and p.full_name ilike s.prefixo || '%' limit 1),
+           v_others[1 + (s.slot - 1) % array_length(v_others, 1)])
+    from (values (1, 'douglas'), (2, 'fernando'), (3, 'nilton'), (4, 'paulo')) s(slot, prefixo);
 
   perform app.crm_begin(v_admin, 'user');
   perform set_config('app.bypass_stage_rules', 'on', true);
-
-  -- 1. Limpa a carteira atual (a cópia de segurança já foi feita acima).
-  -- Conversas e atendimentos do agente NÃO são apagados: só deixam de apontar para empresa e contato que vão sumir.
-  -- (Sem isto o banco recusa a exclusão: o vínculo "ao apagar, zerar" tenta zerar também o organization_id.)
-  update public.ai_agent_runs set company_id = null where organization_id = v_org and company_id is not null;
-  update public.ai_agent_sessions set company_id = null where organization_id = v_org and company_id is not null;
-  update public.messages set contact_id = null where organization_id = v_org and contact_id is not null;
-  update public.conversations set company_id = null, contact_id = null where organization_id = v_org and (company_id is not null or contact_id is not null);
-  perform set_config('app.admin_correction', 'on', true);
-  delete from public.route_plans where organization_id = v_org;
-  delete from public.companies where organization_id = v_org;
-  perform set_config('app.admin_correction', '', true);
-  update public.organizations set company_seq = 0 where id = v_org;
 
   -- 2. Regiões do Brasil (a região do cliente sai da UF).
   insert into public.regions (organization_id, name, states) values
     (v_org, 'Norte', '{AC,AM,AP,PA,RO,RR,TO}'), (v_org, 'Nordeste', '{AL,BA,CE,MA,PB,PE,PI,RN,SE}'),
     (v_org, 'Centro-Oeste', '{DF,GO,MS,MT}'), (v_org, 'Sudeste', '{ES,MG,RJ,SP}'), (v_org, 'Sul', '{PR,RS,SC}')
-  on conflict (organization_id, name) do update set states = excluded.states, is_active = true;
-  update public.regions set is_active = false where organization_id = v_org and name not in ('Norte', 'Nordeste', 'Centro-Oeste', 'Sudeste', 'Sul');
+  on conflict (organization_id, name) do nothing;
 
   select id into v_f_aq from public.funnels where organization_id = v_org and key = 'aquisicao';
   select id into v_f_rc from public.funnels where organization_id = v_org and key = 'recorrencia';
 
-  -- 3. Carteira. funil: aq = aquisição aberta, rc = cliente na recorrência, perdida = negócio perdido.
-  --    dias = há quantos dias está na etapa atual. vendas = "dias atrás:valor" de cada venda, da mais antiga à mais nova.
-  for r in
-    select * from (values
-      ( 1, 'Usina Serra Dourada Bioenergia',        'Quirinópolis',         'GO', '75860000', -18.448, -50.452, 'Usina sucroenergética',      18, 'John Deere CH570',             'own',             'Gates',     'Hidráulica Goiás',     'high',   42000, 'medium', 'aq',      'lead',                  4,      0, '',                         '41370913000187'),
-      ( 2, 'Agroindustrial Rio das Pedras',         'Ituiutaba',            'MG', '38300000', -18.969, -49.465, 'Grupo sucroenergético',      24, 'Case A8800 e A9000',           'competitor_loan', 'Parker',    'Mangueiras Triângulo', 'high',   55000, 'medium', 'aq',      'lead',                  9,      0, '',                         '41741826000199'),
-      ( 3, 'Usina Vale do Araguaia',                'Jataí',                'GO', '75800000', -17.881, -51.714, 'Usina sucroenergética',      15, 'John Deere CH570 e CH950',     'own',             'Manuli',    'Hidráulica Goiás',     'medium', 30000, 'medium', 'aq',      'qualificacao',          6,      0, '',                         '42112739000135'),
-      ( 4, 'Destilaria Campo Belo',                 'Frutal',               'MG', '38200000', -20.025, -48.940, 'Destilaria',                  8, 'Case A8800',                   'none',            'Diversas / sem padrão', 'Revenda local', 'medium', 16000, 'low', 'aq',  'qualificacao',         12,      0, '',                         '42483652000174'),
-      ( 5, 'CTT Irmãos Carvalho',                   'Olímpia',              'SP', '15400000', -20.737, -48.915, 'Prestador de serviço (CTT)',  9, 'John Deere CH570',             'own',             'Gates',     'Hidráulica Paulista',  'medium', 18000, 'high',   'aq',      'qualificacao',         25,      0, '',                         '42854565000186'),
-      ( 6, 'Usina Santa Helena do Cerrado',         'Rio Verde',            'GO', '75900000', -17.798, -50.928, 'Usina sucroenergética',      22, 'Case A9000',                   'competitor_loan', 'Parker',    'Hidráulica Goiás',     'high',   50000, 'high',   'aq',      'apresentacao_empresa',  8,      0, '',                         '43225478000122'),
-      ( 7, 'Grupo Agro São Miguel',                 'Catanduva',            'SP', '15800000', -21.138, -48.973, 'Grupo sucroenergético',      31, 'John Deere CH570 e CH950',     'own',             'Continental', 'Hidráulica Paulista', 'high',  70000, 'medium', 'aq',      'apresentacao_empresa', 15,      0, '',                         '43596391000161'),
-      ( 8, 'Usina Nova Fronteira',                  'Naviraí',              'MS', '79950000', -23.065, -54.191, 'Usina sucroenergética',      16, 'Case A8800',                   'own',             'Eaton',     'Sul Hidráulica',       'medium', 34000, 'medium', 'aq',      'apresentacao_tecnica',  5,      0, '',                         '43967304000135'),
-      ( 9, 'Usina Boa Esperança do Sul',            'Rio Brilhante',        'MS', '79130000', -21.802, -54.546, 'Usina sucroenergética',      20, 'John Deere CH570',             'competitor_loan', 'Gates',     'Sul Hidráulica',       'high',   46000, 'medium', 'aq',      'cadastro',              7,      0, '',                         '44338217000181'),
-      (10, 'Fornecedora de Cana Três Barras',       'Bebedouro',            'SP', '14700000', -20.949, -48.479, 'Fornecedor de cana',          6, 'Case A8800',                   'none',            'Copecar',   'Revenda local',        'low',    11000, 'low',    'aq',      'cadastro',             14,      0, '',                         '44709130000173'),
-      (11, 'Usina Planalto Verde',                  'Mineiros',             'GO', '75830000', -17.569, -52.551, 'Usina sucroenergética',      19, 'John Deere CH950',             'own',             'Manuli',    'Hidráulica Goiás',     'high',   44000, 'high',   'aq',      'homologacao',          20,  52000, '',                         '45080043000162'),
-      (12, 'Usina Alto Paraná Açúcar e Etanol',     'Nova Andradina',       'MS', '79750000', -22.233, -53.343, 'Usina sucroenergética',      27, 'Case A9000',                   'competitor_loan', 'Parker',    'Sul Hidráulica',       'high',   62000, 'high',   'aq',      'homologacao',          52,  74000, '',                         '45450956000123'),
-      (13, 'Bioenergia Triângulo',                  'Uberaba',              'MG', '38000000', -19.748, -47.932, 'Usina sucroenergética',      14, 'John Deere CH570',             'own',             'Gates',     'Mangueiras Triângulo', 'medium', 29000, 'medium', 'aq',      'aprovado',             10,  38000, '',                         '45821869000135'),
-      (14, 'Usina São Bento do Oeste',              'Presidente Venceslau', 'SP', '19400000', -21.876, -51.844, 'Usina sucroenergética',      21, 'Case A8800 e A9000',           'own',             'Continental', 'Hidráulica Paulista', 'high',  48000, 'high',   'aq',      'orcamento',             4,  68500, '',                         '46192782000109'),
-      (15, 'Usina Canaã Paulista',                  'Votuporanga',          'SP', '15500000', -20.423, -49.973, 'Usina sucroenergética',      13, 'John Deere CH570',             'tawper_loan',     'Gates',     'Hidráulica Paulista',  'medium', 27000, 'medium', 'aq',      'orcamento',             8,  41200, '',                         '46563695000110'),
-      (16, 'Usina Monte Alegre de Goiás',           'Goiatuba',             'GO', '75600000', -18.012, -49.357, 'Usina sucroenergética',      29, 'John Deere CH950',             'own',             'Parker',    'Hidráulica Goiás',     'high',   66000, 'high',   'aq',      'negociacao',            6,  96000, '',                         '46934608000194'),
-      (17, 'Agropecuária Santa Rita',               'Assis',                'SP', '19800000', -22.661, -50.412, 'Fornecedor de cana',         10, 'Case A8800',                   'own',             'Eaton',     'Revenda local',        'medium', 21000, 'medium', 'aq',      'negociacao',           19,  37800, '',                         '47305521000110'),
-      (18, 'Usina Cristal do Vale',                 'Novo Horizonte',       'SP', '14960000', -21.468, -49.221, 'Usina sucroenergética',      23, 'John Deere CH570 e CH950',     'tawper_loan',     'Tawper',    'Gates',                'high',   52000, 'medium', 'rc',      'posvenda',              3,      0, '3:46800',                  '47676434000170'),
-      (19, 'Usina Rio Claro Energia',               'Iturama',              'MG', '38280000', -19.728, -50.196, 'Usina sucroenergética',      17, 'Case A9000',                   'tawper_loan',     'Tawper',    'Parker',               'medium', 36000, 'medium', 'rc',      'posvenda',              6,      0, '6:31500',                  '48047347000116'),
-      (20, 'Grupo Sucroenergético Paranaíba',       'Paranaíba',            'MS', '79500000', -19.677, -51.191, 'Grupo sucroenergético',      34, 'John Deere CH950',             'tawper_loan',     'Tawper',    'Parker',               'high',   78000, 'medium', 'rc',      'relacionamento',        4,      0, '120:58000,11:27400',       '48418260000108'),
-      (21, 'Usina Pedra Branca',                    'Ourinhos',             'SP', '19900000', -22.979, -49.871, 'Usina sucroenergética',      18, 'Case A8800',                   'own',             'Tawper',    'Gates',                'medium', 40000, 'low',    'rc',      'relacionamento',       20,      0, '150:39900,30:44600',       '48789173000167'),
-      (22, 'Usina Jequitibá',                       'Monte Aprazível',      'SP', '15150000', -20.772, -49.714, 'Usina sucroenergética',      25, 'John Deere CH570',             'tawper_loan',     'Tawper',    'Continental',          'high',   57000, 'medium', 'rc',      'previsao',             22,  45000, '200:72000,95:35000',       '49160086000109'),
-      (23, 'Usina Horizonte Verde',                 'Paraguaçu Paulista',   'SP', '19700000', -22.413, -50.576, 'Usina sucroenergética',      20, 'Case A9000',                   'own',             'Tawper',    'Manuli',               'medium', 43000, 'high',   'rc',      'orcamento_r',           5,  52300, '170:49500,60:22800',       '49530999000170'),
-      (24, 'Usina Lagoa Dourada',                   'Pereira Barreto',      'SP', '15370000', -20.638, -51.109, 'Usina sucroenergética',      30, 'John Deere CH570 e CH950',     'tawper_loan',     'Tawper',    'Parker',               'high',   69000, 'high',   'rc',      'negociacao_r',          7,  88900, '220:81000,110:54000,40:63200', '49901912000123'),
-      (25, 'Usina Ribeirão Fundo',                  'Martinópolis',         'SP', '19500000', -22.146, -51.171, 'Usina sucroenergética',      16, 'Case A8800',                   'competitor_loan', 'Parker',    'Hidráulica Paulista',  'medium', 33000, 'low',    'perdida', 'negociacao',           24,  41000, 'Perdeu para concorrente',  '50272825000133'),
-      (26, 'Agrícola Campo Largo',                  'Cândido Mota',         'SP', '19880000', -22.746, -50.387, 'Fornecedor de cana',          7, 'John Deere CH570',             'none',            'Copecar',   'Revenda local',        'low',    12000, 'low',    'perdida', 'orcamento',            38,  19500, 'Preço',                    '50643738000145')
-    ) as t(idx, nome, cidade, uf, cep, lat, lng, ramo, colhedoras, modelos, prensa, marca, concorrente, potencial, mensal, urgencia, funil, etapa, dias, valor, extra, cnpj)
-    order by idx
-  loop
-    v_owner := v_sellers[1 + (r.idx - 1) % array_length(v_sellers, 1)];
-    v_ddd := case r.uf when 'GO' then '64' when 'MG' then '34' when 'MS' then '67' else '17' end;
-    v_sales := case when r.funil = 'rc' then string_to_array(r.extra, ',') else '{}'::text[] end;
+  -- 3. Carteira: empresa, contatos, estratégia e a história de cada negócio até a etapa atual.
+  for r in select * from (values
+  (1, 'Usina Serra Dourada', 'Goianésia', 'GO', '76380000', -15.311, -49.117, '62', 'Usina sucroenergética', 43, 'Case A9000', 'tawper_loan', 'Tawper', 'Agro Hidráulica Oeste', 'high', 71000, 'medium', 'rc', 'negociacao_r', 9, 112900, '2026-04-22:67160', '41370913000187', 0, false, 0, 0, ''),
+  (2, 'Grupo Vale do Araguaia', 'Santa Helena de Goiás', 'GO', '75920000', -17.813, -50.598, '64', 'Grupo sucroenergético', 45, 'Case A8800', 'own', 'Continental', 'Sul Hidráulica', 'high', 71000, 'low', 'rc', 'orcamento_r', 4, 125100, '2026-01-30:75690,2026-05-07:98700,2026-09-02:77120', '41741826000199', 0, true, 0, 0, ''),
+  (3, 'Usina Santa Helena', 'Edéia', 'GO', '75940000', -17.338, -49.929, '64', 'Usina sucroenergética', 35, 'Case A8800', 'tawper_loan', 'Manuli', 'Hidráulica Paulista', 'high', 58000, 'low', 'rc', 'relacionamento', 8, 77600, '2026-02-27:69740,2026-10-06:98490', '42112739000135', 0, false, 0, 0, ''),
+  (4, 'Bioenergia Boa Esperança', 'Sertãozinho', 'SP', '14160000', -21.137, -47.99, '16', 'Usina sucroenergética', 42, 'John Deere CH950', 'tawper_loan', 'Tawper', 'Revenda local', 'high', 61000, 'low', 'rc', 'posvenda', 8, 0, '2025-12-12:89930,2026-06-17:78770,2026-11-04:62940', '42483652000174', 0, false, 3, 0, ''),
+  (5, 'Usina Planalto Verde', 'Catanduva', 'SP', '15800000', -21.138, -48.973, '17', 'Usina sucroenergética', 49, 'John Deere CH570', 'own', 'Continental', 'Hidráulica Goiás', 'high', 72000, 'medium', 'rc', 'posvenda', 9, 0, '2025-12-05:121420,2026-01-29:58080,2026-04-24:72350,2026-11-03:72080', '42854565000186', 0, false, 0, 0, ''),
+  (6, 'Usina Cristal do Vale', 'Uberaba', 'MG', '38000000', -19.748, -47.932, '34', 'Usina sucroenergética', 48, 'Case A9000', 'own', 'Tawper', 'Distribuidora Cana Forte', 'high', 75000, 'medium', 'rc', 'previsao', 36, 160700, '2025-12-11:112850,2026-02-19:73580', '43225478000122', 0, true, 0, 0, ''),
+  (7, 'Grupo Rio Claro', 'Rio Verde', 'GO', '75900000', -17.798, -50.928, '64', 'Grupo sucroenergético', 39, 'Case A8800', 'own', 'Tawper', 'Sul Hidráulica', 'high', 63000, 'high', 'rc', 'negociacao_r', 9, 110300, '2025-09-18:87510', '43596391000161', 0, false, 0, 0, ''),
+  (8, 'Usina Lagoa Dourada', 'Jataí', 'GO', '75800000', -17.881, -51.714, '64', 'Usina sucroenergética', 36, 'Case A8800 e A9000', 'tawper_loan', 'Tawper', 'Revenda local', 'high', 58000, 'high', 'rc', 'previsao', 36, 107300, '2025-11-12:89590', '43967304000135', 0, false, 0, 0, ''),
+  (9, 'Agroindustrial Pedra Branca', 'Assis', 'SP', '19800000', -22.661, -50.412, '18', 'Usina sucroenergética', 37, 'John Deere CH950', 'tawper_loan', 'Tawper', 'Distribuidora Cana Forte', 'high', 58000, 'high', 'rc', 'relacionamento', 17, 77600, '2026-10-15:85290', '44338217000181', 0, false, 0, 0, ''),
+  (10, 'Agroindustrial Jequitibá', 'Goianésia', 'GO', '76380000', -15.311, -49.117, '62', 'Usina sucroenergética', 37, 'Case A8800 e A9000', 'competitor_loan', 'Copecar', 'Mangueiras Triângulo', 'high', 61000, 'medium', 'aq', 'lead', 10, 0, '', '44709130000173', 0, false, 0, 0, ''),
+  (11, 'Bioenergia Horizonte Verde', 'Santa Helena de Goiás', 'GO', '75920000', -17.813, -50.598, '64', 'Usina sucroenergética', 37, 'Case A8800 e A9000', 'none', 'Eaton', 'Hidráulica Paulista', 'high', 61000, 'low', 'aq', 'cadastro', 9, 0, '', '45080043000162', 0, false, 0, 0, ''),
+  (12, 'Usina Canaã', 'Olímpia', 'SP', '15400000', -20.737, -48.915, '17', 'Usina sucroenergética', 28, 'John Deere CH570', 'tawper_loan', 'Tawper', 'Agro Hidráulica Oeste', 'high', 43000, 'high', 'rc', 'relacionamento', 10, 57600, '2026-08-27:43860,2026-10-06:49760', '45450956000123', 1, false, 0, 0, ''),
+  (13, 'Bioenergia Monte Alegre', 'Catanduva', 'SP', '15800000', -21.138, -48.973, '17', 'Usina sucroenergética', 30, 'Case A8800', 'tawper_loan', 'Tawper', 'Distribuidora Cana Forte', 'high', 44000, 'medium', 'rc', 'orcamento_r', 9, 79600, '2026-03-04:55960,2026-05-07:51800,2026-06-12:53620,2026-09-08:53060', '45821869000135', 1, true, 0, 0, ''),
+  (14, 'Usina São Bento', 'Bebedouro', 'SP', '14700000', -20.949, -48.479, '17', 'Usina sucroenergética', 12, 'John Deere CH570', 'tawper_loan', 'Tawper', 'Mangueiras Triângulo', 'low', 23000, 'high', 'rc', 'relacionamento', 46, 31200, '2025-12-16:37000,2026-02-05:20530,2026-08-06:21450,2026-09-25:30390', '46192782000109', 1, false, 0, 0, ''),
+  (15, 'Bioenergia Nova Fronteira', 'Votuporanga', 'SP', '15500000', -20.423, -49.973, '17', 'Usina sucroenergética', 31, 'John Deere CH950', 'tawper_loan', 'Tawper', 'Mangueiras Triângulo', 'high', 49000, 'medium', 'rc', 'relacionamento', 3, 64800, '2025-11-25:83820,2026-06-11:66220,2026-10-29:48650', '46563695000110', 1, false, 0, 0, ''),
+  (16, 'Usina Alto Paraná', 'Novo Horizonte', 'SP', '14960000', -21.468, -49.221, '17', 'Usina sucroenergética', 11, 'Case A9000', 'tawper_loan', 'Tawper', 'Mangueiras Triângulo', 'low', 19000, 'high', 'rc', 'relacionamento', 6, 25600, '2026-07-03:22770,2026-10-27:24300', '46934608000194', 1, false, 0, 0, ''),
+  (17, 'Usina Campo Belo', 'Monte Aprazível', 'SP', '15150000', -20.772, -49.714, '17', 'Usina sucroenergética', 29, 'Case A8800', 'own', 'Tawper', 'Mangueiras Triângulo', 'medium', 41000, 'medium', 'rc', 'relacionamento', 11, 54400, '2026-03-05:61110,2026-06-12:63590,2026-10-15:42650', '47305521000110', 1, true, 0, 0, ''),
+  (18, 'Grupo Três Barras', 'Jaboticabal', 'SP', '14870000', -21.254, -48.322, '16', 'Grupo sucroenergético', 18, 'Case A8800', 'tawper_loan', 'Tawper', 'Agro Hidráulica Oeste', 'medium', 33000, 'medium', 'rc', 'posvenda', 7, 0, '2025-09-17:50330,2026-05-28:30730,2026-07-06:40840,2026-11-05:29900', '47676434000170', 1, false, 0, 0, ''),
+  (19, 'Fornecedora de Cana Santa Rita', 'Guariba', 'SP', '14840000', -21.36, -48.23, '16', 'Fornecedor de cana', 25, 'John Deere CH950', 'own', 'Tawper', 'Sul Hidráulica', 'medium', 37000, 'low', 'rc', 'posvenda', 2, 0, '2026-04-06:38780,2026-08-31:40190,2026-11-10:40130', '48047347000116', 1, false, 0, 0, ''),
+  (20, 'Usina Ribeirão Fundo', 'Sertãozinho', 'SP', '14160000', -21.137, -47.99, '16', 'Usina sucroenergética', 29, 'Case A8800 e A9000', 'tawper_loan', 'Tawper', 'Distribuidora Cana Forte', 'high', 45000, 'medium', 'rc', 'relacionamento', 5, 60000, '2025-11-13:62030,2026-01-23:50290,2026-08-14:57940,2026-09-18:61850,2026-10-28:43810', '48418260000108', 1, false, 0, 0, ''),
+  (21, 'Agrícola São Miguel', 'Olímpia', 'SP', '15400000', -20.737, -48.915, '17', 'Fornecedor de cana', 27, 'John Deere CH950', 'tawper_loan', 'Tawper', 'Revenda local', 'medium', 36000, 'high', 'rc', 'relacionamento', 3, 48000, '2025-10-15:57070,2026-06-08:48110,2026-09-24:62410', '48789173000167', 1, true, 0, 0, ''),
+  (22, 'Usina Campo Largo', 'Catanduva', 'SP', '15800000', -21.138, -48.973, '17', 'Usina sucroenergética', 18, 'Case A9000', 'tawper_loan', 'Gates', 'Agro Hidráulica Oeste', 'medium', 28000, 'medium', 'rc', 'relacionamento', 13, 37600, '2026-07-21:39870,2026-09-29:51590', '49160086000109', 1, false, 0, 0, ''),
+  (23, 'Usina Bela Vista', 'Bebedouro', 'SP', '14700000', -20.949, -48.479, '17', 'Usina sucroenergética', 29, 'Case A9000', 'own', 'Continental', 'Sul Hidráulica', 'medium', 40000, 'high', 'rc', 'relacionamento', 8, 53600, '2025-12-16:63430,2026-05-13:42540,2026-07-06:38240,2026-10-15:57610', '49530999000170', 1, false, 0, 0, ''),
+  (24, 'Usina Vale do Sol', 'Votuporanga', 'SP', '15500000', -20.423, -49.973, '17', 'Usina sucroenergética', 14, 'Case A8800 e A9000', 'tawper_loan', 'Tawper', 'Hidráulica Paulista', 'low', 23000, 'medium', 'rc', 'negociacao_r', 3, 38900, '2026-06-18:33450', '49901912000123', 1, false, 0, 0, ''),
+  (25, 'Fornecedora de Cana Colina Verde', 'Novo Horizonte', 'SP', '14960000', -21.468, -49.221, '17', 'Fornecedor de cana', 9, 'John Deere CH570 e CH950', 'own', 'Eaton', 'Hidráulica Goiás', 'low', 18000, 'medium', 'aq', 'homologacao', 60, 53000, '', '50272825000133', 1, true, 0, 0, ''),
+  (26, 'Agrícola Alvorada', 'Monte Aprazível', 'SP', '15150000', -20.772, -49.714, '17', 'Fornecedor de cana', 18, 'Case A8800 e A9000', 'none', 'Continental', 'Sul Hidráulica', 'low', 27000, 'high', 'aq', 'homologacao', 62, 54800, '', '50643738000145', 1, false, 0, 0, ''),
+  (27, 'Usina Pontal', 'Jaboticabal', 'SP', '14870000', -21.254, -48.322, '16', 'Usina sucroenergética', 26, 'Case A8800 e A9000', 'own', 'Manuli', 'Sul Hidráulica', 'medium', 39000, 'medium', 'aq', 'orcamento', 2, 106100, '', '51014651000171', 1, false, 0, 0, ''),
+  (28, 'Usina Rio das Pedras', 'Guariba', 'SP', '14840000', -21.36, -48.23, '16', 'Usina sucroenergética', 18, 'John Deere CH950', 'competitor_loan', 'Gates', 'Distribuidora Cana Forte', 'medium', 32000, 'medium', 'perdida', 'homologacao', 31, 82400, '', '51385564000120', 1, false, 0, 16, 'Contrato vigente com concorrente'),
+  (29, 'Usina Cerrado Mineiro', 'Ituiutaba', 'MG', '38300000', -18.969, -49.465, '34', 'Usina sucroenergética', 20, 'John Deere CH570', 'own', 'Tawper', 'Mangueiras Triângulo', 'medium', 32000, 'medium', 'rc', 'previsao', 13, 68600, '2025-09-24:53550,2026-01-20:47360', '51756477000132', 2, false, 0, 0, ''),
+  (30, 'Usina Santa Clara', 'Frutal', 'MG', '38200000', -20.025, -48.94, '34', 'Usina sucroenergética', 16, 'John Deere CH570', 'tawper_loan', 'Tawper', 'Hidráulica Paulista', 'low', 27000, 'low', 'rc', 'negociacao_r', 9, 54700, '2025-09-09:31850,2026-03-13:54430', '52127390000169', 2, true, 0, 0, ''),
+  (31, 'Destilaria São Jerônimo', 'Uberaba', 'MG', '38000000', -19.748, -47.932, '34', 'Destilaria', 19, 'John Deere CH570', 'own', 'Tawper', 'Distribuidora Cana Forte', 'medium', 28000, 'high', 'rc', 'posvenda', 1, 0, '2026-01-06:45420,2026-09-25:55680,2026-11-13:56700', '52498303000180', 2, false, 0, 0, ''),
+  (32, 'Usina Ouro Branco', 'Iturama', 'MG', '38280000', -19.728, -50.196, '34', 'Usina sucroenergética', 28, 'John Deere CH570 e CH950', 'own', 'Tawper', 'Mangueiras Triângulo', 'medium', 39000, 'high', 'rc', 'negociacao_r', 7, 62300, '2026-03-05:51080,2026-07-03:75680', '52869216000191', 2, false, 2, 0, ''),
+  (33, 'Agroindustrial Primavera', 'Campina Verde', 'MG', '38270000', -19.538, -49.486, '34', 'Usina sucroenergética', 15, 'John Deere CH950', 'own', 'Tawper', 'Distribuidora Cana Forte', 'low', 25000, 'medium', 'rc', 'relacionamento', 36, 33600, '2026-04-22:50880,2026-09-24:49460', '53240129000133', 2, false, 0, 0, ''),
+  (34, 'Usina Tropical do Oeste', 'Conceição das Alagoas', 'MG', '38120000', -19.915, -48.384, '34', 'Usina sucroenergética', 30, 'Case A8800', 'tawper_loan', 'Parker', 'Hidráulica Paulista', 'medium', 40000, 'medium', 'rc', 'relacionamento', 18, 53600, '2026-03-18:66040,2026-06-05:57250,2026-08-17:86380,2026-10-16:56540', '53611042000125', 2, true, 0, 0, ''),
+  (35, 'Grupo Santo Antônio', 'Itumbiara', 'GO', '75500000', -18.409, -49.216, '64', 'Grupo sucroenergético', 27, 'Case A8800', 'tawper_loan', 'Parker', 'Hidráulica Paulista', 'medium', 40000, 'low', 'rc', 'negociacao_r', 4, 68100, '2025-11-14:51570', '53981955000133', 2, false, 0, 0, ''),
+  (36, 'Usina Guarani', 'Goiatuba', 'GO', '75600000', -18.012, -49.357, '64', 'Usina sucroenergética', 22, 'John Deere CH570 e CH950', 'tawper_loan', 'Manuli', 'Revenda local', 'medium', 37000, 'low', 'rc', 'relacionamento', 5, 48800, '2025-10-22:50810,2026-03-13:44940,2026-07-13:55350,2026-08-20:62920,2026-10-15:60110', '54352868000180', 2, false, 0, 0, ''),
+  (37, 'Agrícola Aroeira', 'Quirinópolis', 'GO', '75860000', -18.448, -50.452, '64', 'Fornecedor de cana', 14, 'Case A8800 e A9000', 'tawper_loan', 'Tawper', 'Hidráulica Paulista', 'low', 26000, 'high', 'rc', 'orcamento_r', 4, 56300, '2026-02-10:42480,2026-05-21:34340', '54723781000171', 2, false, 0, 0, ''),
+  (38, 'CTT Barra Grande', 'Ituiutaba', 'MG', '38300000', -18.969, -49.465, '34', 'Prestador de serviço (CTT)', 16, 'Case A8800 e A9000', 'own', 'Tawper', 'Sul Hidráulica', 'low', 23000, 'low', 'rc', 'negociacao_r', 7, 40600, '2025-09-25:38460,2026-02-04:41480,2026-04-23:33560', '55094694000165', 2, true, 0, 0, ''),
+  (39, 'CTT Cachoeira Alta', 'Frutal', 'MG', '38200000', -20.025, -48.94, '34', 'Prestador de serviço (CTT)', 14, 'John Deere CH570 e CH950', 'tawper_loan', 'Tawper', 'Agro Hidráulica Oeste', 'low', 20000, 'low', 'rc', 'negociacao_r', 7, 39200, '2026-02-26:32960,2026-06-10:29020,2026-07-22:29780', '55465607000139', 2, false, 0, 0, ''),
+  (40, 'Usina Fazenda Nova', 'Uberaba', 'MG', '38000000', -19.748, -47.932, '34', 'Usina sucroenergética', 29, 'John Deere CH570 e CH950', 'tawper_loan', 'Eaton', 'Sul Hidráulica', 'medium', 41000, 'medium', 'rc', 'negociacao_r', 5, 76900, '2026-01-22:61080,2026-05-05:56930', '55836520000120', 2, false, 0, 0, ''),
+  (41, 'Fornecedora de Cana Itapoã', 'Iturama', 'MG', '38280000', -19.728, -50.196, '34', 'Fornecedor de cana', 24, 'John Deere CH950', 'tawper_loan', 'Tawper', 'Hidráulica Goiás', 'medium', 39000, 'medium', 'rc', 'negociacao_r', 4, 86100, '2026-01-26:53290,2026-05-27:60870', '56207433000177', 2, false, 0, 0, ''),
+  (42, 'CTT Lagoa Azul', 'Campina Verde', 'MG', '38270000', -19.538, -49.486, '34', 'Prestador de serviço (CTT)', 15, 'Case A8800 e A9000', 'competitor_loan', 'Eaton', 'Hidráulica Goiás', 'medium', 28000, 'low', 'aq', 'aprovado', 10, 55000, '', '56578346000126', 2, true, 0, 0, ''),
+  (43, 'Agrícola Paraíso', 'Conceição das Alagoas', 'MG', '38120000', -19.915, -48.384, '34', 'Fornecedor de cana', 11, 'Case A9000', 'none', 'Gates', 'Sul Hidráulica', 'low', 22000, 'medium', 'aq', 'aprovado', 24, 54000, '', '56949259000138', 2, false, 0, 0, ''),
+  (44, 'CTT Morro Azul', 'Itumbiara', 'GO', '75500000', -18.409, -49.216, '64', 'Prestador de serviço (CTT)', 14, 'Case A8800', 'competitor_loan', 'Copecar', 'Sul Hidráulica', 'low', 23000, 'high', 'aq', 'aprovado', 2, 52500, '', '57320172000160', 2, false, 0, 0, ''),
+  (45, 'Usina Sol Nascente', 'Goiatuba', 'GO', '75600000', -18.012, -49.357, '64', 'Usina sucroenergética', 28, 'Case A9000', 'competitor_loan', 'Gates', 'Sul Hidráulica', 'medium', 42000, 'high', 'perdida', 'negociacao', 70, 127200, '', '57691085000119', 2, false, 0, 51, 'Preço'),
+  (46, 'CTT Água Limpa', 'Naviraí', 'MS', '79950000', -23.065, -54.191, '67', 'Prestador de serviço (CTT)', 18, 'Case A9000', 'tawper_loan', 'Tawper', 'Distribuidora Cana Forte', 'low', 26000, 'medium', 'rc', 'relacionamento', 29, 35200, '2025-10-17:42870,2026-09-23:51870', '58061998000114', 3, false, 0, 0, ''),
+  (47, 'CTT Estrela do Sul', 'Rio Brilhante', 'MS', '79130000', -21.802, -54.546, '67', 'Prestador de serviço (CTT)', 12, 'John Deere CH950', 'tawper_loan', 'Parker', 'Hidráulica Goiás', 'low', 22000, 'medium', 'rc', 'negociacao_r', 5, 48400, '2025-09-01:39290,2026-02-19:58470,2026-06-18:39700,2026-07-29:45810', '58432911000178', 3, true, 0, 0, ''),
+  (48, 'CTT Nova Era', 'Nova Andradina', 'MS', '79750000', -22.233, -53.343, '67', 'Prestador de serviço (CTT)', 12, 'Case A8800', 'own', 'Tawper', 'Sul Hidráulica', 'low', 17000, 'medium', 'rc', 'negociacao_r', 9, 27700, '2025-11-10:23290,2026-02-13:36970,2026-04-22:30100', '58803824000180', 3, false, 0, 0, ''),
+  (49, 'Agroindustrial Vale Verde', 'Paranaíba', 'MS', '79500000', -19.677, -51.191, '67', 'Usina sucroenergética', 19, 'John Deere CH950', 'own', 'Tawper', 'Hidráulica Paulista', 'medium', 28000, 'medium', 'rc', 'negociacao_r', 2, 55800, '2026-07-31:77580', '59174737000173', 3, false, 4, 0, ''),
+  (50, 'Usina Santa Maria', 'Maracaju', 'MS', '79150000', -21.614, -55.168, '67', 'Usina sucroenergética', 11, 'John Deere CH570', 'tawper_loan', 'Tawper', 'Agro Hidráulica Oeste', 'low', 20000, 'medium', 'rc', 'posvenda', 3, 0, '2025-11-28:30030,2026-06-02:55330,2026-11-09:45230', '59545650000165', 3, false, 0, 0, ''),
+  (51, 'Agroindustrial Dois Irmãos', 'Sidrolândia', 'MS', '79170000', -20.932, -54.961, '67', 'Usina sucroenergética', 22, 'Case A8800 e A9000', 'tawper_loan', 'Tawper', 'Distribuidora Cana Forte', 'medium', 34000, 'high', 'rc', 'negociacao_r', 9, 69100, '2025-11-13:54450,2026-03-23:89880', '59916563000177', 3, true, 0, 0, ''),
+  (52, 'Usina Taquari', 'Ivinhema', 'MS', '79740000', -22.304, -53.819, '67', 'Usina sucroenergética', 19, 'Case A8800', 'tawper_loan', 'Tawper', 'Hidráulica Goiás', 'medium', 33000, 'high', 'rc', 'negociacao_r', 4, 73500, '2025-09-01:43020', '60287476000187', 3, false, 0, 0, ''),
+  (53, 'Usina Girassol', 'Mineiros', 'GO', '75830000', -17.569, -52.551, '64', 'Usina sucroenergética', 25, 'Case A8800 e A9000', 'tawper_loan', 'Tawper', 'Agro Hidráulica Oeste', 'medium', 35000, 'low', 'rc', 'previsao', 30, 71900, '2025-12-08:59710,2026-02-26:94600,2026-04-06:85030', '60658389000199', 3, false, 1, 0, ''),
+  (54, 'CTT Jatobá', 'Chapadão do Céu', 'GO', '75828000', -18.386, -52.607, '64', 'Prestador de serviço (CTT)', 26, 'Case A8800', 'tawper_loan', 'Gates', 'Sul Hidráulica', 'medium', 35000, 'medium', 'rc', 'previsao', 18, 71300, '2026-05-19:67430,2026-07-03:98370,2026-08-18:110130', '61029302000187', 3, false, 0, 0, ''),
+  (55, 'Usina Ipê Amarelo', 'Rondonópolis', 'MT', '78700000', -16.47, -54.636, '66', 'Usina sucroenergética', 19, 'John Deere CH950', 'own', 'Parker', 'Mangueiras Triângulo', 'medium', 31000, 'medium', 'rc', 'negociacao_r', 7, 57600, '2025-10-16:51880', '61400215000194', 3, true, 0, 0, ''),
+  (56, 'Usina Buritis', 'Naviraí', 'MS', '79950000', -23.065, -54.191, '67', 'Usina sucroenergética', 15, 'John Deere CH570', 'own', 'Tawper', 'Mangueiras Triângulo', 'low', 17000, 'low', 'rc', 'negociacao_r', 9, 38000, '2026-02-24:49190,2026-04-01:29270,2026-05-11:38430,2026-06-23:44630', '61771128000143', 3, false, 0, 0, ''),
+  (57, 'Fornecedora de Cana Veredas', 'Rio Brilhante', 'MS', '79130000', -21.802, -54.546, '67', 'Fornecedor de cana', 12, 'Case A9000', 'own', 'Eaton', 'Mangueiras Triângulo', 'low', 20000, 'low', 'rc', 'previsao', 24, 33500, '2025-09-15:29890', '62142041000170', 3, false, 0, 0, ''),
+  (58, 'Agrícola Bom Jardim', 'Nova Andradina', 'MS', '79750000', -22.233, -53.343, '67', 'Fornecedor de cana', 15, 'Case A9000', 'own', 'Tawper', 'Agro Hidráulica Oeste', 'low', 20000, 'high', 'rc', 'negociacao_r', 7, 37500, '2025-11-04:31410,2026-04-16:41180,2026-07-02:64770', '62512954000130', 3, false, 0, 0, ''),
+  (59, 'Destilaria Serra Azul', 'Paranaíba', 'MS', '79500000', -19.677, -51.191, '67', 'Destilaria', 27, 'John Deere CH570', 'competitor_loan', 'Manuli', 'Hidráulica Paulista', 'medium', 37000, 'low', 'aq', 'cadastro', 4, 0, '', '62883867000190', 3, true, 0, 0, ''),
+  (60, 'Usina Rio Pardo', 'Maracaju', 'MS', '79150000', -21.614, -55.168, '67', 'Usina sucroenergética', 23, 'John Deere CH570 e CH950', 'none', 'Continental', 'Mangueiras Triângulo', 'medium', 34000, 'medium', 'aq', 'aprovado', 26, 102700, '', '63254780000116', 3, false, 0, 0, ''),
+  (61, 'CTT Ponte Alta', 'Sidrolândia', 'MS', '79170000', -20.932, -54.961, '67', 'Prestador de serviço (CTT)', 22, 'John Deere CH570 e CH950', 'competitor_loan', 'Parker', 'Hidráulica Paulista', 'medium', 37000, 'medium', 'aq', 'apresentacao_empresa', 16, 0, '', '63625693000128', 3, false, 0, 0, ''),
+  (62, 'Usina Capim Branco', 'Ivinhema', 'MS', '79740000', -22.304, -53.819, '67', 'Usina sucroenergética', 13, 'Case A8800', 'none', 'Manuli', 'Mangueiras Triângulo', 'low', 17000, 'medium', 'perdida', 'homologacao', 27, 38200, '', '63996606000149', 3, false, 0, 17, 'Prazo de entrega'),
+  (63, 'Agroindustrial São Luiz', 'Presidente Venceslau', 'SP', '19400000', -21.876, -51.844, '18', 'Usina sucroenergética', 22, 'Case A9000', 'tawper_loan', 'Parker', 'Mangueiras Triângulo', 'medium', 32000, 'medium', 'rc', 'negociacao_r', 2, 61500, '2025-11-04:41500,2026-03-26:41530', '64367519000195', 4, false, 0, 0, ''),
+  (64, 'Usina Boa Sorte', 'Assis', 'SP', '19800000', -22.661, -50.412, '18', 'Usina sucroenergética', 26, 'John Deere CH570', 'tawper_loan', 'Tawper', 'Agro Hidráulica Oeste', 'medium', 35000, 'medium', 'rc', 'relacionamento', 5, 47200, '2025-09-30:44800,2026-03-02:56280,2026-08-06:36010,2026-09-11:60870,2026-10-27:45410', '64738432000187', 4, true, 0, 0, ''),
+  (65, 'Grupo Mata Velha', 'Paraguaçu Paulista', 'SP', '19700000', -22.413, -50.576, '18', 'Grupo sucroenergético', 18, 'John Deere CH950', 'own', 'Tawper', 'Sul Hidráulica', 'medium', 30000, 'medium', 'rc', 'negociacao_r', 3, 58100, '2025-11-13:45530', '65109345000123', 4, false, 0, 0, ''),
+  (66, 'Bioenergia Cachoeirinha', 'Pereira Barreto', 'SP', '15370000', -20.638, -51.109, '18', 'Usina sucroenergética', 15, 'Case A8800', 'tawper_loan', 'Tawper', 'Agro Hidráulica Oeste', 'medium', 28000, 'high', 'rc', 'relacionamento', 32, 36800, '2025-11-06:33870,2026-03-16:31080,2026-07-10:49170,2026-09-30:39790', '65480258000188', 4, false, 6, 0, ''),
+  (67, 'Agrícola Santa Fé', 'Martinópolis', 'SP', '19500000', -22.146, -51.171, '18', 'Fornecedor de cana', 18, 'Case A9000', 'own', 'Tawper', 'Distribuidora Cana Forte', 'low', 27000, 'low', 'rc', 'previsao', 30, 58000, '2026-08-14:43610,2026-09-18:46570', '65851171000170', 4, false, 0, 0, ''),
+  (68, 'Grupo Bandeirantes', 'Cândido Mota', 'SP', '19880000', -22.746, -50.387, '18', 'Grupo sucroenergético', 26, 'Case A8800', 'own', 'Tawper', 'Hidráulica Paulista', 'medium', 35000, 'low', 'rc', 'relacionamento', 7, 47200, '2026-09-21:67680', '66222084000116', 4, true, 0, 0, ''),
+  (69, 'Usina Coqueiral', 'Ourinhos', 'SP', '19900000', -22.979, -49.871, '14', 'Usina sucroenergética', 12, 'Case A8800 e A9000', 'tawper_loan', 'Tawper', 'Sul Hidráulica', 'low', 22000, 'medium', 'rc', 'relacionamento', 28, 28800, '2026-06-17:30310,2026-08-18:25710,2026-09-22:31660', '66592997000124', 4, false, 0, 0, ''),
+  (70, 'Agrícola Recanto', 'Lins', 'SP', '16400000', -21.678, -49.743, '14', 'Fornecedor de cana', 17, 'Case A8800 e A9000', 'tawper_loan', 'Continental', 'Hidráulica Goiás', 'low', 26000, 'medium', 'rc', 'negociacao_r', 8, 55500, '2025-10-23:43510,2026-03-17:38880,2026-05-21:44480,2026-07-27:41770', '66963910000188', 4, false, 2, 0, ''),
+  (71, 'Usina Santa Luzia', 'Penápolis', 'SP', '16300000', -21.414, -50.077, '18', 'Usina sucroenergética', 26, 'John Deere CH570 e CH950', 'own', 'Parker', 'Sul Hidráulica', 'medium', 38000, 'medium', 'rc', 'relacionamento', 6, 51200, '2025-10-16:47780,2026-01-12:48800,2026-04-17:58470,2026-10-22:65970', '67334823000124', 4, false, 0, 0, ''),
+  (72, 'Agroindustrial Três Lagoas', 'Valparaíso', 'SP', '16880000', -21.222, -50.866, '18', 'Usina sucroenergética', 18, 'John Deere CH570', 'own', 'Tawper', 'Revenda local', 'low', 25000, 'low', 'rc', 'relacionamento', 11, 32800, '2026-10-07:30680', '67705736000136', 4, true, 0, 0, ''),
+  (73, 'Usina Vista Alegre', 'Andradina', 'SP', '16900000', -20.896, -51.378, '18', 'Usina sucroenergética', 22, 'John Deere CH950', 'own', 'Tawper', 'Hidráulica Goiás', 'medium', 31000, 'high', 'rc', 'relacionamento', 9, 40800, '2025-10-20:51190,2026-05-15:54060,2026-10-14:36700', '68076649000120', 4, false, 0, 0, ''),
+  (74, 'Agroindustrial Bom Retiro', 'Paranavaí', 'PR', '87700000', -23.073, -52.465, '44', 'Usina sucroenergética', 23, 'Case A8800', 'tawper_loan', 'Tawper', 'Agro Hidráulica Oeste', 'medium', 35000, 'medium', 'rc', 'posvenda', 1, 0, '2026-05-04:39680,2026-08-19:51310,2026-11-13:43020', '68447562000111', 4, false, 0, 0, ''),
+  (75, 'Usina Tabocas', 'Umuarama', 'PR', '87500000', -23.766, -53.325, '44', 'Usina sucroenergética', 29, 'Case A8800 e A9000', 'tawper_loan', 'Tawper', 'Sul Hidráulica', 'high', 49000, 'medium', 'rc', 'relacionamento', 8, 64800, '2026-03-17:48800,2026-04-30:63210,2026-08-12:60480,2026-10-16:54030', '68818475000123', 4, false, 0, 0, ''),
+  (76, 'Agrícola Pirapó', 'Presidente Venceslau', 'SP', '19400000', -21.876, -51.844, '18', 'Fornecedor de cana', 12, 'Case A8800 e A9000', 'competitor_loan', 'Copecar', 'Hidráulica Paulista', 'low', 18000, 'medium', 'aq', 'apresentacao_tecnica', 17, 0, '', '69189388000117', 4, true, 0, 0, ''),
+  (77, 'Grupo Cascata', 'Assis', 'SP', '19800000', -22.661, -50.412, '18', 'Grupo sucroenergético', 19, 'Case A8800', 'none', 'Continental', 'Sul Hidráulica', 'medium', 33000, 'medium', 'aq', 'qualificacao', 18, 0, '', '69560301000176', 4, false, 0, 0, ''),
+  (78, 'Destilaria Ribeirão Claro', 'Paraguaçu Paulista', 'SP', '19700000', -22.413, -50.576, '18', 'Destilaria', 15, 'John Deere CH570 e CH950', 'own', 'Copecar', 'Hidráulica Paulista', 'low', 25000, 'low', 'aq', 'apresentacao_empresa', 17, 0, '', '69931214000188', 4, false, 0, 0, ''),
+  (79, 'Usina Santa Cruz', 'Pereira Barreto', 'SP', '15370000', -20.638, -51.109, '18', 'Usina sucroenergética', 15, 'Case A8800', 'competitor_loan', 'Gates', 'Mangueiras Triângulo', 'low', 19000, 'high', 'perdida', 'homologacao', 50, 55000, '', '70302127000140', 4, false, 0, 29, 'Contrato vigente com concorrente')
+  ) as carga(idx, nome, cidade, uf, cep, lat, lng, ddd, ramo, colhedoras, modelos,
+    prensa, marca, concorrente, potencial, mensal, urgencia, funil, etapa, dias, valor,
+    vendas, cnpj, dono, hoje, atraso, fechado, motivo) order by idx loop
+    if exists (select 1 from public.companies c where c.organization_id = v_org
+               and (c.cnpj = r.cnpj or lower(c.trade_name) = lower(r.nome))) then
+      continue;
+    end if;
+    select owner_id into v_owner from pg_temp.demo_donos where dono = r.dono;
+    v_sales := case when r.vendas = '' then '{}'::text[] else string_to_array(r.vendas, ',') end;
 
     insert into public.companies (
       organization_id, trade_name, legal_name, cnpj, status, owner_id, region_id, city, state, postal_code, address, latitude, longitude,
-      industry, source, potential, monthly_potential, harvesters_count, machine_models, press_type, current_brand, competitor, urgency, notes, created_by, created_at
+      industry, economic_group, source, potential, monthly_potential, harvesters_count, machine_models, press_type, current_brand, competitor, urgency, notes, created_by, created_at
     ) values (
       v_org, r.nome, r.nome || ' S.A.', r.cnpj, 'active', v_owner,
       (select id from public.regions where organization_id = v_org and r.uf = any(states) and is_active limit 1),
-      r.cidade, r.uf, r.cep, 'Rodovia de acesso à usina, km ' || (4 + r.idx) || ' — Zona Rural', r.lat, r.lng,
-      r.ramo, (array['Visita de prospecção', 'Indicação de cliente', 'Feira / evento', 'WhatsApp'])[1 + r.idx % 4],
+      r.cidade, r.uf, r.cep, 'Rodovia de acesso à unidade, km ' || (3 + r.idx % 40) || ' — Zona Rural', r.lat, r.lng,
+      r.ramo, case when r.ramo = 'Grupo sucroenergético' then r.nome end,
+      (array['Visita de prospecção', 'Indicação de cliente', 'Feira / evento', 'WhatsApp', 'Site tawper.com.br'])[1 + r.idx % 5],
       r.potencial::public.level_3, r.mensal, r.colhedoras, r.modelos, r.prensa::public.press_type, r.marca, r.concorrente, r.urgencia::public.level_3,
-      'Safra de abril a novembro. Compra de reposição concentrada na entressafra.', v_admin, now() - make_interval(days => 230)
+      'Safra de abril a novembro. ' || r.colhedoras || ' colhedoras (' || r.modelos || '). Reposição concentrada na entressafra; oficina própria na unidade.',
+      v_admin,
+      case when r.funil = 'rc' then pg_temp.venda_ts(v_sales[1]) - interval '120 days' else now() - make_interval(days => r.dias + 90) end
     ) returning id into v_company;
 
-    -- Contatos: quem decide, quem avalia e, em metade das contas, quem compra. Telefones fictícios (9 0000-xxxx).
     insert into public.contacts (organization_id, company_id, name, job_title, role, influence, whatsapp_e164, email, preferred_channel, contact_allowed, relationship_owner_id, is_active, created_by)
-    values (v_org, v_company, decisores[1 + r.idx % 8], 'Gerente industrial', 'decision_maker', 3, '55' || v_ddd || '9' || lpad((r.idx * 100 + 1)::text, 8, '0'),
-            'gerencia' || r.idx || '@cliente-demo.example', 'whatsapp', true, v_owner, true, v_admin)
-    returning id into v_contact;
-    insert into public.contacts (organization_id, company_id, name, job_title, role, influence, whatsapp_e164, preferred_channel, contact_allowed, relationship_owner_id, is_active, created_by)
-    values (v_org, v_company, tecnicos[1 + r.idx % 7], 'Supervisor de manutenção', 'technical', 2, '55' || v_ddd || '9' || lpad((r.idx * 100 + 2)::text, 8, '0'), 'whatsapp', true, v_owner, true, v_admin);
-    if r.idx % 2 = 0 then
-      insert into public.contacts (organization_id, company_id, name, job_title, role, influence, whatsapp_e164, email, preferred_channel, contact_allowed, relationship_owner_id, is_active, created_by)
-      values (v_org, v_company, compras[1 + r.idx % 5], 'Analista de compras', 'buyer', 2, '55' || v_ddd || '9' || lpad((r.idx * 100 + 3)::text, 8, '0'),
-              'compras' || r.idx || '@cliente-demo.example', 'email', true, v_owner, true, v_admin);
-    end if;
+    select v_org, v_company, k.nome, k.cargo, k.papel::public.contact_role, k.influencia,
+           '55' || r.ddd || '9' || lpad((r.idx * 10 + k.ordem)::text, 8, '0'),
+           case when k.papel in ('decision_maker', 'buyer', 'financial') then lower(split_part(k.nome, ' ', 1)) || '.' || r.idx || '@cliente-demo.example' end,
+           k.canal::public.contact_channel, true, v_owner, true, v_admin
+      from (values
+  (1, 1, 'Eduardo Cunha', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (1, 2, 'Fábio Couto', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (1, 3, 'Daniela Freitas', 'Analista financeiro', 'financial', 2, 'email'),
+  (1, 4, 'Carlos Ribeiro', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (1, 5, 'Cristiano Peixoto', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (2, 1, 'Rafael Andrade', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (2, 2, 'Renata Borges', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (2, 3, 'Thiago Toledo', 'Analista de compras', 'buyer', 2, 'email'),
+  (2, 4, 'Eduardo Almeida', 'Analista financeiro', 'financial', 2, 'email'),
+  (3, 1, 'Juliana Fonseca', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (3, 2, 'Edson Furtado', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (3, 3, 'Marcelo Moreira', 'Analista financeiro', 'financial', 2, 'email'),
+  (4, 1, 'Cláudia Teles', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (4, 2, 'Alexandre Rezende', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (5, 1, 'Anderson Vieira', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (5, 2, 'Fernando Fagundes', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (5, 3, 'André Sales', 'Analista de compras', 'buyer', 2, 'email'),
+  (5, 4, 'Cláudia Menezes', 'Analista financeiro', 'financial', 2, 'email'),
+  (5, 5, 'Alexandre Pacheco', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (5, 6, 'Leandro Pires', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (6, 1, 'Sérgio Coelho', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (6, 2, 'Márcio Tavares', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (7, 1, 'Wagner Rocha', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (7, 2, 'Patrícia Prado', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (8, 1, 'Rodrigo Machado', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (8, 2, 'Tatiane Duarte', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (8, 3, 'Mauro Xavier', 'Analista de compras', 'buyer', 2, 'email'),
+  (9, 1, 'Vanessa Amaral', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (9, 2, 'Gilberto Nogueira', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (9, 3, 'Ricardo Brandão', 'Analista financeiro', 'financial', 2, 'email'),
+  (9, 4, 'Rodrigo Teles', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (10, 1, 'José Pires', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (10, 2, 'Roberto Lemos', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (10, 3, 'Adriano Carvalho', 'Analista de compras', 'buyer', 2, 'email'),
+  (10, 4, 'Vanessa Vieira', 'Analista financeiro', 'financial', 2, 'email'),
+  (11, 1, 'Diego Freitas', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (11, 2, 'Júlio Ribeiro', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (11, 3, 'Luciano Peixoto', 'Analista de compras', 'buyer', 2, 'email'),
+  (11, 4, 'José Coelho', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (12, 1, 'Antônio Toledo', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (12, 2, 'Gustavo Almeida', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (12, 3, 'Simone Lacerda', 'Analista de compras', 'buyer', 2, 'email'),
+  (12, 4, 'Diego Rocha', 'Analista financeiro', 'financial', 2, 'email'),
+  (12, 5, 'Júlio Prado', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (13, 1, 'Cristiano Moreira', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (13, 2, 'Camila Dantas', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (13, 3, 'Valter Barros', 'Analista de compras', 'buyer', 2, 'email'),
+  (13, 4, 'Antônio Machado', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (14, 1, 'Fábio Queiroz', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (14, 2, 'Daniela Campos', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (14, 3, 'Carlos Guimarães', 'Analista de compras', 'buyer', 2, 'email'),
+  (14, 4, 'Cristiano Amaral', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (15, 1, 'Renata Sales', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (15, 2, 'Thiago Menezes', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (15, 3, 'Eduardo Pacheco', 'Analista de compras', 'buyer', 2, 'email'),
+  (15, 4, 'Fábio Pires', 'Analista financeiro', 'financial', 2, 'email'),
+  (15, 5, 'Daniela Lemos', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (16, 1, 'Edson Bastos', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (16, 2, 'Marcelo Cunha', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (16, 3, 'Rafael Couto', 'Analista de compras', 'buyer', 2, 'email'),
+  (17, 1, 'Alexandre Siqueira', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (17, 2, 'Leandro Andrade', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (17, 3, 'Juliana Borges', 'Analista de compras', 'buyer', 2, 'email'),
+  (17, 4, 'Edson Toledo', 'Analista financeiro', 'financial', 2, 'email'),
+  (17, 5, 'Marcelo Almeida', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (18, 1, 'Fernando Xavier', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (18, 2, 'André Fonseca', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (18, 3, 'Cláudia Furtado', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (19, 1, 'Márcio Brandão', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (19, 2, 'Aline Teles', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (19, 3, 'Anderson Rezende', 'Analista financeiro', 'financial', 2, 'email'),
+  (19, 4, 'Fernando Queiroz', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (20, 1, 'Patrícia Carvalho', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (20, 2, 'Paulo Vieira', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (20, 3, 'Sérgio Fagundes', 'Analista de compras', 'buyer', 2, 'email'),
+  (20, 4, 'Márcio Sales', 'Analista financeiro', 'financial', 2, 'email'),
+  (20, 5, 'Aline Menezes', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (21, 1, 'Tatiane Peixoto', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (21, 2, 'Mauro Coelho', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (21, 3, 'Wagner Tavares', 'Analista de compras', 'buyer', 2, 'email'),
+  (21, 4, 'Patrícia Bastos', 'Analista financeiro', 'financial', 2, 'email'),
+  (21, 5, 'Paulo Cunha', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (22, 1, 'Gilberto Lacerda', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (22, 2, 'Ricardo Rocha', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (22, 3, 'Rodrigo Prado', 'Analista de compras', 'buyer', 2, 'email'),
+  (22, 4, 'Tatiane Siqueira', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (23, 1, 'Roberto Barros', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (23, 2, 'Adriano Machado', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (23, 3, 'Vanessa Duarte', 'Analista de compras', 'buyer', 2, 'email'),
+  (23, 4, 'Gilberto Xavier', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (24, 1, 'Júlio Guimarães', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (24, 2, 'Luciano Amaral', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (24, 3, 'José Nogueira', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (25, 1, 'Gustavo Pacheco', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (25, 2, 'Simone Pires', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (25, 3, 'Diego Lemos', 'Analista de compras', 'buyer', 2, 'email'),
+  (25, 4, 'Júlio Carvalho', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (26, 1, 'Camila Couto', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (26, 2, 'Valter Freitas', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (26, 3, 'Antônio Ribeiro', 'Analista de compras', 'buyer', 2, 'email'),
+  (27, 1, 'Daniela Borges', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (27, 2, 'Carlos Toledo', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (27, 3, 'Cristiano Almeida', 'Analista de compras', 'buyer', 2, 'email'),
+  (27, 4, 'Camila Lacerda', 'Analista financeiro', 'financial', 2, 'email'),
+  (28, 1, 'Thiago Furtado', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (28, 2, 'Eduardo Moreira', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (28, 3, 'Fábio Dantas', 'Analista de compras', 'buyer', 2, 'email'),
+  (29, 1, 'Marcelo Rezende', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (29, 2, 'Rafael Queiroz', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (29, 3, 'Renata Campos', 'Analista de compras', 'buyer', 2, 'email'),
+  (30, 1, 'Leandro Fagundes', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (30, 2, 'Juliana Sales', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (30, 3, 'Edson Menezes', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (31, 1, 'André Tavares', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (31, 2, 'Cláudia Bastos', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (31, 3, 'Alexandre Cunha', 'Analista de compras', 'buyer', 2, 'email'),
+  (31, 4, 'Leandro Couto', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (31, 5, 'Juliana Freitas', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (32, 1, 'Aline Prado', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (32, 2, 'Anderson Siqueira', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (32, 3, 'Fernando Andrade', 'Analista de compras', 'buyer', 2, 'email'),
+  (32, 4, 'André Borges', 'Analista financeiro', 'financial', 2, 'email'),
+  (32, 5, 'Cláudia Toledo', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (33, 1, 'Paulo Duarte', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (33, 2, 'Sérgio Xavier', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (33, 3, 'Márcio Fonseca', 'Analista de compras', 'buyer', 2, 'email'),
+  (33, 4, 'Aline Furtado', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (33, 5, 'Anderson Moreira', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (34, 1, 'Mauro Nogueira', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (34, 2, 'Wagner Brandão', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (34, 3, 'Patrícia Teles', 'Analista de compras', 'buyer', 2, 'email'),
+  (35, 1, 'Ricardo Lemos', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (35, 2, 'Rodrigo Carvalho', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (35, 3, 'Tatiane Vieira', 'Analista financeiro', 'financial', 2, 'email'),
+  (36, 1, 'Adriano Ribeiro', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (36, 2, 'Vanessa Peixoto', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (36, 3, 'Gilberto Coelho', 'Analista de compras', 'buyer', 2, 'email'),
+  (36, 4, 'Ricardo Tavares', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (37, 1, 'Luciano Almeida', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (37, 2, 'José Lacerda', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (37, 3, 'Roberto Rocha', 'Analista de compras', 'buyer', 2, 'email'),
+  (38, 1, 'Simone Dantas', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (38, 2, 'Diego Barros', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (38, 3, 'Júlio Machado', 'Analista de compras', 'buyer', 2, 'email'),
+  (38, 4, 'Luciano Duarte', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (38, 5, 'José Xavier', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (39, 1, 'Valter Campos', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (39, 2, 'Antônio Guimarães', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (39, 3, 'Gustavo Amaral', 'Analista de compras', 'buyer', 2, 'email'),
+  (40, 1, 'Carlos Menezes', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (40, 2, 'Cristiano Pacheco', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (40, 3, 'Camila Pires', 'Analista de compras', 'buyer', 2, 'email'),
+  (40, 4, 'Valter Lemos', 'Analista financeiro', 'financial', 2, 'email'),
+  (41, 1, 'Eduardo Cunha', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (41, 2, 'Fábio Couto', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (41, 3, 'Daniela Freitas', 'Analista de compras', 'buyer', 2, 'email'),
+  (42, 1, 'Rafael Andrade', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (42, 2, 'Renata Borges', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (42, 3, 'Thiago Toledo', 'Analista de compras', 'buyer', 2, 'email'),
+  (42, 4, 'Eduardo Almeida', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (43, 1, 'Juliana Fonseca', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (43, 2, 'Edson Furtado', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (43, 3, 'Marcelo Moreira', 'Analista de compras', 'buyer', 2, 'email'),
+  (43, 4, 'Rafael Dantas', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (44, 1, 'Cláudia Teles', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (44, 2, 'Alexandre Rezende', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (44, 3, 'Leandro Queiroz', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (45, 1, 'Anderson Vieira', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (45, 2, 'Fernando Fagundes', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (45, 3, 'André Sales', 'Analista financeiro', 'financial', 2, 'email'),
+  (45, 4, 'Cláudia Menezes', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (46, 1, 'Sérgio Coelho', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (46, 2, 'Márcio Tavares', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (46, 3, 'Aline Bastos', 'Analista de compras', 'buyer', 2, 'email'),
+  (47, 1, 'Wagner Rocha', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (47, 2, 'Patrícia Prado', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (47, 3, 'Paulo Siqueira', 'Analista de compras', 'buyer', 2, 'email'),
+  (47, 4, 'Sérgio Andrade', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (48, 1, 'Rodrigo Machado', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (48, 2, 'Tatiane Duarte', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (48, 3, 'Mauro Xavier', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (48, 4, 'Wagner Fonseca', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (49, 1, 'Vanessa Amaral', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (49, 2, 'Gilberto Nogueira', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (49, 3, 'Ricardo Brandão', 'Analista de compras', 'buyer', 2, 'email'),
+  (50, 1, 'José Pires', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (50, 2, 'Roberto Lemos', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (51, 1, 'Diego Freitas', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (51, 2, 'Júlio Ribeiro', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (51, 3, 'Luciano Peixoto', 'Analista de compras', 'buyer', 2, 'email'),
+  (51, 4, 'José Coelho', 'Analista financeiro', 'financial', 2, 'email'),
+  (51, 5, 'Roberto Tavares', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (52, 1, 'Antônio Toledo', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (52, 2, 'Gustavo Almeida', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (53, 1, 'Cristiano Moreira', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (53, 2, 'Camila Dantas', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (53, 3, 'Valter Barros', 'Analista de compras', 'buyer', 2, 'email'),
+  (54, 1, 'Fábio Queiroz', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (54, 2, 'Daniela Campos', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (54, 3, 'Carlos Guimarães', 'Analista de compras', 'buyer', 2, 'email'),
+  (54, 4, 'Cristiano Amaral', 'Analista financeiro', 'financial', 2, 'email'),
+  (55, 1, 'Renata Sales', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (55, 2, 'Thiago Menezes', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (55, 3, 'Eduardo Pacheco', 'Analista de compras', 'buyer', 2, 'email'),
+  (56, 1, 'Edson Bastos', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (56, 2, 'Marcelo Cunha', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (56, 3, 'Rafael Couto', 'Analista de compras', 'buyer', 2, 'email'),
+  (56, 4, 'Renata Freitas', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (57, 1, 'Alexandre Siqueira', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (57, 2, 'Leandro Andrade', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (57, 3, 'Juliana Borges', 'Analista de compras', 'buyer', 2, 'email'),
+  (57, 4, 'Edson Toledo', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (58, 1, 'Fernando Xavier', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (58, 2, 'André Fonseca', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (59, 1, 'Márcio Brandão', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (59, 2, 'Aline Teles', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (59, 3, 'Anderson Rezende', 'Analista de compras', 'buyer', 2, 'email'),
+  (59, 4, 'Fernando Queiroz', 'Analista financeiro', 'financial', 2, 'email'),
+  (59, 5, 'André Campos', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (59, 6, 'Cláudia Guimarães', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (60, 1, 'Patrícia Carvalho', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (60, 2, 'Paulo Vieira', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (60, 3, 'Sérgio Fagundes', 'Analista de compras', 'buyer', 2, 'email'),
+  (60, 4, 'Márcio Sales', 'Analista financeiro', 'financial', 2, 'email'),
+  (60, 5, 'Aline Menezes', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (61, 1, 'Tatiane Peixoto', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (61, 2, 'Mauro Coelho', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (61, 3, 'Wagner Tavares', 'Analista de compras', 'buyer', 2, 'email'),
+  (61, 4, 'Patrícia Bastos', 'Analista financeiro', 'financial', 2, 'email'),
+  (62, 1, 'Gilberto Lacerda', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (62, 2, 'Ricardo Rocha', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (62, 3, 'Rodrigo Prado', 'Analista de compras', 'buyer', 2, 'email'),
+  (62, 4, 'Tatiane Siqueira', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (63, 1, 'Roberto Barros', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (63, 2, 'Adriano Machado', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (63, 3, 'Vanessa Duarte', 'Analista de compras', 'buyer', 2, 'email'),
+  (63, 4, 'Gilberto Xavier', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (64, 1, 'Júlio Guimarães', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (64, 2, 'Luciano Amaral', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (64, 3, 'José Nogueira', 'Analista de compras', 'buyer', 2, 'email'),
+  (64, 4, 'Roberto Brandão', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (65, 1, 'Gustavo Pacheco', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (65, 2, 'Simone Pires', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (65, 3, 'Diego Lemos', 'Analista de compras', 'buyer', 2, 'email'),
+  (65, 4, 'Júlio Carvalho', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (66, 1, 'Camila Couto', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (66, 2, 'Valter Freitas', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (66, 3, 'Antônio Ribeiro', 'Analista de compras', 'buyer', 2, 'email'),
+  (67, 1, 'Daniela Borges', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (67, 2, 'Carlos Toledo', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (68, 1, 'Thiago Furtado', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (68, 2, 'Eduardo Moreira', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (69, 1, 'Marcelo Rezende', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (69, 2, 'Rafael Queiroz', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (69, 3, 'Renata Campos', 'Encarregado de oficina', 'mechanic', 1, 'whatsapp'),
+  (70, 1, 'Leandro Fagundes', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (70, 2, 'Juliana Sales', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (70, 3, 'Edson Menezes', 'Analista de compras', 'buyer', 2, 'email'),
+  (70, 4, 'Marcelo Pacheco', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (71, 1, 'André Tavares', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (71, 2, 'Cláudia Bastos', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (71, 3, 'Alexandre Cunha', 'Analista de compras', 'buyer', 2, 'email'),
+  (71, 4, 'Leandro Couto', 'Almoxarife', 'warehouse', 1, 'whatsapp'),
+  (72, 1, 'Aline Prado', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (72, 2, 'Anderson Siqueira', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (72, 3, 'Fernando Andrade', 'Analista de compras', 'buyer', 2, 'email'),
+  (73, 1, 'Paulo Duarte', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (73, 2, 'Sérgio Xavier', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (74, 1, 'Mauro Nogueira', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (74, 2, 'Wagner Brandão', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (74, 3, 'Patrícia Teles', 'Analista de compras', 'buyer', 2, 'email'),
+  (74, 4, 'Paulo Rezende', 'Analista financeiro', 'financial', 2, 'email'),
+  (75, 1, 'Ricardo Lemos', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (75, 2, 'Rodrigo Carvalho', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (75, 3, 'Tatiane Vieira', 'Analista de compras', 'buyer', 2, 'email'),
+  (76, 1, 'Adriano Ribeiro', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (76, 2, 'Vanessa Peixoto', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (76, 3, 'Gilberto Coelho', 'Analista de compras', 'buyer', 2, 'email'),
+  (77, 1, 'Luciano Almeida', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (77, 2, 'José Lacerda', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (77, 3, 'Roberto Rocha', 'Analista de compras', 'buyer', 2, 'email'),
+  (78, 1, 'Simone Dantas', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (78, 2, 'Diego Barros', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (79, 1, 'Valter Campos', 'Gerente industrial', 'decision_maker', 3, 'whatsapp'),
+  (79, 2, 'Antônio Guimarães', 'Supervisor de manutenção', 'technical', 2, 'whatsapp'),
+  (79, 3, 'Gustavo Amaral', 'Analista de compras', 'buyer', 2, 'email')
+      ) as k(cliente, ordem, nome, cargo, papel, influencia, canal)
+     where k.cliente = r.idx order by k.ordem;
+    select id into v_contact from public.contacts where company_id = v_company order by influence desc, created_at limit 1;
 
-    -- Negócio de aquisição: percorre as etapas no passado, para o histórico e o tempo médio por etapa fazerem sentido.
+    -- Negócio de aquisição: percorre as etapas no passado (histórico e tempo médio por etapa fazem sentido).
     v_pos := case when r.funil = 'rc' then 9 else array_position(aq, r.etapa) end;
-    v_days := case when r.funil = 'rc' then split_part(v_sales[1], ':', 1)::integer + 12 else r.dias end;
-    v_total := v_days;
-    for j in 1 .. v_pos - 1 loop v_total := v_total + 6 + (r.idx + j * 3) % 8; end loop;
-    v_t := now() - make_interval(days => v_total);
+    v_t := case when r.funil = 'rc' then pg_temp.venda_ts(v_sales[1]) - interval '12 days' else now() - make_interval(days => r.dias) end;
+    for j in 1 .. v_pos - 1 loop v_t := v_t - make_interval(days => 6 + (r.idx + j * 3) % 8); end loop;
     insert into public.opportunities (organization_id, company_id, owner_id, funnel_id, stage_id, title, status, estimated_value, cycle, funnel_entered_at, stage_entered_at, created_by, created_at)
     values (v_org, v_company, v_owner, v_f_aq, (select id from public.stages where funnel_id = v_f_aq and key = 'lead'),
             'Prospecção — ' || r.nome, 'open', nullif(r.valor, 0), 1, v_t, v_t, v_owner, v_t)
@@ -211,17 +511,17 @@ begin
     end loop;
 
     if r.funil = 'perdida' then
-      v_t := now() - make_interval(days => 9 + r.idx % 5);
-      update public.opportunities set status = 'lost', close_reason = r.extra, closed_at = v_t where id = v_opp;
-      update public.companies set status = 'lost', loss_reason = r.extra where id = v_company;
+      v_t := now() - make_interval(days => r.fechado);
+      update public.opportunities set status = 'lost', close_reason = r.motivo, closed_at = v_t where id = v_opp;
+      update public.companies set status = 'lost', loss_reason = r.motivo where id = v_company;
       insert into public.interactions (organization_id, company_id, opportunity_id, channel, kind, occurred_at, author_id, actor_type, title, content)
-      values (v_org, v_company, v_opp, 'system', 'loss', v_t, v_owner, 'user', 'Oportunidade perdida', 'Motivo: ' || r.extra);
+      values (v_org, v_company, v_opp, 'system', 'loss', v_t, v_owner, 'user', 'Oportunidade perdida', 'Motivo: ' || r.motivo);
     end if;
 
     -- Cliente: primeira venda, recompras e o negócio aberto de recorrência, um ciclo depois do outro.
     if r.funil = 'rc' then
       for k in 1 .. array_length(v_sales, 1) loop
-        v_last := now() - make_interval(days => split_part(v_sales[k], ':', 1)::integer);
+        v_last := pg_temp.venda_ts(v_sales[k]);
         v_amount := split_part(v_sales[k], ':', 2)::numeric;
         if k > 1 then
           update public.opportunities set stage_id = (select id from public.stages where funnel_id = v_f_rc and key = 'negociacao_r'), stage_entered_at = v_last - interval '8 days' where id = v_opp;
@@ -234,7 +534,8 @@ begin
         values (v_org, v_company, v_opp, case when k = 1 then 'first_sale' else 'repurchase' end::public.sale_kind, greatest(k - 1, 1), v_amount, v_last, v_owner);
         insert into public.interactions (organization_id, company_id, opportunity_id, channel, kind, occurred_at, author_id, actor_type, title, content)
         values (v_org, v_company, v_opp, 'system', 'win', v_last, v_owner, 'user',
-                case when k = 1 then 'Primeira venda registrada' else 'Recompra registrada' end || ' — R$ ' || to_char(v_amount, 'FM999G999G990D00'), 'Pedido confirmado pelo cliente.');
+                case when k = 1 then 'Primeira venda registrada' else k || 'ª venda registrada' end || ' — R$ ' || to_char(v_amount, 'FM999G999G990D00'),
+                'Pedido confirmado pelo cliente. Orçamento emitido no ERP e anexado ao negócio.');
         if k = 1 then update public.companies set customer_since = v_last where id = v_company; end if;
         insert into public.opportunities (organization_id, company_id, owner_id, funnel_id, stage_id, title, status, cycle, funnel_entered_at, stage_entered_at, created_by, created_at)
         values (v_org, v_company, v_owner, v_f_rc, (select id from public.stages where funnel_id = v_f_rc and key = 'posvenda'), 'Recorrência — ciclo ' || k, 'open', k, v_last, v_last, v_owner, v_last)
@@ -249,98 +550,267 @@ begin
          where id = v_opp;
       end loop;
       update public.opportunities
-         set estimated_value = nullif(r.valor, 0), expected_close_date = case when r.etapa = 'previsao' then (now() + interval '24 days')::date end
+         set estimated_value = nullif(r.valor, 0), expected_close_date = case when r.etapa in ('previsao', 'orcamento_r', 'negociacao_r') then (now() + make_interval(days => 12 + r.idx % 30))::date end
        where id = v_opp;
     end if;
 
-    -- Histórico de execução: seis atividades concluídas nas últimas semanas, quase todas no prazo, cada uma com seu registro.
-    for k in 1 .. 6 loop
-      v_due := pg_temp.dia_util(-(k * 6 + r.idx % 5), 9 + (r.idx + k) % 8);
-      v_done := case when (r.idx * 7 + k) % 10 = 0 then v_due + interval '2 days 3 hours' else v_due + make_interval(hours => 1 + (r.idx + k) % 4) end;
-      continue when v_done >= now() or (r.funil = 'perdida' and k < 3);
-      insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, completed_at, outcome, created_by, created_at)
-      values (v_org, v_company, v_opp, tipos[1 + (r.idx + k) % 6], titulos[1 + (r.idx + k) % 6], v_owner, v_due, 'medium', 'done', 'manual', v_done, resultados[1 + (r.idx + k) % 6], v_owner, v_due - interval '4 days');
-      insert into public.interactions (organization_id, company_id, opportunity_id, contact_id, channel, kind, occurred_at, author_id, actor_type, title, content)
-      values (v_org, v_company, v_opp, v_contact, canais[1 + (r.idx + k) % 6], 'note', v_done, v_owner, 'user', titulos[1 + (r.idx + k) % 6], resultados[1 + (r.idx + k) % 6]);
-    end loop;
-
+    insert into pg_temp.demo_mapa values (r.idx, r.dono, r.funil, r.nome, r.uf, v_company, v_opp, v_owner, v_contact);
     continue when r.funil = 'perdida';
 
-    -- Próximo passo de toda conta ativa, em dia útil e horário comercial (novembro e dezembro organizados).
+    -- Estratégia de toda conta ativa, revisada nas últimas semanas.
+    insert into public.strategies (organization_id, company_id) values (v_org, v_company) returning id into v_sid;
+    insert into public.strategy_versions (organization_id, strategy_id, objective, diagnosis, barrier, strategy, expected_result, origin, defined_by, reviewed_at, next_review_at)
+    values (v_org, v_sid,
+      case when r.funil = 'rc' then 'Ampliar a participação da Tawper na reposição da entressafra' else 'Fechar a primeira venda até o início da próxima safra' end,
+      r.colhedoras || ' colhedoras (' || r.modelos || '). Fornecedor atual: ' || r.marca || '. A manutenção reclama de prazo de entrega na safra.',
+      case when r.funil = 'rc' then 'Parte da compra ainda vai para ' || r.concorrente else 'Relacionamento antigo com ' || r.concorrente end,
+      case when r.funil = 'rc' then 'Levantar a demanda completa das colhedoras e propor contrato de fornecimento programado para a entressafra.'
+           else 'Homologar um kit de teste e entrar pela manutenção, com prensa em comodato como diferencial.' end,
+      'Pedido de R$ ' || to_char(greatest(r.valor, r.mensal * 1.5), 'FM999G999G990') || ' na próxima janela de compra',
+      'manual', v_owner, now() - make_interval(days => 12 + r.idx % 35), now() + make_interval(days => 7 + r.idx % 30));
+
+    -- Próximo passo da conta, em dia útil e horário comercial.
     select case r.etapa
              when 'lead' then 'Identificar o responsável pela manutenção agrícola' when 'qualificacao' then 'Mapear frota, prensa e fornecedor atual'
              when 'apresentacao_empresa' then 'Apresentar a Tawper para a manutenção' when 'apresentacao_tecnica' then 'Apresentação técnica na oficina'
              when 'cadastro' then 'Enviar ficha cadastral e documentos' when 'homologacao' then 'Acompanhar o kit de teste na colhedora'
              when 'aprovado' then 'Confirmar janela de compra e estoque' when 'orcamento' then 'Follow-up do orçamento enviado'
              when 'negociacao' then 'Tratar objeções e buscar a decisão' when 'posvenda' then 'Pós-venda: confirmar entrega e aplicação'
-             when 'relacionamento' then 'Visita de relacionamento: mapear demanda' when 'previsao' then 'Revisar a demanda na janela prevista'
+             when 'relacionamento' then 'Mapear estoque e demanda da entressafra' when 'previsao' then 'Revisar a demanda na janela prevista'
              when 'orcamento_r' then 'Follow-up do orçamento de reposição' else 'Acompanhar a decisão de recompra' end,
-           case when r.etapa in ('apresentacao_empresa', 'apresentacao_tecnica', 'homologacao', 'relacionamento') then 'visit'
-                when r.etapa in ('negociacao', 'negociacao_r') then 'meeting' when r.etapa in ('qualificacao', 'orcamento', 'orcamento_r') then 'whatsapp'
+           case when r.etapa in ('negociacao', 'negociacao_r') then 'meeting' when r.etapa in ('qualificacao', 'orcamento', 'orcamento_r', 'relacionamento') then 'whatsapp'
                 when r.etapa = 'cadastro' then 'email' else 'call' end::public.activity_type
       into v_title, v_type;
-    insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, created_by)
-    values (v_org, v_company, v_opp, v_type, v_title, v_owner, pg_temp.dia_util(1 + (r.idx * 3) % 13, 9 + r.idx % 8), case when r.urgencia = 'high' then 'high' else 'medium' end::public.level_3, 'pending', 'rule', v_owner);
-    -- Dezembro: metade das contas já tem a visita ou reunião seguinte marcada.
-    if r.idx % 2 = 0 then
-      insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, created_by)
-      values (v_org, v_company, v_opp, case when r.idx % 4 = 0 then 'visit' else 'meeting' end::public.activity_type,
-              case when r.idx % 4 = 0 then 'Visita de acompanhamento na entressafra' else 'Reunião de planejamento da entressafra' end,
-              v_owner, pg_temp.dia_util(20 + r.idx % 12, 10 + r.idx % 6), 'medium', 'pending', 'manual', v_owner);
+    insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, created_by, created_at)
+    values (v_org, v_company, v_opp, v_type, v_title, v_owner, pg_temp.dia_util(1 + (r.idx * 3) % 12, 9 + r.idx % 8),
+            case when r.urgencia = 'high' then 'high' else 'medium' end::public.level_3, 'pending', 'rule', v_owner, now() - interval '3 days');
+    if r.hoje then
+      insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, created_by, created_at)
+      values (v_org, v_company, v_opp, 'call', 'Ligar e confirmar a agenda da semana', v_owner, pg_temp.dia_util(0, 14 + r.idx % 3), 'medium', 'pending', 'manual', v_owner, now() - interval '2 days');
     end if;
-    -- Hoje: algumas tarefas para o dia e uma já concluída, para o Meu dia ter movimento.
-    if r.idx % 6 = 0 then
-      insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, created_by)
-      values (v_org, v_company, v_opp, 'call', 'Ligar para ' || decisores[1 + r.idx % 8] || ' e confirmar a agenda', v_owner, pg_temp.dia_util(0, 14 + r.idx % 3), 'medium', 'pending', 'manual', v_owner);
-    end if;
-    -- Poucos atrasos, de propósito, espalhados entre pessoas diferentes: a Gestão precisa ter o que mostrar.
-    if r.idx in (5, 12, 17, 21) then
-      insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, created_by)
-      values (v_org, v_company, v_opp, 'whatsapp', 'Retornar o contato pedido pelo cliente', v_owner, pg_temp.dia_util(-(1 + r.idx % 4), 10), 'medium', 'pending', 'manual', v_owner);
+    if r.atraso > 0 then
+      insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, created_by, created_at)
+      values (v_org, v_company, v_opp, 'whatsapp', 'Retornar o contato pedido pelo cliente', v_owner, pg_temp.dia_util(-r.atraso, 10), 'medium', 'pending', 'manual', v_owner, now() - make_interval(days => r.atraso + 4));
     end if;
 
-    -- Orçamento feito no sistema da empresa, já enviado, para quem está em orçamento ou negociação.
+    -- Orçamento feito no ERP e anexado, já enviado, para quem está em orçamento ou negociação.
     if r.etapa in ('orcamento', 'negociacao', 'orcamento_r', 'negociacao_r') then
-      insert into public.quotes (organization_id, company_id, opportunity_id, number, status, payment_terms, validity_days, sent_at, expected_decision_at, author_id, sent_to_contact_id, sent_via, sent_by)
-      values (v_org, v_company, v_opp, '', 'sent', '28/56 dias', case when r.idx = 17 then 21 else 30 end,
-              now() - make_interval(days => least(r.dias, 18)), now() - make_interval(days => least(r.dias, 18)) + interval '5 days', v_owner, v_contact, 'manual', v_owner)
+      insert into public.quotes (organization_id, company_id, opportunity_id, number, status, payment_terms, validity_days, sent_at, expected_decision_at, author_id, sent_to_contact_id, sent_via, sent_by, notes)
+      values (v_org, v_company, v_opp, '', 'sent', (array['28/56 dias', '30/60/90 dias', '28 dias'])[1 + r.idx % 3], 30,
+              now() - make_interval(days => least(r.dias, 18)), now() - make_interval(days => least(r.dias, 18)) + interval '5 days', v_owner, v_contact, 'manual', v_owner,
+              'Kit de mangueiras e terminais para a entressafra, conforme levantamento da frota.')
       returning id into v_quote;
       insert into public.quote_items (organization_id, quote_id, sku, description, unit, quantity, unit_price, position, mode)
-      values (v_org, v_quote, lpad((4500 + r.idx * 7)::text, 6, '0'), 'Orçamento nº ' || lpad((4500 + r.idx * 7)::text, 6, '0') || ' (sistema da empresa)', 'un', 1, r.valor, 0, 'sale');
-    end if;
-
-    -- Estratégia registrada nas contas de maior potencial.
-    if r.potencial = 'high' then
-      perform public.crm_save_strategy(
-        v_company,
-        case when r.funil = 'rc' then 'Aumentar a participação da Tawper na reposição da entressafra' else 'Fechar a primeira venda de mangueiras até o início da safra' end,
-        r.colhedoras || ' colhedoras (' || r.modelos || '). Fornecedor atual: ' || r.marca || '. A manutenção reclama de prazo de entrega na safra.',
-        case when r.funil = 'rc' then 'Compra dividida com ' || r.concorrente else 'Relacionamento antigo com ' || r.concorrente end,
-        case when r.funil = 'rc' then 'Levantar a demanda completa das colhedoras e propor contrato de fornecimento para a entressafra.' else 'Homologar um kit de teste e entrar pela manutenção, com prensa em comodato como diferencial.' end,
-        'Pedido de R$ ' || to_char(r.mensal * 1.5, 'FM999G999G990') || ' na próxima janela de compra',
-        'manual', now() + make_interval(days => 14 + r.idx), v_owner);
-      perform app.crm_begin(v_admin, 'user');
+      values (v_org, v_quote, lpad((4500 + r.idx * 7)::text, 6, '0'), 'Orçamento nº ' || lpad((4500 + r.idx * 7)::text, 6, '0') || ' (ERP da Tawper)', 'un', 1, r.valor, 0, 'sale');
     end if;
   end loop;
 
   -- Uma conta em espera, com motivo, condição e data de reavaliação (não é etapa de funil).
+  if exists (select 1 from pg_temp.demo_mapa where funil = 'aq') then
   perform public.crm_set_standby(
-    (select id from public.companies where organization_id = v_org and trade_name = 'Grupo Agro São Miguel'),
+    (select company_id from pg_temp.demo_mapa where funil = 'aq' order by dono desc, idx limit 1),
     'Orçamento anual ainda não liberado', 'Liberação do orçamento de manutenção de 2027',
-    (select owner_id from public.companies where organization_id = v_org and trade_name = 'Grupo Agro São Miguel'),
+    (select owner_id from pg_temp.demo_mapa where funil = 'aq' order by dono desc, idx limit 1),
     pg_temp.dia_util(18, 10), v_admin);
+  end if;
+  perform app.crm_begin(v_admin, 'user');
 end $$;
 
+-- 4. Trabalho das últimas 5 semanas: ligações, WhatsApps, e-mails e cotações concluídos, no ritmo de cada pessoa.
+create temp table pg_temp.demo_cart on commit drop as
+select m.*, row_number() over (partition by m.owner_id order by m.idx) as rn, count(*) over (partition by m.owner_id) as cnt
+  from pg_temp.demo_mapa m where m.funil <> 'perdida';
+create temp table pg_temp.demo_dias on commit drop as
+select d::date as dia from generate_series((now() at time zone 'America/Sao_Paulo')::date - 35, (now() at time zone 'America/Sao_Paulo')::date, interval '1 day') d
+ where extract(isodow from d) < 6 and to_char(d, 'MM-DD') not in ('01-01', '04-21', '05-01', '09-07', '10-12', '11-02', '11-15', '11-20', '12-25');
+
+insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, completed_at, outcome, created_by, created_at)
+select '00000000-0000-4000-8000-000000000001', c.company_id, c.opp_id, b.tipo,
+       (case b.tipo
+          when 'call' then array['Ligar para alinhar o próximo passo', 'Ligar para confirmar estoque de mangueiras', 'Ligar para a manutenção sobre a colhedora parada', 'Ligar para confirmar o recebimento', 'Ligar para o comprador sobre a programação']
+          when 'whatsapp' then array['Enviar material técnico pelo WhatsApp', 'Mandar fotos dos terminais pedidos', 'Confirmar a medida das mangueiras', 'Responder dúvida sobre prazo de entrega']
+          when 'email' then array['Enviar ficha técnica por e-mail', 'Enviar condições comerciais por e-mail', 'Enviar documentos de cadastro']
+          else array['Montar cotação no ERP e anexar', 'Revisar cotação de reposição'] end)[1 + (b.h / 7) % (case b.tipo when 'call' then 5 when 'whatsapp' then 4 when 'email' then 3 else 2 end)],
+       c.owner_id, b.due, 'medium', 'done', 'manual',
+       least(now() - make_interval(mins => 3 + b.n), case when b.h % 100 < 8 and b.dia < (now() at time zone 'America/Sao_Paulo')::date - 3 then b.due + interval '1 day 3 hours' else b.due + make_interval(mins => 15 + b.h % 80) end),
+       (array['Falei com o responsável; combinamos o próximo contato.', 'Material recebido; vai repassar para a manutenção.', 'Confirmou a demanda e pediu retorno na próxima semana.',
+              'Sem resposta na primeira tentativa; retornou à tarde.', 'Passou as medidas das colhedoras.', 'Pediu para incluir capas protetoras no próximo pedido.'])[1 + b.h % 6],
+       c.owner_id, b.due - interval '2 days'
+  from (
+    select rt.dono, d.dia, k.tipo, g.n, abs(hashtext(rt.dono || '|' || d.dia || '|' || k.tipo::text || '|' || g.n)) as h,
+           least(now() - make_interval(mins => 30 + g.n * 9),
+                 (d.dia + make_time(8 + abs(hashtext(rt.dono || '|' || d.dia || '|' || k.tipo::text || '|' || g.n)) % 9, (g.n % 4) * 15, 0)) at time zone 'America/Sao_Paulo') as due
+      from pg_temp.demo_ritmo rt
+      cross join pg_temp.demo_dias d
+      cross join lateral (values ('call'::public.activity_type, rt.ligacoes), ('whatsapp'::public.activity_type, rt.whatsapps), ('email'::public.activity_type, rt.emails), ('quote'::public.activity_type, rt.cotacoes)) k(tipo, qtd)
+      cross join lateral generate_series(1, round(k.qtd * (0.8 + (abs(hashtext(rt.dono || '|' || d.dia || '|' || k.tipo::text)) % 40) / 100.0)
+                                         * case when d.dia = (now() at time zone 'America/Sao_Paulo')::date
+                                                then least(1, greatest(0, (extract(hour from now() at time zone 'America/Sao_Paulo') - 8) / 10.0)) else 1 end)::int) g(n)
+  ) b
+  join pg_temp.demo_donos dn on dn.dono = b.dono
+  join pg_temp.demo_cart c on c.owner_id = dn.owner_id and c.rn = 1 + b.h % c.cnt;
+
+-- Reuniões e visitas feitas nas últimas 5 semanas.
+insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, completed_at, outcome, created_by, created_at)
+select '00000000-0000-4000-8000-000000000001', c.company_id, c.opp_id, x.tipo,
+       case x.tipo when 'visit' then 'Visita técnica na oficina' else (array['Reunião com manutenção e compras', 'Reunião de planejamento da entressafra', 'Reunião com o gerente industrial'])[1 + x.h % 3] end,
+       c.owner_id, x.due, 'medium', 'done', 'manual', least(now() - interval '20 minutes', x.due + interval '1 hour 30 minutes'),
+       case x.tipo when 'visit' then 'Visita feita: levantamos as medidas e a oficina aprovou a padronização por cores.' else 'Reunião realizada; demanda da entressafra mapeada e próximos passos definidos.' end,
+       c.owner_id, x.due - interval '5 days'
+  from (
+    select rt.dono, t.tipo, g.n, abs(hashtext(rt.dono || t.tipo::text || g.n)) as h,
+           (select (d.dia + make_time(case t.tipo when 'visit' then 9 else 10 end + (g.n % 3) * 2, 0, 0)) at time zone 'America/Sao_Paulo'
+              from pg_temp.demo_dias d where d.dia < (now() at time zone 'America/Sao_Paulo')::date
+              -- metade cai no mês corrente: a tela de Metas mostra o andamento do mês
+              order by (g.n % 2 = 1 and d.dia >= date_trunc('month', now() at time zone 'America/Sao_Paulo')::date) desc, abs(hashtext(rt.dono || t.tipo::text || g.n || d.dia)) limit 1) as due
+      from pg_temp.demo_ritmo rt
+      cross join lateral (values ('meeting'::public.activity_type, rt.reunioes_mes), ('visit'::public.activity_type, rt.visitas_mes)) t(tipo, qtd)
+      cross join lateral generate_series(1, round(t.qtd * 1.15)::int) g(n)
+  ) x
+  join pg_temp.demo_donos dn on dn.dono = x.dono
+  join pg_temp.demo_cart c on c.owner_id = dn.owner_id and c.rn = 1 + x.h % c.cnt;
+
+-- Um registro na linha do tempo do cliente para cada três atividades concluídas.
+insert into public.interactions (organization_id, company_id, opportunity_id, contact_id, channel, kind, occurred_at, author_id, actor_type, title, content)
+select a.organization_id, a.company_id, a.opportunity_id, c.contato_id,
+       (case a.type when 'call' then 'phone' when 'whatsapp' then 'whatsapp' when 'visit' then 'visit' when 'meeting' then 'meeting' else 'email' end)::public.interaction_channel,
+       'note', a.completed_at, a.owner_id, 'user', a.title, a.outcome
+  from public.activities a join pg_temp.demo_cart c on c.company_id = a.company_id
+ where a.organization_id = '00000000-0000-4000-8000-000000000001' and a.status = 'done' and abs(hashtext(a.id::text)) % 3 = 0;
+
+-- 5. Agenda: reuniões das próximas três semanas e visitas com rota, confirmação e tarefa no dia útil anterior.
+insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, created_by, created_at)
+select '00000000-0000-4000-8000-000000000001', c.company_id, c.opp_id, 'meeting',
+       (array['Reunião de planejamento da entressafra', 'Reunião com manutenção e compras', 'Apresentar proposta de fornecimento programado'])[1 + g.n % 3],
+       c.owner_id, pg_temp.dia_util(g.n * 2 + rt.dono % 2, 9 + (g.n * 3 + rt.dono) % 7), 'medium', 'pending', 'manual', c.owner_id, now() - interval '4 days'
+  from pg_temp.demo_ritmo rt
+  join pg_temp.demo_donos dn on dn.dono = rt.dono
+  cross join lateral generate_series(1, case when rt.dono = 0 then 6 else 5 end) g(n)
+  join pg_temp.demo_cart c on c.owner_id = dn.owner_id and c.rn = 1 + abs(hashtext('reuniao' || rt.dono || g.n)) % c.cnt;
+
+do $$
+declare
+  v_org constant uuid := '00000000-0000-4000-8000-000000000001';
+  v_rotas boolean := exists (select 1 from information_schema.columns where table_schema = 'public' and table_name = 'route_stops' and column_name = 'scheduled_at');
+  d record;
+  s record;
+  v_plan uuid;
+  v_visit uuid;
+  v_when timestamptz;
+  v_rota integer;
+  v_n integer;
+begin
+  for d in select distinct dn.dono, dn.owner_id from pg_temp.demo_donos dn loop
+    -- Duas rotas por pessoa: a primeira daqui a 3 dias úteis, a segunda na semana seguinte, cada uma num estado.
+    v_rota := 0;
+    -- Cinco clientes, começando pelo estado com mais clientes: 3 na primeira rota e 2 na segunda.
+    for s in
+      select x.*, case when x.pos <= 3 then 1 else 2 end as grupo, case when x.pos <= 3 then x.pos else x.pos - 3 end as ordem
+        from (select c.*, row_number() over (order by c.cnt_uf desc, c.uf, c.idx) as pos
+                from (select c.*, count(*) over (partition by c.uf) as cnt_uf from pg_temp.demo_cart c where c.owner_id = d.owner_id) c) x
+       where x.pos <= 5
+       order by x.pos
+    loop
+      if s.ordem = 1 then
+        v_rota := v_rota + 1;
+        v_plan := null;
+        if v_rotas then
+          execute 'insert into public.route_plans (organization_id, owner_id, planned_date, status, estimated_km, notes, region_label, created_by)
+                   values ($1, $2, ($3 at time zone ''America/Sao_Paulo'')::date, ''confirmed'', $4, $5, $6, $2) returning id'
+             into v_plan using v_org, d.owner_id, pg_temp.dia_util(case v_rota when 1 then 3 else 9 end, 8), 140 + (abs(hashtext(s.uf || d.dono)) % 260),
+                  'Rota de visitas em ' || s.uf || ': levantamento de frota e apresentação da padronização por cores.', s.uf;
+        end if;
+      end if;
+      v_when := pg_temp.dia_util(case v_rota when 1 then 3 else 9 end, (array[8, 11, 14])[s.ordem], (array[30, 15, 30])[s.ordem]);
+      insert into public.activities (organization_id, company_id, opportunity_id, type, title, owner_id, due_at, priority, status, origin, created_by, created_at)
+      values (v_org, s.company_id, s.opp_id, 'visit', 'Visita: ' || s.nome, d.owner_id, v_when, 'high', 'pending', 'rule', d.owner_id, now() - interval '2 days')
+      returning id into v_visit;
+      if v_when - interval '1 day' > now() then
+        insert into public.activities (organization_id, company_id, opportunity_id, type, title, description, owner_id, due_at, priority, status, origin, created_by, created_at)
+        values (v_org, s.company_id, s.opp_id, 'whatsapp', 'Confirmar visita: ' || s.nome,
+                'Mensagem pronta: Olá! Confirmando nossa visita ' || to_char(v_when at time zone 'America/Sao_Paulo', 'DD/MM "às" HH24:MI') || '. Esse horário continua bom para você?',
+                d.owner_id, greatest(now() + interval '1 hour', v_when - interval '1 day' - make_interval(hours => extract(hour from v_when at time zone 'America/Sao_Paulo')::int - 9)),
+                'high', 'pending', 'rule', d.owner_id, now() - interval '2 days');
+      end if;
+      if v_plan is not null then
+        execute 'insert into public.route_stops (organization_id, route_plan_id, company_id, position, objective, reason, activity_id, scheduled_at)
+                 values ($1, $2, $3, $4, $5, $6, $7, $8)'
+          using v_org, v_plan, s.company_id, s.ordem, 'Visita: levantamento de frota', 'Conta da região com demanda para a entressafra', v_visit, v_when;
+      end if;
+    end loop;
+  end loop;
+end $$;
+
+-- 6. Registros pelo WhatsApp (tela Registros): o que cada pessoa informou ao agente e o que o sistema gravou.
+insert into public.ai_agent_runs (organization_id, actor_profile_id, company_id, agent_key, task_key, status, provider, model, prompt_version, correlation_id,
+                                  input_summary, output_summary, latency_ms, started_at, finished_at, created_at)
+select '00000000-0000-4000-8000-000000000001', c.owner_id, case when x.t < 6 then c.company_id end, 'whatsapp_agent', 'conversa', 'completed', 'openai', 'gpt-5.4', 'demo',
+       'demo-' || md5(x.dono || '|' || x.dia || '|' || x.n),
+       jsonb_build_object('pergunta', replace(replace(
+           (array['Liguei pro {c} da {e}, ele pediu retorno semana que vem', 'Visitei a {e} hoje, levantei as medidas das colhedoras',
+                  'O {c} da {e} pediu orçamento de reposição pra entressafra', 'Me lembra de ligar pra {e} na quinta às 10h',
+                  'Mandei o material técnico pro {c} da {e} pelo whats', 'Fechou o pedido da {e}? qual o valor?',
+                  'Quais tarefas eu tenho amanhã?', 'Como está o funil da minha carteira?'])[1 + x.t], '{c}', split_part(k.name, ' ', 1)), '{e}', c.nome),
+         'audio', x.h % 4 = 0, 'caminho', 'ferramentas'),
+       jsonb_build_object(
+         'resposta', (array['✅ Registrado na ' || c.nome || ': ligação feita, retorno agendado para a próxima semana.',
+                            '✅ Visita registrada na ' || c.nome || ' com o levantamento das medidas.',
+                            '✅ Registrado o pedido de orçamento da ' || c.nome || ' e criada a tarefa de enviar a cotação.',
+                            '📅 Tarefa criada: ligar para ' || c.nome || ' na quinta às 10h.',
+                            '✅ Envio de material registrado na ' || c.nome || '.',
+                            'A ' || c.nome || ' está em negociação; a última venda está no histórico do cliente.',
+                            'Amanhã você tem 4 tarefas: 2 ligações, 1 reunião e 1 visita.',
+                            'Sua carteira tem negócios em todas as etapas; os maiores estão em orçamento e negociação.'])[1 + x.t],
+         'gravou', (array['["registrar_atividade"]', '["registrar_atividade"]', '["registrar_atividade","criar_tarefa"]', '["criar_tarefa"]',
+                          '["registrar_atividade"]', '[]', '[]', '[]'])[1 + x.t]::jsonb,
+         'marcas', case when x.h % 40 = 0 then '["errou"]'::jsonb else '[]'::jsonb end),
+       2500 + x.h % 9000, x.quando, x.quando + interval '8 seconds', x.quando + interval '8 seconds'
+  from (
+    select rt.dono, d.dia, g.n, abs(hashtext('agente' || rt.dono || d.dia || g.n)) as h,
+           abs(hashtext('agente' || rt.dono || d.dia || g.n)) % 8 as t,
+           least(now() - make_interval(mins => 5 + g.n * 3), (d.dia + make_time(8 + abs(hashtext('h' || rt.dono || d.dia || g.n)) % 10, (g.n * 13) % 60, 0)) at time zone 'America/Sao_Paulo') as quando
+      from pg_temp.demo_ritmo rt cross join pg_temp.demo_dias d cross join lateral generate_series(1, rt.agente_dia) g(n)
+  ) x
+  join pg_temp.demo_donos dn on dn.dono = x.dono
+  join pg_temp.demo_cart c on c.owner_id = dn.owner_id and c.rn = 1 + x.h % c.cnt
+  join public.contacts k on k.id = c.contato_id;
+
+-- 8. Histórico de alterações (Auditoria) coerente com a carga: etapas, vendas, orçamentos e tarefas concluídas dos últimos 30 dias.
+insert into public.audit_events (organization_id, occurred_at, actor_id, actor_type, entity_type, entity_id, company_id, field, old_value, new_value)
+select h.organization_id, h.entered_at, o.owner_id, 'user'::public.actor_type, 'opportunities', h.opportunity_id, o.company_id, 'stage_id', h.anterior::text, h.stage_id::text
+  from (select h.*, lag(h.stage_id) over (partition by h.opportunity_id order by h.entered_at) as anterior from public.opportunity_stage_history h
+         where h.organization_id = '00000000-0000-4000-8000-000000000001') h
+  join public.opportunities o on o.id = h.opportunity_id join pg_temp.demo_mapa m on m.company_id = o.company_id
+ where h.anterior is not null and h.entered_at > now() - interval '30 days' and h.entered_at <= now()
+union all
+select o.organization_id, o.closed_at, o.owner_id, 'user'::public.actor_type, 'opportunities', o.id, o.company_id, 'status', 'open', o.status::text
+  from public.opportunities o join pg_temp.demo_mapa m on m.company_id = o.company_id where o.organization_id = '00000000-0000-4000-8000-000000000001' and o.status in ('won', 'lost') and o.closed_at > now() - interval '30 days'
+union all
+select q.organization_id, q.sent_at, q.author_id, 'user'::public.actor_type, 'quotes', q.id, q.company_id, 'status', 'draft', 'sent'
+  from public.quotes q join pg_temp.demo_mapa m on m.company_id = q.company_id where q.organization_id = '00000000-0000-4000-8000-000000000001' and q.sent_at > now() - interval '30 days'
+union all
+select a.organization_id, a.completed_at, a.owner_id, 'user'::public.actor_type, 'activities', a.id, a.company_id, 'status', 'pending', 'done'
+  from public.activities a join pg_temp.demo_mapa m on m.company_id = a.company_id where a.organization_id = '00000000-0000-4000-8000-000000000001' and a.status = 'done' and a.completed_at > now() - interval '30 days' and abs(hashtext(a.id::text)) % 4 = 0;
+
+
 -- Conferência: o que ficou no banco.
-select 'clientes' as item, count(*)::text as valor from public.companies where organization_id = '00000000-0000-4000-8000-000000000001'
-union all select 'clientes sem contato', count(*)::text from public.companies c where c.organization_id = '00000000-0000-4000-8000-000000000001' and not exists (select 1 from public.contacts k where k.company_id = c.id)
-union all select 'clientes sem cidade, UF ou coordenada', count(*)::text from public.companies where organization_id = '00000000-0000-4000-8000-000000000001' and (city is null or state is null or latitude is null or longitude is null)
-union all select 'tarefas pendentes duplicadas', count(*)::text from (select 1 from public.activities where organization_id = '00000000-0000-4000-8000-000000000001' and status = 'pending' group by company_id, title, (due_at at time zone 'America/Sao_Paulo')::date having count(*) > 1) d
-union all select 'tarefas atrasadas', count(*)::text from public.activities where organization_id = '00000000-0000-4000-8000-000000000001' and status = 'pending' and due_at < date_trunc('day', now() at time zone 'America/Sao_Paulo') at time zone 'America/Sao_Paulo'
-union all select 'tarefas pendentes fora do horário (8h-18h) ou em fim de semana', count(*)::text from public.activities where organization_id = '00000000-0000-4000-8000-000000000001' and status = 'pending' and (extract(dow from due_at at time zone 'America/Sao_Paulo') in (0, 6) or extract(hour from due_at at time zone 'America/Sao_Paulo') not between 8 and 17)
-union all select 'contas ativas sem próximo passo', count(*)::text from public.companies c where c.organization_id = '00000000-0000-4000-8000-000000000001' and c.status = 'active' and not exists (select 1 from public.activities a where a.company_id = c.id and a.status = 'pending')
-union all select 'atividades concluídas (no prazo / total)', count(*) filter (where completed_at::date <= due_at::date)::text || ' / ' || count(*)::text from public.activities where organization_id = '00000000-0000-4000-8000-000000000001' and status = 'done'
-union all select 'vendas (quantidade / valor)', count(*)::text || ' / R$ ' || to_char(coalesce(sum(amount), 0), 'FM999G999G990') from public.sales where organization_id = '00000000-0000-4000-8000-000000000001'
-union all select 'negócios abertos', count(*)::text from public.opportunities where organization_id = '00000000-0000-4000-8000-000000000001' and status = 'open';
+with org as (select '00000000-0000-4000-8000-000000000001'::uuid as id),
+pessoas as (select dn.dono, p.short_name from pg_temp.demo_donos dn join public.profiles p on p.id = dn.owner_id)
+select 'clientes (ativos / perdidos)' as item, (select count(*) filter (where status <> 'lost') || ' / ' || count(*) filter (where status = 'lost') from public.companies, org where organization_id = org.id) as valor
+union all select 'vendido em 2026', (select 'R$ ' || to_char(sum(amount), 'FM999G999G990') || ' em ' || count(*) || ' vendas' from public.sales, org where organization_id = org.id and sold_at >= '2026-01-01')
+union all select 'negócios abertos (valor)', (select count(*) || ' / R$ ' || to_char(coalesce(sum(estimated_value), 0), 'FM999G999G990') from public.opportunities, org where organization_id = org.id and status = 'open')
+union all select 'vendido em 2026 — ' || p.short_name, (select 'R$ ' || to_char(coalesce(sum(s.amount), 0), 'FM999G999G990') from public.sales s join pg_temp.demo_mapa m on m.company_id = s.company_id where m.dono = p.dono and s.sold_at >= '2026-01-01') from pessoas p
+union all select 'agenda de ' || p.short_name || ' (visitas / reuniões / outras pendentes)',
+  (select count(*) filter (where a.type = 'visit') || ' / ' || count(*) filter (where a.type = 'meeting') || ' / ' || count(*) filter (where a.type not in ('visit', 'meeting'))
+     from public.activities a join pg_temp.demo_donos dn on dn.owner_id = a.owner_id where dn.dono = p.dono and a.status = 'pending') from pessoas p
+union all select 'clientes sem contato', (select count(*)::text from public.companies c, org where c.organization_id = org.id and not exists (select 1 from public.contacts k where k.company_id = c.id))
+union all select 'clientes sem cidade, UF ou coordenada', (select count(*)::text from public.companies, org where organization_id = org.id and (city is null or state is null or latitude is null or longitude is null))
+union all select 'tarefas pendentes duplicadas', (select count(*)::text from (select 1 from public.activities, org where organization_id = org.id and status = 'pending' group by company_id, title, (due_at at time zone 'America/Sao_Paulo')::date having count(*) > 1) d)
+union all select 'tarefas atrasadas', (select count(*)::text from public.activities, org where organization_id = org.id and status = 'pending' and due_at < date_trunc('day', now() at time zone 'America/Sao_Paulo') at time zone 'America/Sao_Paulo')
+union all select 'pendentes fora do horário (8h-18h) ou no fim de semana', (select count(*)::text from public.activities, org where organization_id = org.id and status = 'pending' and (extract(isodow from due_at at time zone 'America/Sao_Paulo') > 5 or extract(hour from due_at at time zone 'America/Sao_Paulo') not between 8 and 17))
+union all select 'contas ativas sem próximo passo', (select count(*)::text from public.companies c, org where c.organization_id = org.id and c.status = 'active' and not exists (select 1 from public.activities a where a.company_id = c.id and a.status = 'pending'))
+union all select 'atividades concluídas nos últimos 30 dias (no prazo / total)', (select count(*) filter (where completed_at::date <= due_at::date) || ' / ' || count(*) from public.activities, org where organization_id = org.id and status = 'done' and completed_at > now() - interval '30 days')
+union all select 'concluídas no futuro (deve ser 0)', (select count(*)::text from public.activities, org where organization_id = org.id and completed_at > now())
+union all select 'registros pelo WhatsApp (últimos 30 dias)', (select count(*)::text from public.ai_agent_runs, org where organization_id = org.id and correlation_id like 'demo-%');
 
 commit;

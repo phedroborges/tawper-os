@@ -641,7 +641,7 @@ function PropostasInner() {
         title="Gerador de Proposta Comercial Tawper"
         subtitle="Apresentação oficial em HTML resumida em 9 slides (< 10), personalizada com os dados do cliente, condições comerciais e orçamento do ERP anexo."
         actions={
-          <div className="flex items-center gap-2">
+          <div className="flex flex-wrap items-center gap-2">
             {isAdmin && (
               <Link href="/configuracoes/propostas">
                 <Button variant="outline" size="xs">
@@ -658,7 +658,7 @@ function PropostasInner() {
       />
 
       {/* Stepper */}
-      <div className="grid grid-cols-3 gap-3 rounded-[10px] border border-line bg-white p-3 shadow-2xs">
+      <div className="grid grid-cols-3 gap-1.5 rounded-[10px] border border-line bg-white p-2 shadow-2xs sm:gap-3 sm:p-3">
         {[
           { n: 1 as const, label: "Passo 1", title: company ? company.nome : "Escolher o Cliente", enabled: true },
           { n: 2 as const, label: "Passo 2", title: "Orçamento ERP & Condições", enabled: Boolean(company) },
@@ -670,7 +670,7 @@ function PropostasInner() {
             disabled={!st.enabled}
             onClick={() => st.enabled && setStep(st.n)}
             className={cn(
-              "flex items-center gap-3 rounded-[8px] border-t-2 px-3.5 py-2.5 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+              "flex min-w-0 flex-col items-start gap-1.5 rounded-[8px] border-t-2 px-2 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 sm:flex-row sm:items-center sm:gap-3 sm:px-3.5 sm:py-2.5",
               step === st.n
                 ? "border-brand bg-paper"
                 : step > st.n
@@ -690,7 +690,7 @@ function PropostasInner() {
             >
               0{st.n}
             </span>
-            <div className="min-w-0">
+            <div className="w-full min-w-0">
               <div className="text-[10.5px] font-extrabold tracking-[0.1em] text-muted uppercase">{st.label}</div>
               <div className="truncate text-[13.5px] font-bold text-ink">{st.title}</div>
             </div>
@@ -733,7 +733,7 @@ function PropostasInner() {
                     type="button"
                     onClick={() => handleChooseClient(c.id)}
                     className={cn(
-                      "flex items-center justify-between gap-3 rounded-[8px] border px-4 py-3 text-left transition-colors",
+                      "flex min-w-0 items-center justify-between gap-3 rounded-[8px] border px-4 py-3 text-left transition-colors",
                       selected
                         ? "border-brand bg-brand/5"
                         : "border-line bg-white hover:border-navy/40 hover:bg-soft/40",

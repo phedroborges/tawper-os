@@ -1,3 +1,4 @@
+import { processVisitCommunications } from "@/server/visit-confirmations";
 import "server-only";
 
 import { ASSISTANT_HELP, assistantAnswer } from "@/lib/ai";
@@ -203,6 +204,7 @@ async function answerJob(job: WhatsAppAgentJob) {
 }
 
 export async function processWhatsAppAgentQueue(limit = 3) {
+  await processVisitCommunications();
   const workerId = `whatsapp-agent-${process.pid}-${crypto.randomUUID().slice(0, 8)}`;
   let processed = 0;
   let failed = 0;

@@ -24,6 +24,19 @@ export function moneyShort(v?: number) {
   return brl.format(v);
 }
 
+/**
+ * Separa o único número de um valor já formatado ("R$ 1,2 mi" → "R$ ", 1.2, " mi") para a contagem animada.
+ * Texto com mais de um número (data, "2 de 5") ou sem número volta null e é mostrado como veio.
+ */
+export function splitNumber(v: unknown): { pre: string; n: number; dec: number; post: string } | null {
+  if (typeof v === "number") return Number.isFinite(v) ? { pre: "", n: v, dec: (String(v).split(".")[1] ?? "").length, post: "" } : null;
+  if (typeof v !== "string" || v.match(/\d[\d.,]*/g)?.length !== 1) return null;
+  const m = v.match(/^(\D*?)(-?)(\d{1,3}(?:\.\d{3})+|\d+)(?:,(\d+))?(\D*)$/);
+  if (!m) return null;
+  const [, pre, sign, int, frac = "", post] = m;
+  return { pre, n: Number(`${sign}${int.replaceAll(".", "")}.${frac || "0"}`), dec: frac.length, post };
+}
+
 export function fmtNum(v?: number) {
   return v === undefined ? "—" : num.format(v);
 }

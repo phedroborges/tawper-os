@@ -4,7 +4,6 @@
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, Suspense, useEffect, useMemo, useState } from "react";
 import { AlertCircle, ArrowRight, Eye, EyeOff, Lock, Mail, ShieldCheck } from "lucide-react";
-import { BrandLogo } from "@/components/ui/BrandLogo";
 import { useStore } from "@/lib/store";
 
 function GoogleIcon() {
@@ -142,7 +141,7 @@ function EnterForm() {
   return (
     <main
       className="min-h-dvh w-full bg-[#0c101a] text-[#141d35] lg:grid lg:grid-cols-12"
-      style={{ fontFamily: "'Manrope', 'Poppins', system-ui, -apple-system, sans-serif" }}
+      style={{ fontFamily: "'Manrope', 'Poppins', system-ui, -apple-system, sans-serif", colorScheme: "light" }}
     >
       <style>{`
         @font-face {
@@ -187,7 +186,7 @@ function EnterForm() {
         </header>
 
         {/* Conteúdo Central */}
-        <div className="relative z-10 my-auto max-w-2xl py-10">
+        <div className="relative z-10 my-auto max-w-2xl py-10 animate-slide-up">
           <div className="mb-5 flex items-center gap-3.5">
             <span className="block h-1 w-8 bg-[#e31c3f]" />
             <span className="text-[12.5px] font-extrabold tracking-[0.16em] text-white/90 uppercase">
@@ -257,20 +256,20 @@ function EnterForm() {
       {/* =================================================================== */}
       {/* COLUNA DIREITA — PAINEL DE AUTENTICAÇÃO ALINHADO                    */}
       {/* =================================================================== */}
-      <section className="flex min-h-dvh flex-col justify-between bg-[#f5f5f2] px-6 py-8 sm:px-12 lg:col-span-5 lg:bg-white lg:px-12 xl:px-16">
+      <section className="flex min-h-dvh flex-col justify-between bg-[#f5f5f2] px-6 py-8 sm:px-12 lg:col-span-5 lg:bg-[#fff] lg:px-12 xl:px-16">
         {/* Topo mobile / Status de segurança */}
         <div className="flex items-center justify-between">
           <div className="lg:hidden">
-            <BrandLogo width={124} height={34} className="h-8 w-auto" />
+            <img src="/brand/tawper-logo.png" alt="Tawper" className="h-8 w-auto" />
           </div>
-          <div className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-[#dce0e8] bg-white px-3 py-1 text-[11.5px] font-bold text-[#29387f] shadow-2xs">
+          <div className="ml-auto inline-flex items-center gap-1.5 rounded-full border border-[#dce0e8] bg-[#fff] px-3 py-1 text-[11.5px] font-bold text-[#29387f] shadow-2xs">
             <ShieldCheck size={13} className="text-[#e31c3f]" />
             Ambiente Corporativo Seguro
           </div>
         </div>
 
         {/* Card Central de Login */}
-        <div className="mx-auto my-auto w-full max-w-[410px] py-8">
+        <div className="mx-auto my-auto w-full max-w-[410px] py-8 animate-slide-up">
           <div className="mb-7">
             <div className="mb-3 flex items-center gap-2.5">
               <span className="block h-1 w-6 bg-[#e31c3f]" />
@@ -291,7 +290,7 @@ function EnterForm() {
             type="button"
             disabled={busy || busyGoogle}
             onClick={handleGoogleLogin}
-            className="flex h-11 w-full items-center justify-center gap-3 rounded-[8px] border border-[#dce0e8] bg-white px-4 text-[14px] font-bold text-[#141d35] shadow-2xs transition-all hover:border-[#29387f]/40 hover:bg-[#f5f5f2]/60 disabled:cursor-not-allowed disabled:opacity-60"
+            className="flex h-11 w-full items-center justify-center gap-3 rounded-[8px] border border-[#dce0e8] bg-[#fff] px-4 text-[14px] font-bold text-[#141d35] shadow-2xs transition-all hover:border-[#29387f]/40 hover:bg-[#f5f5f2]/60 active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-60"
           >
             <GoogleIcon />
             <span>{busyGoogle ? "Conectando ao Google…" : "Continuar com o Google"}</span>
@@ -327,7 +326,7 @@ function EnterForm() {
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="nome@tawper.com.br"
-                  className="h-11 w-full rounded-[8px] border border-[#dce0e8] bg-white pr-3.5 pl-10 text-[14px] font-medium text-[#141d35] placeholder:text-[#626b7d]/60 outline-none transition-all focus:border-[#29387f] focus:ring-3 focus:ring-[#29387f]/12"
+                  className="h-11 w-full rounded-[8px] border border-[#dce0e8] bg-[#fff] pr-3.5 pl-10 text-[14px] font-medium text-[#141d35] placeholder:text-[#626b7d]/60 outline-none transition-all focus:border-[#29387f] focus:ring-3 focus:ring-[#29387f]/12"
                   required
                 />
               </div>
@@ -355,7 +354,7 @@ function EnterForm() {
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
                   placeholder="••••••••"
-                  className="h-11 w-full rounded-[8px] border border-[#dce0e8] bg-white pr-10 pl-10 text-[14px] font-medium text-[#141d35] placeholder:text-[#626b7d]/60 outline-none transition-all focus:border-[#29387f] focus:ring-3 focus:ring-[#29387f]/12"
+                  className="h-11 w-full rounded-[8px] border border-[#dce0e8] bg-[#fff] pr-10 pl-10 text-[14px] font-medium text-[#141d35] placeholder:text-[#626b7d]/60 outline-none transition-all focus:border-[#29387f] focus:ring-3 focus:ring-[#29387f]/12"
                   required
                 />
                 <button
@@ -363,7 +362,7 @@ function EnterForm() {
                   tabIndex={-1}
                   onClick={() => setShowPassword((v) => !v)}
                   aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"}
-                  className="absolute top-1/2 right-3 -translate-y-1/2 text-[#626b7d] hover:text-[#141d35]"
+                  className="absolute top-1/2 right-1 grid size-9 -translate-y-1/2 place-items-center text-[#626b7d] hover:text-[#141d35]"
                 >
                   {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
                 </button>
@@ -380,10 +379,10 @@ function EnterForm() {
             <button
               type="submit"
               disabled={busy || busyGoogle}
-              className="mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-[8px] bg-[#e31c3f] px-5 text-[14px] font-extrabold tracking-[0.02em] text-white shadow-sm transition-all hover:bg-[#c41534] disabled:cursor-not-allowed disabled:opacity-60"
+              className="group mt-2 flex h-11 w-full items-center justify-center gap-2 rounded-[8px] bg-[#e31c3f] px-5 text-[14px] font-extrabold tracking-[0.02em] text-white shadow-sm transition-all hover:bg-[#c41534] hover:shadow-md active:scale-[0.985] disabled:cursor-not-allowed disabled:opacity-60"
             >
               <span>{busy ? "Autenticando…" : "Entrar no Tawper OS"}</span>
-              {!busy && <ArrowRight size={16} />}
+              {!busy && <ArrowRight size={16} className="transition-transform group-hover:translate-x-0.5" />}
             </button>
           </form>
 
