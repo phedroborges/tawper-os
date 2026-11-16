@@ -69,6 +69,6 @@ export function invalidateTeam() {
 }
 
 /** Pessoa ativa da equipe; undefined se não existe ou foi desativada. */
-export async function activeMember(id: string): Promise<TeamMember | undefined> {
-  return (await loadTeam()).find((member) => member.id === id && member.ativo);
+export async function activeMember(id: string, fresh = false): Promise<TeamMember | undefined> {
+  return (await loadTeam(fresh)).find((member) => member.id === id && member.ativo);
 }

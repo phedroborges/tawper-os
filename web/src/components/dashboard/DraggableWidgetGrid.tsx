@@ -170,6 +170,40 @@ export function DraggableWidgetGrid({
 
   return (
     <div className={cn("space-y-3", className)}>
+      {/* Barra no topo para adicionar blocos ocultos de volta ou restaurar o layout padrão */}
+      {(hiddenDefs.length > 0 || isCustomized) && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-[8px] border border-dashed border-navy/25 bg-soft/60 px-3.5 py-2 text-[12px] text-muted">
+          <div className="flex flex-wrap items-center gap-1.5">
+            {hiddenDefs.length > 0 ? (
+              <>
+                <span className="font-medium text-ink">Blocos ocultos (clique para adicionar de volta):</span>
+                {hiddenDefs.map((d) => (
+                  <button
+                    key={d.id}
+                    type="button"
+                    onClick={() => toggleHidden(d.id)}
+                    className="inline-flex items-center gap-1 rounded-[5px] border border-navy/25 bg-white px-2.5 py-1 text-[11.5px] font-semibold text-navy shadow-2xs transition hover:border-navy hover:bg-navy hover:text-white"
+                  >
+                    <Eye size={12} /> + {d.title}
+                  </button>
+                ))}
+              </>
+            ) : (
+              <span>Layout personalizado salvo no seu perfil.</span>
+            )}
+          </div>
+          {isCustomized && (
+            <button
+              type="button"
+              onClick={resetAll}
+              className="inline-flex items-center gap-1 rounded-[5px] border border-line bg-white px-2.5 py-1 text-[11.5px] font-medium text-ink hover:border-navy/30 hover:text-navy"
+            >
+              <RotateCcw size={12} /> Restaurar padrão
+            </button>
+          )}
+        </div>
+      )}
+
       <div className="grid grid-cols-12 gap-4">
         {visibleIds.map((id) => {
           const def = defById.get(id);
@@ -277,40 +311,6 @@ export function DraggableWidgetGrid({
           );
         })}
       </div>
-
-      {/* Barra discreta para restaurar widgets ocultos ou voltar ao layout padrão */}
-      {(hiddenDefs.length > 0 || isCustomized) && (
-        <div className="flex flex-wrap items-center justify-between gap-2 rounded-[8px] border border-dashed border-line bg-soft/40 px-3.5 py-2 text-[12px] text-muted">
-          <div className="flex flex-wrap items-center gap-1.5">
-            {hiddenDefs.length > 0 ? (
-              <>
-                <span>Blocos ocultos:</span>
-                {hiddenDefs.map((d) => (
-                  <button
-                    key={d.id}
-                    type="button"
-                    onClick={() => toggleHidden(d.id)}
-                    className="inline-flex items-center gap-1 rounded-[5px] border border-line bg-white px-2 py-0.5 text-[11.5px] font-medium text-ink hover:border-navy/40 hover:text-navy"
-                  >
-                    <Eye size={11} /> {d.title}
-                  </button>
-                ))}
-              </>
-            ) : (
-              <span>Layout personalizado salvo no seu perfil.</span>
-            )}
-          </div>
-          {isCustomized && (
-            <button
-              type="button"
-              onClick={resetAll}
-              className="inline-flex items-center gap-1 rounded-[5px] px-2 py-0.5 text-[11.5px] font-medium text-muted hover:bg-white hover:text-ink"
-            >
-              <RotateCcw size={12} /> Restaurar padrão
-            </button>
-          )}
-        </div>
-      )}
     </div>
   );
 }

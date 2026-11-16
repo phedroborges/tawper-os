@@ -16,5 +16,10 @@ export async function GET(request: Request) {
   const { email: _email, ativo: _ativo, ...user } = member;
   void _email;
   void _ativo;
-  return NextResponse.json({ authenticated: true, enforced: authEnforced(), user, session: { userId: session.userId, role: member.role } });
+  return NextResponse.json({
+    authenticated: true,
+    enforced: authEnforced(),
+    user,
+    session: { userId: session.userId, role: member.role, isAdmin: Boolean(member.isAdmin || member.role === "admin") },
+  });
 }

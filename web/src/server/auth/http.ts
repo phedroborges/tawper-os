@@ -7,7 +7,7 @@ import { activeMember, supabaseOn } from "./team";
 export async function withSession(request: Request): Promise<Session> {
   const session = requireSession(request);
   if (!supabaseOn()) return session;
-  const member = await activeMember(session.userId);
+  const member = await activeMember(session.userId, !session.isAdmin);
   if (!member) throw new AuthError("Seu acesso foi desativado. Fale com o administrador.");
   return { ...session, role: member.role, isAdmin: Boolean(member.isAdmin || member.role === "admin") };
 }

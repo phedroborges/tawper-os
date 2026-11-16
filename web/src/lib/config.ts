@@ -188,6 +188,30 @@ export function parseConfig(raw: Partial<Record<keyof AppConfig, unknown>>): App
     typeof rawReg.meta === "number" && rawReg.meta > 0
       ? { meta: Math.round(rawReg.meta), por: regPor, porVendedor: regPorVendedor }
       : undefined;
+
+  const rawPrem = obj(goals.premiacao);
+  const hasPrem =
+    typeof rawPrem.pesoVendas === "number" ||
+    typeof rawPrem.pesoAtividades === "number" ||
+    typeof rawPrem.pesoRegistros === "number" ||
+    typeof rawPrem.pesoQualidadeIA === "number";
+  const numClamp = (v: unknown, fallback: number, min = 0, max = 100) =>
+    typeof v === "number" && Number.isFinite(v) ? Math.max(min, Math.min(max, Math.round(v))) : fallback;
+  const premiacao: AwardWeightsConfig | undefined = hasPrem
+    ? {
+        pesoVendas: numClamp(rawPrem.pesoVendas, 40),
+        pesoAtividades: numClamp(rawPrem.pesoAtividades, 20),
+        pesoRegistros: numClamp(rawPrem.pesoRegistros, 20),
+        pesoQualidadeIA: numClamp(rawPrem.pesoQualidadeIA, 20),
+        metaQualidadeIA: numClamp(rawPrem.metaQualidadeIA, 80),
+        metaConversasWhatsApp: numClamp(rawPrem.metaConversasWhatsApp, 15, 1, 500),
+        metaPontualidade: numClamp(rawPrem.metaPontualidade, 80),
+        ...(typeof rawPrem.premioDescricao === "string" && rawPrem.premioDescricao.trim()
+          ? { premioDescricao: rawPrem.premioDescricao.trim().slice(0, 160) }
+          : {}),
+      }
+    : undefined;
+
   return {
     stageRules: obj(raw.stageRules) as AppConfig["stageRules"],
     activityRules: obj(raw.activityRules) as AppConfig["activityRules"],
@@ -200,6 +224,7 @@ export function parseConfig(raw: Partial<Record<keyof AppConfig, unknown>>): App
             participantes: Array.isArray(goals.participantes) ? goals.participantes.filter((x): x is string => typeof x === "string") : [],
             atividades: Array.isArray(goals.atividades) ? (goals.atividades as ActivityTarget[]) : [],
             ...(registros ? { registros } : {}),
+            ...(premiacao ? { premiacao } : {}),
           }
         : null,
     remindersOff: Array.isArray(raw.remindersOff) ? raw.remindersOff.filter((x): x is string => typeof x === "string") : [],
