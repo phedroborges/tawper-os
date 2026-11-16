@@ -101,7 +101,7 @@ export async function getDbHealth(): Promise<DbHealth> {
 
 export async function loadCrmSnapshot(): Promise<CrmSlice> {
   const sb = getSupabaseAdmin();
-  const [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes, membershipsRes, profilesRes, funnelsRes, stageReqsRes, reqValsRes, historyRes] = await Promise.all([
+  const [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes, membershipsRes, profilesRes, funnelsRes, stageReqsRes, reqValsRes, historyRes, quotes, routes, detailRows] = await Promise.all([
     pagedRes("companies", "*", { order: "created_at", notStatus: "merged" }),
     pagedRes("contacts", "*", { order: "created_at" }),
     pagedRes("opportunities", "*", { order: "created_at" }),
@@ -113,6 +113,9 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
     sb.from("stage_requirements").select("id, key").eq("organization_id", TAWPER_ORG_ID),
     pagedRes("opportunity_requirement_values", "opportunity_id, requirement_id, is_met", { order: "updated_at" }),
     sb.from("opportunity_stage_history").select("opportunity_id, note").is("left_at", null),
+    listQuotes(),
+    loadRoutes(),
+    loadDealDetailRows(),
   ]);
 
   for (const r of [companiesRes, contactsRes, oppsRes, stagesRes, activitiesRes]) {
@@ -286,8 +289,7 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
   }));
 
   void ownerToDemo;
-  const [quotes, routes] = await Promise.all([listQuotes(), loadRoutes()]);
-  const extra = await loadDealDetails({ companies, deals, users, stageKey, stagesRows: stagesRes.data ?? [] });
+  const extra = mapDealDetails({ companies, deals, users, stageKey, stagesRows: stagesRes.data ?? [] }, detailRows);
   return { companies: extra.companies, contacts, deals: extra.deals, activities, users, quotes, routes, interactions: extra.interactions, audit: extra.audit, strategies: extra.strategies, strategyHistory: extra.strategyHistory };
 }
 
@@ -309,17 +311,11 @@ export function invalidateCrmReadCache() {
 }
 
 async function buildCrmBootstrap(): Promise<CrmBootstrap> {
-  const healthPromise = getDbHealth();
-  const operatorsPromise = ensureOperators();
-  const snapshotPromise = loadCrmSnapshot();
-  const health = await healthPromise;
-  if (!health.ok) {
-    void operatorsPromise.catch(() => undefined);
-    void snapshotPromise.catch(() => undefined);
-    return { health, snapshot: null, actorMap: null };
-  }
   try {
-    const [actorMap, snapshot, config] = await Promise.all([operatorsPromise, snapshotPromise, loadConfigSafe()]);
+    const [health, actorMap, snapshot, config] = await Promise.all([
+      getDbHealth(), ensureOperators(), loadCrmSnapshot(), loadConfigSafe(),
+    ]);
+    if (!health.ok) return { health, snapshot: null, actorMap: null };
     applyStageRules(config.stageRules);
     return { health, snapshot, actorMap, config };
   } catch (e) {
@@ -377,8 +373,7 @@ async function pagedRes(table: string, columns: string, opts: Parameters<typeof 
 }
 
 /** Histórico de etapas, critérios cumpridos, espera, estratégia, linha do tempo e auditoria: tudo vem do banco. */
-async function loadDealDetails(input: { companies: Company[]; deals: Deal[]; users: User[]; stageKey: Map<string, string>; stagesRows: Row[] }) {
-  const { stageKey } = input;
+async function loadDealDetailRows() {
   const org = TAWPER_ORG_ID;
   const [history, standbys, strategies, versions, interactions, audit] = await Promise.all([
     selectPaged("opportunity_stage_history", "opportunity_id, stage_id, entered_at, left_at, entered_by, actor_type", { order: "entered_at" }),
@@ -389,6 +384,12 @@ async function loadDealDetails(input: { companies: Company[]; deals: Deal[]; use
     getSupabaseAdmin().from("audit_events").select("*").eq("organization_id", org).order("occurred_at", { ascending: false }).limit(800),
   ]);
   for (const r of [standbys, strategies, versions, interactions, audit]) if (r.error) throw new Error(r.error.message);
+  return { history, standbys, strategies, versions, interactions, audit };
+}
+
+function mapDealDetails(input: { companies: Company[]; deals: Deal[]; users: User[]; stageKey: Map<string, string>; stagesRows: Row[] }, rows: Awaited<ReturnType<typeof loadDealDetailRows>>) {
+  const { stageKey } = input;
+  const { history, standbys, strategies, versions, interactions, audit } = rows;
 
   const historyBy = new Map<string, Deal["history"]>();
   for (const h of history) {

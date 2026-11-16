@@ -81,8 +81,7 @@ function Tile({
 /** Linha da agenda: hora, tipo em destaque, cliente, atalho de zap, reagendar e concluir. */
 function AgendaRow({ a, late }: { a: Activity; late?: boolean }) {
   const company = useStore((s) => s.companies.find((c) => c.id === a.companyId));
-  const contacts = useStore((s) => s.contacts.filter((c) => c.companyId === a.companyId && c.ativo));
-  const contact = contacts[0];
+  const contact = useStore((s) => s.contacts.find((c) => c.companyId === a.companyId && c.ativo));
   const { open, openInbox } = useUI();
   return (
     <li className="group flex flex-wrap items-center gap-3 border-b border-line/70 px-4 py-2.5 last:border-b-0 hover:bg-soft/40">

@@ -47,3 +47,18 @@ Plano de teste: lint, typecheck, testes, build e homologação dos fluxos com da
 Plano de rollback: publicar a versão anterior; dados preservados.
 Aprovador: solicitação explícita de Phedro Borges nesta sessão.
 ```
+
+
+```text
+ID: SM-2026-11-16-001
+Data: 16/11/2026
+Solicitante: Phedro Borges
+Problema observado: SQL de demonstração falha em demo_clientes, usa limpeza destrutiva e o carregamento inicial demora 3–5 segundos; relato de queda após ativar RLS.
+Decisão anterior afetada: antecipação de manutenção da demonstração (F2/F5); F0 continua ativa, sem aprovação de novos gates.
+Opção escolhida: carga aditiva, sem alterar dados existentes, metas, usuários ou RLS; consultas independentes do bootstrap em paralelo. Não desativar segurança sem diagnóstico.
+Plano de migration/backfill: nenhuma migration de produção nesta etapa; corrigir o gerador e validar a carga antes de aplicar. O projeto conectado ao app não consta no conector Supabase deste chat.
+Plano de teste: leitura real do CRM sem escrita, cálculos das telas, teste de concorrência e erros, typecheck e lint; verificar idempotência da carga em banco descartável.
+Plano de rollback: reverter arquivos do app; não remover dados já existentes.
+Aprovador: solicitação explícita de Phedro Borges nesta sessão.
+Evidências iniciais: API /api/health publicada responde 200; leitura administrativa encontra 79 empresas, 2.632 atividades e 2.843 eventos de auditoria. Catálogo consultado pelo SQL Editor: RLS ativo e políticas presentes nas seis tabelas principais; nenhuma alteração de RLS necessária. Queda reproduzida no Chrome: React #185 em AgendaRow (seletor filter retorna array novo). Corrigido para find, preservando a seleção do primeiro contato ativo. Testes: 221 aprovados; typecheck, lint e build aprovados. Carga aditiva validada em PGlite: 79 clientes novos, cliente preexistente preservado e repetição sem mudanças nas contagens de empresas, contatos, tarefas, oportunidades, auditoria, registros IA e rotas. Bootstrap real medido em cerca de 2,4 s após paralelização (antes, cerca de 4 s).
+```
