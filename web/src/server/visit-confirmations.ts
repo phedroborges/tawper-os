@@ -5,6 +5,7 @@ import { TAWPER_ORG_ID } from "@/lib/supabase/admin";
 import { loadScope } from "./ai/agent/tools/shared";
 import { dueFrom, fmtWhen } from "./ai/agent/dates";
 import { sendWhatsAppAgentText } from "./ai/whatsapp/stevo";
+import { loadTeam } from "./auth/team";
 import { askJSON } from "./ai/openai";
 import type { AgentContext } from "./ai/agent/types";
 
@@ -292,6 +293,28 @@ export async function processVisitCommunications() {
         ) {
           await sql`update public.visit_communication_jobs set status='failed',error='Visita encerrada antes do envio',finished_at=now() where id=${job.id}`;
           continue;
+        }
+        const member = (await loadTeam(true)).find(
+          (m) =>
+            m.id === v.seller_id &&
+            m.ativo &&
+            canonicalWhatsApp(m.phone) === v.seller_phone,
+        );
+        if (!member)
+          throw new Error(
+            "Vendedor desativado ou telefone alterado; confira antes de enviar.",
+          );
+        if (job.kind === "client") {
+          const [contact] =
+            await sql`select whatsapp_e164,is_active,contact_allowed from public.contacts where id=${v.contact_id} and company_id=${v.company_id} and organization_id=${TAWPER_ORG_ID}`;
+          if (
+            !contact?.is_active ||
+            !contact.contact_allowed ||
+            canonicalWhatsApp(contact.whatsapp_e164 ?? "") !== v.client_phone
+          )
+            throw new Error(
+              "Contato alterado ou sem autorização para mensagens.",
+            );
         }
         const sent = await sendWhatsAppAgentText(job.phone, job.body);
         await sql.begin(async (tx) => {
