@@ -678,22 +678,22 @@ export function buildTawperPresentationDeck(
 
 /* Slides 05 e 06: Portfólio Completo de Produtos, Equipamentos e Soluções */
 .proposal-portfolio-grid{flex:1;min-height:0;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:repeat(3,1fr);gap:16px 26px}
-.portfolio-item-card{display:flex;align-items:stretch;gap:16px;background:var(--paper);border:1px solid var(--line);border-top:3px solid var(--blue);padding:12px 16px;min-height:0;overflow:hidden}
+.portfolio-item-card{display:flex;align-items:stretch;gap:18px;background:var(--paper);border:1px solid var(--line);border-top:4px solid var(--blue);padding:14px 18px;min-height:0;overflow:hidden}
 .portfolio-item-card.accent-red{border-top-color:var(--red)}
 .portfolio-item-card.accent-orange{border-top-color:var(--orange)}
-.portfolio-thumb{position:relative;width:138px;flex-shrink:0;background:#fff;border:1px solid var(--line);overflow:hidden;display:flex;align-items:center;justify-content:center}
-.portfolio-thumb img{width:100%;height:100%;object-fit:cover;display:block}
+.portfolio-thumb{position:relative;width:168px;flex-shrink:0;background:#fff;border:1px solid var(--line);overflow:hidden;display:flex;align-items:center;justify-content:center;padding:6px}
+.portfolio-thumb img{width:100%;height:100%;object-fit:contain;display:block}
 .portfolio-icon-badge{position:absolute;left:6px;top:6px;width:30px;height:30px;background:var(--ink);color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 4px 10px rgba(0,0,0,.22)}
 .portfolio-item-card.accent-red .portfolio-icon-badge{background:var(--red)}
 .portfolio-item-card.accent-orange .portfolio-icon-badge{background:var(--orange)}
 .portfolio-item-card.accent-blue .portfolio-icon-badge{background:var(--blue)}
 .portfolio-num-badge{position:absolute;right:6px;bottom:6px;background:#141d35d9;color:#fff;font-size:12px;font-weight:800;letter-spacing:.08em;padding:2px 7px}
 .portfolio-copy{flex:1;min-width:0;display:flex;flex-direction:column;justify-content:center}
-.portfolio-tag{display:block;font-size:11.5px;font-weight:800;letter-spacing:.11em;color:var(--red);text-transform:uppercase;margin-bottom:4px}
+.portfolio-tag{display:block;font-size:12px;font-weight:800;letter-spacing:.1em;color:var(--red);text-transform:uppercase;margin-bottom:5px}
 .portfolio-item-card.accent-orange .portfolio-tag{color:var(--orange)}
 .portfolio-item-card.accent-blue .portfolio-tag{color:var(--blue)}
-.portfolio-copy h3{font-size:21px!important;line-height:1.16!important;font-weight:800!important;color:var(--ink);letter-spacing:-.025em}
-.portfolio-copy p{font-size:15.5px!important;line-height:1.32!important;color:var(--muted);margin-top:5px}
+.portfolio-copy h3{font-size:22px!important;line-height:1.18!important;font-weight:800!important;color:var(--ink);letter-spacing:-.025em}
+.portfolio-copy p{font-size:16.5px!important;line-height:1.36!important;color:var(--muted);margin-top:6px}
 .portfolio-summary-strip{flex-shrink:0;background:var(--ink);color:#fff;padding:11px 18px;border-left:5px solid var(--red);font-size:15.5px;line-height:1.35}
 .portfolio-summary-strip strong{color:#ff8da3}
 

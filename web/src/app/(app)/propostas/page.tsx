@@ -38,6 +38,7 @@ import {
   Field,
   Input,
   PageHeader,
+  Segmented,
   Select,
   Textarea,
 } from "@/components/ui/primitives";
@@ -52,7 +53,7 @@ import {
 } from "@/lib/proposal";
 import { openDealOf, visibleCompanies } from "@/lib/selectors";
 import { useCurrentUser, useStore } from "@/lib/store";
-import { buildTawperPresentationDeck } from "@/lib/tawper-presentation";
+import { buildTawperPresentationDeck, type PresentationDeckMode } from "@/lib/tawper-presentation";
 import type { Quote } from "@/lib/types";
 import { useUI } from "@/lib/ui-store";
 import { cn, normalize } from "@/lib/utils";
@@ -225,6 +226,7 @@ function PropostasInner() {
   const [busyPdf, setBusyPdf] = useState(false);
   const [savingQuote, setSavingQuote] = useState(false);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
+  const [deckMode, setDeckMode] = useState<PresentationDeckMode>("executive");
   const [activeSlideIndex, setActiveSlideIndex] = useState(0);
 
   const assetCacheRef = useRef<PdfAssetBundle | null>(null);
@@ -317,11 +319,11 @@ function PropostasInner() {
   const builtDeck = useMemo(() => {
     if (!draft) return null;
     return buildTawperPresentationDeck(draft, {
-      mode: "executive",
+      mode: deckMode,
       baseUrl: "/apresentacao-tawper",
       initialSlideIndex: 0,
     });
-  }, [draft]);
+  }, [draft, deckMode]);
 
   const patchDraft = (updater: (cur: ProposalDocumentInput) => ProposalDocumentInput) => {
     if (!canEditStandard || !company || !draft) return;
@@ -635,7 +637,7 @@ function PropostasInner() {
   const totalPdfPages = 9 + (draft?.orcamento.paginasAnexo || 0);
 
   return (
-    <div className="mx-auto max-w-6xl space-y-6 pb-10">
+    <div className="space-y-5 pb-10">
       <PageHeader
         kicker="Comercial · Apresentação Oficial Tawper (9 Slides)"
         title="Gerador de Proposta Comercial Tawper"
@@ -886,7 +888,7 @@ function PropostasInner() {
                   />
                 </Field>
                 <Field label="Exibição de Valores">
-                  <div className="flex h-9 items-center rounded-[6px] border border-line bg-white px-3">
+                  <div className="flex h-10 items-center rounded-[6px] border border-line bg-white px-3">
                     <Checkbox
                       checked={draft.termos.mostrarValores}
                       onChange={(v) => patchTermos({ mostrarValores: v })}
@@ -955,7 +957,7 @@ function PropostasInner() {
                 <Field label="WhatsApp Comercial do Consultor">
                   <div
                     className={cn(
-                      "flex h-9 items-center justify-between rounded-[6px] border px-3 text-[13px]",
+                      "flex h-10 items-center justify-between rounded-[6px] border px-3 text-[13px]",
                       draft.vendedor.telefone
                         ? "border-line bg-soft/40 font-semibold text-ink"
                         : "border-warn/40 bg-warn-soft/50 text-warn",
@@ -1154,30 +1156,40 @@ function PropostasInner() {
         </div>
       )}
 
-      {/* PASSO 3: APRESENTAÇÃO HTML OFICIAL (9 SLIDES) + PDF */}
+      {/* PASSO 3: APRESENTAÇÃO HTML OFICIAL + PDF */}
       {step === 3 && company && draft && builtDeck && (
         <div className="space-y-4">
-          {/* Barra de ações principal */}
           <Card className="overflow-hidden border-line bg-white shadow-sm">
-            <div className="flex flex-wrap items-center justify-between gap-4 border-t-4 border-brand bg-navy px-6 py-4 text-white">
+            <div className="flex flex-wrap items-center justify-between gap-4 border-t-4 border-brand border-b border-b-line bg-white px-5 py-4">
               <div>
-                <div className="flex items-center gap-2">
-                  <CheckCircle2 size={15} className="text-brand" />
-                  <span className="text-[11px] font-extrabold tracking-[0.14em] text-white/85 uppercase">
-                    Apresentação Oficial Tawper · {draft.termos.codigo} · 9 Slides
+                <div className="flex flex-wrap items-center gap-2">
+                  <CheckCircle2 size={15} className="text-ok" />
+                  <span className="text-[11px] font-extrabold tracking-[0.12em] text-navy uppercase">
+                    Apresentação Oficial Tawper · {draft.termos.codigo} · {builtDeck.slides.length} Slides
                   </span>
                 </div>
-                <h2 className="mt-1 text-[19px] font-extrabold tracking-tight">
+                <h2 className="mt-1 text-[18px] font-bold tracking-tight text-ink">
                   {draft.cliente.nomeFantasia}{" "}
-                  <span className="text-[13px] font-normal text-white/75">
+                  <span className="text-[13px] font-normal text-muted">
                     · A/C {draft.cliente.destinatarioNome} · Consultor: {draft.vendedor.nome}
                   </span>
                 </h2>
               </div>
 
               <div className="flex flex-wrap items-center gap-2">
+                <Segmented
+                  value={deckMode}
+                  onChange={(nextMode) => {
+                    setDeckMode(nextMode);
+                    setActiveSlideIndex(0);
+                  }}
+                  options={[
+                    { value: "executive", label: "Executiva (9 slides)" },
+                    { value: "complete", label: "Completa (34 slides)" },
+                  ]}
+                />
                 <Button variant="outline" size="sm" onClick={printHtmlPresentation}>
-                  <Printer size={14} /> Salvar / Imprimir Apresentação (HTML → PDF)
+                  <Printer size={14} /> Imprimir / HTML → PDF
                 </Button>
                 <Button
                   variant="primary"
@@ -1189,11 +1201,11 @@ function PropostasInner() {
                   {busyPdf
                     ? "Gerando PDF…"
                     : attachedErp
-                      ? `Baixar PDF + Orçamento ERP (${totalPdfPages} págs.)`
-                      : "Baixar PDF Direto (9 slides)"}
+                      ? `Baixar PDF + ERP (${totalPdfPages} págs.)`
+                      : "Baixar PDF (9 slides)"}
                 </Button>
                 <Button
-                  variant={already ? "success" : "dark"}
+                  variant={already ? "success" : "outline"}
                   size="sm"
                   disabled={!deal || already || savingQuote}
                   onClick={() => void saveAndMarkSent()}
@@ -1204,34 +1216,55 @@ function PropostasInner() {
                     : already
                       ? "Marcada como enviada"
                       : attachedErp
-                        ? "Salvar orçamento & marcar enviada"
+                        ? "Salvar orçamento & enviar"
                         : "Marcar enviada"}
                 </Button>
               </div>
             </div>
 
-            {/* Atalhos rápidos dos 9 slides da apresentação oficial */}
+            {/* Atalhos rápidos dos slides da apresentação oficial */}
             <div className="flex flex-wrap items-center justify-between gap-2 border-b border-line bg-soft/40 px-4 py-2.5">
-              <div className="flex flex-wrap items-center gap-1.5">
-                {builtDeck.slides.map((sl) => (
-                  <button
-                    key={sl.id}
-                    type="button"
-                    onClick={() => {
-                      setActiveSlideIndex(sl.index);
-                      sendDeckCommand({ type: "TAWPER_DECK_GOTO", index: sl.index });
+              {builtDeck.slides.length <= 12 ? (
+                <div className="flex flex-wrap items-center gap-1.5">
+                  {builtDeck.slides.map((sl) => (
+                    <button
+                      key={sl.id}
+                      type="button"
+                      onClick={() => {
+                        setActiveSlideIndex(sl.index);
+                        sendDeckCommand({ type: "TAWPER_DECK_GOTO", index: sl.index });
+                      }}
+                      className={cn(
+                        "rounded-[5px] px-2.5 py-1 text-[11.5px] font-semibold transition-colors",
+                        activeSlideIndex === sl.index
+                          ? "bg-brand text-white"
+                          : "border border-line bg-white text-ink hover:border-navy/40",
+                      )}
+                    >
+                      {String(sl.index + 1).padStart(2, "0")} · {sl.title.split("·")[0].trim()}
+                    </button>
+                  ))}
+                </div>
+              ) : (
+                <div className="flex items-center gap-2">
+                  <span className="text-[12px] font-medium text-muted">Ir para slide:</span>
+                  <Select
+                    value={String(activeSlideIndex)}
+                    onChange={(e) => {
+                      const idx = Number(e.target.value) || 0;
+                      setActiveSlideIndex(idx);
+                      sendDeckCommand({ type: "TAWPER_DECK_GOTO", index: idx });
                     }}
-                    className={cn(
-                      "rounded-[5px] px-2.5 py-1 text-[11.5px] font-bold transition-colors",
-                      activeSlideIndex === sl.index
-                        ? "bg-brand text-white"
-                        : "bg-white text-ink border border-line hover:border-navy/40",
-                    )}
+                    className="h-8 w-auto min-w-[260px] text-[12px]"
                   >
-                    {String(sl.index + 1).padStart(2, "0")} · {sl.chapter}
-                  </button>
-                ))}
-              </div>
+                    {builtDeck.slides.map((sl) => (
+                      <option key={sl.id} value={String(sl.index)}>
+                        {String(sl.index + 1).padStart(2, "0")} / {builtDeck.slides.length} — {sl.title}
+                      </option>
+                    ))}
+                  </Select>
+                </div>
+              )}
               <div className="flex items-center gap-1.5">
                 <Button
                   variant="ghost"
@@ -1249,8 +1282,8 @@ function PropostasInner() {
               </div>
             </div>
 
-            {/* Palco 16:9 com a apresentação HTML original exata */}
-            <div className="relative aspect-video w-full overflow-hidden bg-[#0c101a]">
+            {/* Palco 16:9 + barra de controles sem faixas laterais */}
+            <div className="relative aspect-[16/9.6] min-h-[540px] w-full overflow-hidden bg-[#0c101a]">
               <iframe
                 ref={deckFrameRef}
                 srcDoc={builtDeck.html}
