@@ -126,7 +126,41 @@ export function Kicker({ children, className }: { children: ReactNode; className
   return <div className={cn("label", className)}>{children}</div>;
 }
 
-export function Avatar({ name, initials, color = "#2b4a78", size = 28, className }: { name: string; initials: string; color?: string; size?: number; className?: string }) {
+export function Avatar({
+  name,
+  initials,
+  color = "#2b4a78",
+  avatarUrl,
+  size = 28,
+  className,
+}: {
+  name: string;
+  initials: string;
+  color?: string;
+  avatarUrl?: string | null;
+  size?: number;
+  className?: string;
+}) {
+  if (avatarUrl) {
+    return (
+      <span
+        title={name}
+        className={cn(
+          "relative inline-block shrink-0 overflow-hidden rounded-full bg-soft ring-1 ring-black/10",
+          className,
+        )}
+        style={{ width: size, height: size }}
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={avatarUrl}
+          alt={name}
+          className="h-full w-full object-cover"
+          draggable={false}
+        />
+      </span>
+    );
+  }
   return (
     <span
       title={name}

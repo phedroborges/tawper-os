@@ -76,7 +76,7 @@ export function UserAvatar({ userId, size = 26 }: { userId: string; size?: numbe
     );
   const u = users.find((x) => x.id === userId);
   if (!u) return null;
-  return <Avatar name={u.name} initials={u.initials} color={u.color} size={size} />;
+  return <Avatar name={u.name} initials={u.initials} color={u.color} avatarUrl={u.avatarUrl} size={size} />;
 }
 
 export function userName(users: User[], id: string) {

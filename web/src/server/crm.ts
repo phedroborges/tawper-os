@@ -108,7 +108,7 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
     sb.from("stages").select("id, key, funnel_id").eq("organization_id", TAWPER_ORG_ID),
     pagedRes("activities", "*", { order: "due_at", desc: true, max: 6000 }),
     sb.from("memberships").select("profile_id, role").eq("organization_id", TAWPER_ORG_ID).eq("is_active", true),
-    sb.from("profiles").select("id, full_name, short_name, title, phone_e164, avatar_color"),
+    sb.from("profiles").select("id, email, full_name, short_name, title, phone_e164, avatar_color, avatar_url"),
     sb.from("funnels").select("id, key").eq("organization_id", TAWPER_ORG_ID),
     sb.from("stage_requirements").select("id, key").eq("organization_id", TAWPER_ORG_ID),
     pagedRes("opportunity_requirement_values", "opportunity_id, requirement_id, is_met", { order: "updated_at" }),
@@ -154,6 +154,8 @@ export async function loadCrmSnapshot(): Promise<CrmSlice> {
           title: p?.title ?? "",
           initials: short.slice(0, 2).toUpperCase(),
           color: p?.avatar_color ?? "#123a7b",
+          avatarUrl: (p?.avatar_url as string) || undefined,
+          email: (p?.email as string) || undefined,
           phone,
           regions: [],
         };

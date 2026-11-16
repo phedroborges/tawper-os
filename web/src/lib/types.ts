@@ -11,6 +11,8 @@ export interface User {
   title: string;
   initials: string;
   color: string;
+  avatarUrl?: string;
+  email?: string;
   phone: string;
   regions: string[];
 }

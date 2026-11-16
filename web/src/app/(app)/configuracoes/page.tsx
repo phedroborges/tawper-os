@@ -1,8 +1,9 @@
 "use client";
 
-import { KeyRound, Save } from "lucide-react";
+import { KeyRound, Mail, Save, ShieldCheck } from "lucide-react";
 import { useState } from "react";
-import { Avatar, Button, Card, CardHeader, Field, Input, PageHeader } from "@/components/ui/primitives";
+import { AvatarPicker } from "@/components/ui/AvatarPicker";
+import { Badge, Button, Card, CardHeader, Field, Input, PageHeader } from "@/components/ui/primitives";
 import { formatWhatsApp } from "@/lib/br-ids";
 import { ROLE_LABEL } from "@/lib/constants";
 import { refreshCrm, useCurrentUser } from "@/lib/store";
@@ -15,21 +16,36 @@ async function post(body: Record<string, unknown>) {
   if (!res.ok) throw new Error(data.error || "Não foi possível salvar.");
 }
 
-/** Minha conta: a própria pessoa troca nome, telefone e senha, sem depender do administrador. */
+/** Minha conta: cada pessoa gerencia seu próprio perfil (foto, nome, cargo, WhatsApp) e senha. */
 export default function MinhaContaPage() {
   const user = useCurrentUser();
   const toast = useUI((s) => s.toast);
   const perfil = useAction();
   const senha = useAction();
-  const [f, setF] = useState({ nome: user.name, curto: user.short, whatsapp: formatWhatsApp(user.phone) });
+  const [f, setF] = useState({
+    nome: user.name,
+    curto: user.short,
+    cargo: user.title,
+    whatsapp: formatWhatsApp(user.phone),
+    avatarUrl: user.avatarUrl,
+    cor: user.color,
+  });
   const [p, setP] = useState({ atual: "", nova: "", repete: "" });
   const senhaOk = p.atual.length > 0 && p.nova.length >= 8 && p.nova === p.repete && p.nova !== p.atual;
 
   const savePerfil = () =>
     void perfil.run(async () => {
-      await post({ acao: "perfil", ...f });
+      await post({
+        acao: "perfil",
+        nome: f.nome,
+        curto: f.curto,
+        cargo: f.cargo,
+        whatsapp: f.whatsapp,
+        avatarUrl: f.avatarUrl ?? null,
+        cor: f.cor,
+      });
       await refreshCrm().catch(() => undefined);
-      toast("Dados atualizados", { sub: "Nome e telefone já valem para o agente do WhatsApp" });
+      toast("Perfil atualizado", { sub: "Sua foto e seus dados já aparecem em todo o Tawper OS" });
     });
 
   const saveSenha = () =>
@@ -40,19 +56,38 @@ export default function MinhaContaPage() {
     });
 
   return (
-    <div className="max-w-3xl">
-      <PageHeader title="Minha conta" subtitle="Seus dados de acesso. O telefone é o número em que você recebe os lembretes e fala com o agente." />
-      <Card className="mb-5">
-        <div className="flex items-center gap-3 border-b border-line px-4 py-4">
-          <Avatar name={user.name} initials={user.initials} color={user.color} size={44} />
-          <div className="min-w-0">
-            <div className="truncate text-[15px] font-semibold text-ink">{user.name}</div>
-            <div className="text-[12.5px] text-muted">
-              {ROLE_LABEL[user.role]}
-              {user.title ? ` · ${user.title}` : ""}
+    <div className="max-w-3xl space-y-5">
+      <PageHeader
+        title="Meu perfil"
+        subtitle="Personalize sua foto, seus dados de contato e sua senha. O WhatsApp é o número usado para falar com o agente e assinar suas propostas."
+      />
+
+      <Card>
+        <div className="border-b border-line px-4 py-4">
+          <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center gap-2">
+              <Badge tone={user.role === "admin" ? "navy" : "neutral"}>
+                <ShieldCheck size={12} /> {ROLE_LABEL[user.role]}
+              </Badge>
+              {user.email && (
+                <span className="inline-flex items-center gap-1.5 text-[12px] text-muted">
+                  <Mail size={12} /> {user.email}
+                </span>
+              )}
             </div>
           </div>
+
+          <AvatarPicker
+            name={f.nome || user.name}
+            initials={user.initials}
+            color={f.cor}
+            avatarUrl={f.avatarUrl}
+            onChangeAvatar={(avatarUrl) => setF((prev) => ({ ...prev, avatarUrl }))}
+            onChangeColor={(cor) => setF((prev) => ({ ...prev, cor }))}
+            size={68}
+          />
         </div>
+
         <div className="grid gap-3 p-4 sm:grid-cols-2">
           <Field label="Nome completo" required>
             <Input value={f.nome} onChange={(e) => setF({ ...f, nome: e.target.value })} placeholder="Ex.: Paulo Henrique Souza" autoComplete="name" />
@@ -60,14 +95,18 @@ export default function MinhaContaPage() {
           <Field label="Como aparece no sistema" hint="nome curto">
             <Input value={f.curto} onChange={(e) => setF({ ...f, curto: e.target.value })} placeholder="Ex.: Paulo" />
           </Field>
+          <Field label="Cargo / Função" hint="aparece nas propostas e equipe">
+            <Input value={f.cargo} onChange={(e) => setF({ ...f, cargo: e.target.value })} placeholder="Ex.: Consultor Técnico Comercial" />
+          </Field>
           <Field label="WhatsApp" hint="celular com DDD">
             <Input value={f.whatsapp} inputMode="tel" maxLength={15} onChange={(e) => setF({ ...f, whatsapp: formatWhatsApp(e.target.value) })} placeholder="(64) 99999-9999" autoComplete="tel" />
           </Field>
         </div>
+
         <div className="flex items-center justify-end gap-3 border-t border-line px-4 py-3">
           {perfil.error && <span className="mr-auto text-[12.5px] font-medium text-brand">{perfil.error}</span>}
           <Button variant="primary" size="sm" onClick={savePerfil} disabled={!f.nome.trim() || perfil.busy}>
-            <Save size={14} /> {perfil.busy ? "Salvando…" : "Salvar dados"}
+            <Save size={14} /> {perfil.busy ? "Salvando…" : "Salvar perfil"}
           </Button>
         </div>
       </Card>

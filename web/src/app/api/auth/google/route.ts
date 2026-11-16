@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server";
+import { getSupabaseAdmin } from "@/lib/supabase/admin";
 import { getSupabaseAnon } from "@/lib/supabase/anon";
 import { AuthError, createSessionForUser, encodeSession, sessionCookie } from "@/server/auth/session";
-import { loadTeam } from "@/server/auth/team";
+import { invalidateTeam, loadTeam } from "@/server/auth/team";
 
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
@@ -56,7 +57,7 @@ export async function POST(request: Request) {
     }
 
     const auth = getSupabaseAnon();
-    let authUser: { id: string; email?: string | null } | null = null;
+    let authUser: { id: string; email?: string | null; user_metadata?: Record<string, unknown> } | null = null;
 
     if (accessToken) {
       const { data, error } = await auth.auth.getUser(accessToken);
@@ -94,6 +95,20 @@ export async function POST(request: Request) {
       throw new AuthError(
         `O acesso de ${member.name} (${emailLower}) está desativado. Solicite a aprovação ao Administrador.`
       );
+    }
+
+    const googleAvatar =
+      typeof authUser.user_metadata?.avatar_url === "string"
+        ? authUser.user_metadata.avatar_url
+        : typeof authUser.user_metadata?.picture === "string"
+          ? authUser.user_metadata.picture
+          : "";
+    if (!member.avatarUrl && googleAvatar.startsWith("https://")) {
+      await getSupabaseAdmin()
+        .from("profiles")
+        .update({ avatar_url: googleAvatar })
+        .eq("id", member.id)
+        .then(() => invalidateTeam(), () => undefined);
     }
 
     const session = createSessionForUser(member.id, member);

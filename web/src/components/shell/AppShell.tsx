@@ -172,7 +172,7 @@ function UserSwitcher() {
       className="w-64 py-1.5"
       trigger={(open) => (
         <button type="button" className={cn("flex items-center gap-2 rounded-[6px] py-1 pr-1.5 pl-1 hover:bg-soft", open && "bg-soft")}>
-          <Avatar name={user.name} initials={user.initials} color={user.color} size={30} />
+          <Avatar name={user.name} initials={user.initials} color={user.color} avatarUrl={user.avatarUrl} size={30} />
           <span className="hidden text-left leading-tight lg:block">
             <span className="block text-[12.5px] font-medium text-ink">{user.short}</span>
             <span className="block text-[11px] text-muted">{ROLE_LABEL[user.role]}</span>

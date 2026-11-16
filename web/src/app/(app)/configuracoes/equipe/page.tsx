@@ -2,6 +2,7 @@
 
 import { KeyRound, Pencil, Plus, UserCheck, UserX, Users } from "lucide-react";
 import { useEffect, useState } from "react";
+import { AvatarPicker } from "@/components/ui/AvatarPicker";
 import { Modal } from "@/components/ui/overlay";
 import { Avatar, Badge, Button, Card, Empty, Field, Input, PageHeader, Select } from "@/components/ui/primitives";
 import { formatWhatsApp } from "@/lib/br-ids";
@@ -131,7 +132,7 @@ function MemberList({ title, members, selfId, onDialog, onReactivate }: { title:
       <Card className="divide-y divide-line">
         {members.map((m) => (
           <div key={m.id} className="flex flex-wrap items-center gap-3 px-4 py-3">
-            <Avatar name={m.name} initials={m.initials} color={m.color} size={34} className={m.ativo ? "" : "opacity-50"} />
+            <Avatar name={m.name} initials={m.initials} color={m.color} avatarUrl={m.avatarUrl} size={38} className={m.ativo ? "" : "opacity-50"} />
             <div className="min-w-[200px] flex-1">
               <div className="flex flex-wrap items-center gap-1.5">
                 <span className="text-[14px] font-medium text-ink">{m.name}</span>
@@ -187,16 +188,19 @@ function MemberForm({ member, selfId, onClose, onSaved }: { member?: Member; sel
     papel: member?.role ?? "vendedor",
     whatsapp: member?.phone ? formatWhatsApp(member.phone) : "",
     senha: "",
+    avatarUrl: member?.avatarUrl as string | undefined,
+    cor: member?.color ?? "#123a7b",
   });
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
-  const set = (key: keyof typeof form) => (event: { target: { value: string } }) => setForm({ ...form, [key]: event.target.value });
+  const set = (key: "nome" | "curto" | "email" | "cargo" | "papel" | "whatsapp" | "senha") => (event: { target: { value: string } }) => setForm({ ...form, [key]: event.target.value });
 
   const submit = async () => {
     setBusy(true);
     setError("");
     try {
-      await call(member ? { acao: "editar", id: member.id, ...form } : { acao: "criar", ...form });
+      const payload = { ...form, avatarUrl: form.avatarUrl ?? null };
+      await call(member ? { acao: "editar", id: member.id, ...payload } : { acao: "criar", ...payload });
       await onSaved(member ? `${form.nome} atualizado` : `${form.nome} adicionado`, member ? undefined : `Entra com ${form.email} e a senha que você definiu.`);
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : "Não foi possível salvar.");
@@ -220,6 +224,18 @@ function MemberForm({ member, selfId, onClose, onSaved }: { member?: Member; sel
       }
     >
       <div className="grid gap-3">
+        <div className="rounded-[8px] border border-line bg-soft/40 px-3.5 py-3">
+          <AvatarPicker
+            name={form.nome || "Novo usuário"}
+            initials={(form.curto || form.nome || "US").slice(0, 2).toUpperCase()}
+            color={form.cor}
+            avatarUrl={form.avatarUrl}
+            onChangeAvatar={(avatarUrl) => setForm((prev) => ({ ...prev, avatarUrl }))}
+            onChangeColor={(cor) => setForm((prev) => ({ ...prev, cor }))}
+            size={56}
+            compact
+          />
+        </div>
         <div className="grid gap-3 sm:grid-cols-[2fr_1fr]">
           <Field label="Nome completo" required>
             <Input value={form.nome} onChange={set("nome")} />

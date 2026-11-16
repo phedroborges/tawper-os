@@ -25,6 +25,25 @@ function text(value: unknown, max = 120) {
   return typeof value === "string" ? value.trim().slice(0, max) : "";
 }
 
+function avatarUrl(value: unknown): string | null | undefined {
+  if (value === undefined) return undefined;
+  if (value === null || value === "") return null;
+  if (typeof value !== "string") fail("Foto de perfil inválida.");
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (trimmed.length > 400_000) fail("A imagem de perfil excede o tamanho máximo permitido.");
+  if (/^data:image\/(jpeg|jpg|png|webp);base64,[A-Za-z0-9+/=]+$/i.test(trimmed)) return trimmed;
+  if (/^https?:\/\/\S+$/i.test(trimmed) && trimmed.length <= 2000) return trimmed;
+  if (trimmed.startsWith("/") && trimmed.length <= 500) return trimmed;
+  fail("Formato de foto inválido. Envie uma imagem JPG, PNG ou WEBP.");
+}
+
+function avatarColor(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return /^#[0-9a-fA-F]{6}$/.test(trimmed) ? trimmed : undefined;
+}
+
 function role(value: unknown): User["role"] {
   return ROLES.includes(value as User["role"]) ? (value as User["role"]) : fail("Escolha o perfil de acesso.");
 }
@@ -90,8 +109,19 @@ export async function createMember(input: Record<string, unknown>) {
     fail(taken ? "Já existe um usuário com esse e-mail. Se ele foi desativado, reative na lista." : (created.error?.message ?? "Não foi possível criar o usuário."));
   }
   const id = created.data.user.id;
+  const parsedAvatar = avatarUrl(input.avatarUrl);
   const profile = await sb.from("profiles").upsert(
-    { id, email, full_name: name, short_name: short, title: text(input.cargo) || null, phone_e164: phone, avatar_color: COLORS[team.length % COLORS.length], is_active: true },
+    {
+      id,
+      email,
+      full_name: name,
+      short_name: short,
+      title: text(input.cargo) || null,
+      phone_e164: phone,
+      avatar_color: avatarColor(input.cor) ?? COLORS[team.length % COLORS.length],
+      avatar_url: parsedAvatar ?? null,
+      is_active: true,
+    },
     { onConflict: "id" },
   );
   if (profile.error) fail(profile.error.message);
@@ -109,10 +139,18 @@ export async function updateMember(actorId: string, input: Record<string, unknow
   const access = role(input.papel);
   if (id === actorId && access !== "admin") fail("Você não pode tirar o seu próprio acesso de administrador.");
   const sb = getSupabaseAdmin();
-  const profile = await sb
-    .from("profiles")
-    .update({ full_name: name, short_name: text(input.curto, 40) || name.split(" ")[0], title: text(input.cargo) || null, phone_e164: whatsapp(input.whatsapp, team, id) })
-    .eq("id", member.id);
+  const parsedAvatar = avatarUrl(input.avatarUrl);
+  const parsedColor = avatarColor(input.cor);
+  const updatePayload: Record<string, unknown> = {
+    full_name: name,
+    short_name: text(input.curto, 40) || name.split(" ")[0],
+    title: text(input.cargo) || null,
+    phone_e164: whatsapp(input.whatsapp, team, id),
+  };
+  if (parsedAvatar !== undefined) updatePayload.avatar_url = parsedAvatar;
+  if (parsedColor) updatePayload.avatar_color = parsedColor;
+
+  const profile = await sb.from("profiles").update(updatePayload).eq("id", member.id);
   if (profile.error) fail(profile.error.message);
   const membership = await sb.from("memberships").update({ role: access }).eq("organization_id", TAWPER_ORG_ID).eq("profile_id", member.id);
   if (membership.error) fail(membership.error.message);
@@ -176,14 +214,30 @@ export async function setMemberPassword(input: Record<string, unknown>) {
   if (updated.error) fail(updated.error.message);
 }
 
-/** Minha conta: a própria pessoa troca nome, nome curto e WhatsApp. Papel e cargo continuam com o administrador. */
+/** Minha conta: a própria pessoa troca nome, nome curto, cargo, WhatsApp, foto de perfil e cor. Papel continua com o administrador. */
 export async function updateOwnProfile(selfId: string, input: Record<string, unknown>) {
   const team = await loadTeam(true);
   const member = team.find((item) => item.id === selfId) ?? fail("Pessoa não encontrada.");
   const name = text(input.nome) || fail("Informe o nome.");
+  const parsedAvatar = avatarUrl(input.avatarUrl);
+  const parsedColor = avatarColor(input.cor);
+  const updatePayload: Record<string, unknown> = {
+    full_name: name,
+    short_name: text(input.curto, 40) || name.split(" ")[0],
+    phone_e164: whatsapp(input.whatsapp, team, member.id),
+  };
+  if (input.cargo !== undefined) {
+    updatePayload.title = text(input.cargo) || null;
+  }
+  if (parsedAvatar !== undefined) {
+    updatePayload.avatar_url = parsedAvatar;
+  }
+  if (parsedColor) {
+    updatePayload.avatar_color = parsedColor;
+  }
   const profile = await getSupabaseAdmin()
     .from("profiles")
-    .update({ full_name: name, short_name: text(input.curto, 40) || name.split(" ")[0], phone_e164: whatsapp(input.whatsapp, team, member.id) })
+    .update(updatePayload)
     .eq("id", member.id);
   if (profile.error) fail(profile.error.message);
   changed();

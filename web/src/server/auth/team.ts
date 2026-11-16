@@ -29,7 +29,7 @@ export async function loadTeam(fresh = false): Promise<TeamMember[]> {
   const sb = getSupabaseAdmin();
   const [members, profiles] = await Promise.all([
     sb.from("memberships").select("profile_id, role, is_active").eq("organization_id", TAWPER_ORG_ID),
-    sb.from("profiles").select("id, email, full_name, short_name, title, phone_e164, avatar_color, is_active"),
+    sb.from("profiles").select("id, email, full_name, short_name, title, phone_e164, avatar_color, avatar_url, is_active"),
   ]);
   if (members.error) throw new Error(members.error.message);
   if (profiles.error) throw new Error(profiles.error.message);
@@ -50,6 +50,7 @@ export async function loadTeam(fresh = false): Promise<TeamMember[]> {
         title: (p.title as string) ?? "",
         initials: initials(name),
         color: (p.avatar_color as string) ?? "#123a7b",
+        avatarUrl: ((p.avatar_url as string) ?? "") || undefined,
         phone,
         regions: [],
         email: String(p.email ?? ""),
