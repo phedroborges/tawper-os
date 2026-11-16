@@ -379,6 +379,8 @@ export default function DashboardPage() {
       subtitle: "Clique em qualquer indicador para abrir os clientes",
       defaultSize: "lg",
       allowedSizes: ["md", "lg"],
+      defaultRows: 2,
+      allowedRows: [1, 2],
       render: () => (
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 min-[1500px]:grid-cols-6">
@@ -644,6 +646,8 @@ export default function DashboardPage() {
       subtitle: "Clique no título da coluna para ordenar",
       defaultSize: "lg",
       allowedSizes: ["md", "lg"],
+      defaultRows: 3,
+      allowedRows: [2, 3, 4],
       render: () => (
         <div className="overflow-x-auto">
           <table className="w-full min-w-[960px] text-[13px] tabular-nums">

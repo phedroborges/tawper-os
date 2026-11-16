@@ -214,6 +214,8 @@ export default function MetasPage() {
       subtitle: awardCfg.premioDescricao || "Pontuação por Vendas + Atividades + Registros + Qualidade IA",
       defaultSize: "lg",
       allowedSizes: ["md", "lg"],
+      defaultRows: 3,
+      allowedRows: [2, 3, 4],
       headerRight: <Medal size={15} className="text-amber-500" />,
       render: () => (
         <div className="space-y-4">
@@ -335,6 +337,8 @@ export default function MetasPage() {
       subtitle: "Veja quem está mais ativo todos os dias no CRM e em campo",
       defaultSize: "md",
       allowedSizes: ["sm", "md", "lg"],
+      defaultRows: 2,
+      allowedRows: [1, 2, 3],
       headerRight: <Sparkles size={14} className="text-navy-3" />,
       render: () => (
         <DotMatrixChart
@@ -350,6 +354,8 @@ export default function MetasPage() {
       subtitle: `${PERIOD_LABEL[period]} atual · evolução dos últimos 6 meses`,
       defaultSize: "md",
       allowedSizes: ["sm", "md", "lg"],
+      defaultRows: 2,
+      allowedRows: [1, 2, 3],
       headerRight: <Pace vendido={vendidoEmpresa} meta={metaEmpresa} fracao={fracao} />,
       render: () => (
         <div className="space-y-4">
@@ -392,6 +398,8 @@ export default function MetasPage() {
       subtitle: `${PERIOD_LABEL[period]} atual · clique no vendedor para detalhar`,
       defaultSize: "md",
       allowedSizes: ["sm", "md", "lg"],
+      defaultRows: 2,
+      allowedRows: [1, 2, 3],
       render: () => (
         <ProportionalBarList
           rows={rows.map((r, i) => ({
@@ -412,6 +420,8 @@ export default function MetasPage() {
       subtitle: "Vendas, funil aberto e caminho para fechar o mês",
       defaultSize: "md",
       allowedSizes: ["sm", "md", "lg"],
+      defaultRows: 3,
+      allowedRows: [2, 3, 4],
       headerRight:
         manager && sellers.length > 0 ? (
           <Select value={focoId} onChange={(e) => setWho(e.target.value)} className="h-7 w-auto text-[12px]" aria-label="Vendedor">
@@ -512,6 +522,8 @@ export default function MetasPage() {
       subtitle: "Atividades operacionais definidas para o período",
       defaultSize: "md",
       allowedSizes: ["sm", "md", "lg"],
+      defaultRows: 2,
+      allowedRows: [1, 2, 3],
       render: () => (
         <ul className="divide-y divide-line/70">
           {goals.atividades.length === 0 && <li className="py-4 text-[12.5px] text-muted">Nenhuma meta de atividade definida.</li>}
@@ -546,6 +558,8 @@ export default function MetasPage() {
       subtitle: `${PERIOD_LABEL[period]} atual · constância diária de registros`,
       defaultSize: "lg",
       allowedSizes: ["md", "lg"],
+      defaultRows: 3,
+      allowedRows: [2, 3, 4],
       headerRight: (
         <Badge tone={teamRegPace.status === "batida" || teamRegPace.status === "no_ritmo" ? "green" : "red"}>
           {teamRegDone} de {teamRegGoal} ({Math.round(teamRegPace.pct)}%)

@@ -4,10 +4,12 @@
 export type Role = "admin" | "gestor" | "vendedor" | "representante";
 
 export type WidgetSize = "sm" | "md" | "lg";
+export type WidgetRows = 1 | 2 | 3 | 4;
 
 export interface WidgetGridPrefs {
   order: string[];
   sizes?: Record<string, WidgetSize>;
+  rows?: Record<string, WidgetRows>;
   hidden?: string[];
 }
 

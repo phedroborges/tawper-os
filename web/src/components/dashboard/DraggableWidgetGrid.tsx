@@ -3,7 +3,7 @@
 import { Eye, EyeOff, GripVertical, RotateCcw } from "lucide-react";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useCurrentUser } from "@/lib/store";
-import type { WidgetGridPrefs, WidgetSize } from "@/lib/types";
+import type { WidgetGridPrefs, WidgetRows, WidgetSize } from "@/lib/types";
 import { cn } from "@/lib/utils";
 
 export interface DashboardWidgetDef {
@@ -12,6 +12,8 @@ export interface DashboardWidgetDef {
   subtitle?: string;
   defaultSize: WidgetSize;
   allowedSizes?: WidgetSize[];
+  defaultRows?: WidgetRows;
+  allowedRows?: WidgetRows[];
   headerRight?: ReactNode;
   render: () => ReactNode;
 }
@@ -28,6 +30,13 @@ const SIZE_SPAN: Record<WidgetSize, string> = {
   lg: "col-span-12",
 };
 
+const ROW_SPAN: Record<WidgetRows, string> = {
+  1: "lg:row-span-1",
+  2: "lg:row-span-2",
+  3: "lg:row-span-3",
+  4: "lg:row-span-4",
+};
+
 function mergePrefs(defs: DashboardWidgetDef[], saved?: WidgetGridPrefs | null): WidgetGridPrefs {
   const validIds = defs.map((d) => d.id);
   const validSet = new Set(validIds);
@@ -36,12 +45,15 @@ function mergePrefs(defs: DashboardWidgetDef[], saved?: WidgetGridPrefs | null):
     if (!order.includes(id)) order.push(id);
   }
   const sizes: Record<string, WidgetSize> = {};
+  const rows: Record<string, WidgetRows> = {};
   for (const d of defs) {
     const s = saved?.sizes?.[d.id];
     sizes[d.id] = s && (!d.allowedSizes || d.allowedSizes.includes(s)) ? s : d.defaultSize;
+    const r = saved?.rows?.[d.id];
+    rows[d.id] = r && (!d.allowedRows || d.allowedRows.includes(r)) ? r : (d.defaultRows ?? 2);
   }
   const hidden = (saved?.hidden ?? []).filter((id) => validSet.has(id));
-  return { order, sizes, hidden };
+  return { order, sizes, rows, hidden };
 }
 
 export function DraggableWidgetGrid({
@@ -132,6 +144,7 @@ export function DraggableWidgetGrid({
   const isCustomized =
     JSON.stringify(merged.order) !== JSON.stringify(defaultPrefs.order) ||
     JSON.stringify(merged.sizes) !== JSON.stringify(defaultPrefs.sizes) ||
+    JSON.stringify(merged.rows) !== JSON.stringify(defaultPrefs.rows) ||
     (merged.hidden?.length ?? 0) > 0;
 
   function moveWidget(sourceId: string, targetId: string, side: "before" | "after") {
@@ -154,6 +167,19 @@ export function DraggableWidgetGrid({
     persist({
       ...merged,
       sizes: { ...(merged.sizes ?? {}), [id]: nextSize },
+    });
+  }
+
+  function cycleRows(id: string) {
+    const def = defById.get(id);
+    if (!def) return;
+    const allowed: WidgetRows[] = def.allowedRows ?? [1, 2, 3, 4];
+    if (allowed.length <= 1) return;
+    const current = merged.rows?.[id] ?? def.defaultRows ?? 2;
+    const nextRows = allowed[(allowed.indexOf(current) + 1) % allowed.length];
+    persist({
+      ...merged,
+      rows: { ...(merged.rows ?? {}), [id]: nextRows },
     });
   }
 
@@ -204,12 +230,14 @@ export function DraggableWidgetGrid({
         </div>
       )}
 
-      <div className="grid grid-cols-12 gap-4">
+      <div className="grid grid-cols-12 gap-4 lg:grid-flow-dense lg:auto-rows-[185px]">
         {visibleIds.map((id) => {
           const def = defById.get(id);
           if (!def) return null;
           const size = merged.sizes?.[id] ?? def.defaultSize;
+          const rows = merged.rows?.[id] ?? def.defaultRows ?? 2;
           const allowed = def.allowedSizes ?? ["sm", "md", "lg"];
+          const allowedRows = def.allowedRows ?? [1, 2, 3, 4];
           const isDragging = draggingId === id;
           const isOver = overId === id && draggingId !== id;
 
@@ -250,7 +278,8 @@ export function DraggableWidgetGrid({
               }}
               className={cn(
                 SIZE_SPAN[size],
-                "group relative flex flex-col rounded-[10px] border border-line bg-white shadow-2xs transition-all duration-150",
+                ROW_SPAN[rows],
+                "group relative flex min-h-0 flex-col rounded-[10px] border border-line bg-white shadow-2xs transition-all duration-150",
                 isDragging && "scale-[0.985] opacity-45 ring-2 ring-navy/30 shadow-pop",
                 isOver && "ring-2 ring-navy/35",
               )}
@@ -294,6 +323,16 @@ export function DraggableWidgetGrid({
                       {SIZE_LABEL[size]}
                     </button>
                   )}
+                  {allowedRows.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => cycleRows(id)}
+                      title={`Altura do bloco: ${rows}x (clique para alternar)`}
+                      className="hidden rounded-[4px] border border-line bg-soft/60 px-1.5 py-0.5 text-[10.5px] font-semibold text-muted opacity-0 transition group-hover:opacity-100 hover:border-navy/30 hover:text-ink focus:opacity-100 lg:inline-block"
+                    >
+                      ↕{rows}x
+                    </button>
+                  )}
                   <button
                     type="button"
                     onClick={() => toggleHidden(id)}
@@ -306,7 +345,7 @@ export function DraggableWidgetGrid({
                 </div>
               </div>
 
-              <div className="flex-1 p-4">{def.render()}</div>
+              <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-4">{def.render()}</div>
             </div>
           );
         })}

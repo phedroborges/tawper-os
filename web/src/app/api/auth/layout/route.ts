@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabase/admin";
-import type { WidgetGridPrefs, WidgetSize } from "@/lib/types";
+import type { WidgetGridPrefs, WidgetRows, WidgetSize } from "@/lib/types";
 import { jsonAuthError, withSession } from "@/server/auth/http";
 import { supabaseOn } from "@/server/auth/team";
 import { invalidateCrmReadCache } from "@/server/crm";
@@ -27,7 +27,15 @@ function sanitizePrefs(raw: unknown): WidgetGridPrefs {
       }
     }
   }
-  return { order, sizes, hidden };
+  const rows: Record<string, WidgetRows> = {};
+  if (obj.rows && typeof obj.rows === "object") {
+    for (const [k, v] of Object.entries(obj.rows as Record<string, unknown>)) {
+      if (k.length <= 64 && (v === 1 || v === 2 || v === 3 || v === 4)) {
+        rows[k] = v;
+      }
+    }
+  }
+  return { order, sizes, rows, hidden };
 }
 
 export async function POST(request: Request) {
