@@ -1,3 +1,4 @@
+import { enqueueVisitReply } from "@/server/visit-confirmations";
 import "server-only";
 
 import { AUDIO_FAILED, AUDIO_PREFIX } from "./audio";
@@ -23,7 +24,11 @@ export async function ingestWhatsAppAgentPayload(payload: unknown): Promise<What
   if (!message) return { ignored: "unsupported_event" };
 
   const identity = await findWhatsAppAgentIdentity(message.sender);
-  if (!identity) return { ignored: "unauthorized_sender" };
+  if (!identity) {
+    const handled = await enqueueVisitReply({ eventId: message.eventId, sender: message.sender, text: message.text || "[Áudio recebido; conferir na conversa]" });
+    if (handled) return { duplicate: false, queued: true };
+    return { ignored: "unauthorized_sender" };
+  }
 
   // Só transcreve depois de confirmar que o remetente é autorizado: áudio de estranho não gasta IA.
   let text = message.text;

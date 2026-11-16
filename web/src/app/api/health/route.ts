@@ -1,3 +1,4 @@
+import { communicationStatus } from "@/server/communications-scheduler";
 import { NextResponse } from "next/server";
 import { AGENT_VERSION, agentToolsEnabled } from "@/server/ai/agent";
 import { aiConfigured } from "@/server/ai/openai";
@@ -11,6 +12,7 @@ export async function GET() {
   return NextResponse.json(
     {
       ...health,
+      communications: communicationStatus(),
       whatsappProof: {
         enabled: proofEnabled(),
         configured: stevoConfigured(),

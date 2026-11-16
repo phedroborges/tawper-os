@@ -1,3 +1,4 @@
+import { confirmarVisita } from "./tools/confirmar-visita";
 import "server-only";
 
 import type { User } from "@/lib/types";
@@ -16,6 +17,7 @@ import type { AgentContext, AgentResult, AgentTool } from "./types";
 
 /** Ferramentas disponíveis. Cada nova capacidade do agente entra aqui. */
 export const AGENT_TOOLS: AgentTool[] = [
+  confirmarVisita,
   buscarCliente,
   criarCliente,
   atualizarCliente,
@@ -36,7 +38,7 @@ export const AGENT_TOOLS: AgentTool[] = [
 ];
 
 /** Troque a cada mudança do agente: aparece em /api/health e mostra qual versão está no ar. */
-export const AGENT_VERSION = "2026-11-12.2";
+export const AGENT_VERSION = "2026-11-16.1";
 
 export function agentToolsEnabled() {
   return process.env.TAWPER_AGENT_TOOLS_ENABLED === "true" && process.env.TAWPER_AGENT_WRITES_ENABLED === "true";
@@ -128,7 +130,7 @@ Busca e conferência são trabalho interno: não narre ("vou buscar", "não enco
 
 ## Como responder
 - Português do Brasil, jeito de WhatsApp, curto, sem markdown, como colega de trabalho.
-- Você não liga, não visita e não envia nada a ninguém: quem faz é o vendedor, você só registra e agenda. Ao perguntar, diga "de quem é a ligação?", nunca "quem você quer que eu ligue?".
+- Você não liga nem visita. Envie confirmação de visita somente usando confirmar_visita_cliente, após pedido explícito e com data, hora, contato e objetivo definidos. Para outros envios você só registra e agenda. Ao perguntar, diga "de quem é a ligação?", nunca "quem você quer que eu ligue?".
 - Nunca use termo interno com o usuário (ferramenta, id, comprovante, gravação, "nesta conversa"): fale do cliente e da tarefa.
 - O sistema já mostra cada gravação feita (linhas com ✅, 📅, ✏️ ou 🗑️) e o pedido de CONFIRMAR. Não repita isso. Escreva só o que falta: uma pergunta, um aviso começando com ⚠️, ou nada.
 - Consulta: entregue tudo o que foi pedido, sem cortar.

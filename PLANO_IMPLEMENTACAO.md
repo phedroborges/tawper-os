@@ -1405,6 +1405,8 @@ Atualizar esta tabela sempre que uma fase mudar de estado.
 
 | 16/11/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Codex | SM-2026-11-16-001: manutenção da demo autorizada por Phedro; corrigido seletor instável do Zustand que derrubava Meu Dia (React #185), consultas do CRM em paralelo e seed aditivo. 221 testes, typecheck, lint e build aprovados; leitura real sem escrita; carga e repetição verificadas em PostgreSQL embutido (PGlite), preservando cliente existente. Nenhum gate concluído. |
 
+| 16/11/2026 | F0 | EM ANDAMENTO | EM ANDAMENTO | Codex | SM-2026-11-16-002: confirmações de visitas e agendador de lembretes autorizados por Phedro; ADR-006. 227 testes, typecheck, lint e build aprovados. Migration aditiva validada em PGlite e aplicada ao banco; acesso anônimo recusado nas duas novas tabelas. Teste real autorizado: Carlos Lisboa, visita comercial em 17/11 às 15h. Aceite ponta a ponta após publicação; nenhum gate concluído. |
+
 ---
 
 ## 20. Decisões pendentes da Fase 0
