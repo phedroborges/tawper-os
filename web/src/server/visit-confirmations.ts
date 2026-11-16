@@ -171,7 +171,7 @@ export async function enqueueVisitReply(input: {
     Visit[]
   >`select * from public.visit_confirmations where organization_id=${TAWPER_ORG_ID} and client_phone=${canonicalWhatsApp(input.sender)} and status in ('waiting','send_uncertain') and due_at>now() limit 1`;
   if (!visit) return false;
-  await sql`insert into public.visit_communication_jobs(confirmation_id,dedupe_key,kind,phone,body) values(${visit.id},${"in:" + input.eventId},'inbound',${visit.client_phone},${input.text}) on conflict(dedupe_key) do nothing`;
+  await sql`insert into public.visit_communication_jobs(confirmation_id,dedupe_key,kind,phone,body) values(${visit.id},${"in:" + input.eventId},'inbound',${visit.client_phone},${input.text}) on conflict do nothing`;
   return true;
 }
 
@@ -208,7 +208,7 @@ export async function processVisitCommunications() {
   await sql`update public.visit_confirmations v set status='send_uncertain' where status='queued' and exists(select 1 from public.visit_communication_jobs j where j.confirmation_id=v.id and j.dedupe_key=v.id::text||':initial' and j.status='failed')`;
   await sql`insert into public.notifications(organization_id,recipient_id,type,title,body,link,source_kind,dedupe_key)
     select ${TAWPER_ORG_ID},v.seller_id,'system','Falha na comunicação da visita','Não foi possível comprovar o envio. Confira a conversa antes de repetir.','/empresas/'||v.company_id::text,'visit_confirmation_failed','visit-failed:'||j.id::text
-    from public.visit_communication_jobs j join public.visit_confirmations v on v.id=j.confirmation_id where j.status='failed' on conflict(dedupe_key) do nothing`;
+    from public.visit_communication_jobs j join public.visit_confirmations v on v.id=j.confirmation_id where j.status='failed' on conflict do nothing`;
   const due = await sql<
     Visit[]
   >`select * from public.visit_confirmations where organization_id=${TAWPER_ORG_ID} and status in ('queued','waiting','send_uncertain')`;
@@ -228,14 +228,14 @@ export async function processVisitCommunications() {
         const updated =
           await tx`update public.visit_confirmations set status=${changed ? "cancelled" : "expired"} where id=${v.id} and status in ('queued','waiting','send_uncertain') returning id`;
         if (updated.length)
-          await tx`insert into public.visit_communication_jobs(confirmation_id,dedupe_key,kind,phone,body) values(${v.id},${v.id + ":end"},'seller',${v.seller_phone},${changed ? "A visita foi alterada ou concluída; encerrei a confirmação anterior sem alterar a agenda." : `${v.seller_name}, ${v.client_name} não confirmou até o horário da visita. Encerrei o acompanhamento sem cancelar a visita.`}) on conflict(dedupe_key) do nothing`;
+          await tx`insert into public.visit_communication_jobs(confirmation_id,dedupe_key,kind,phone,body) values(${v.id},${v.id + ":end"},'seller',${v.seller_phone},${changed ? "A visita foi alterada ou concluída; encerrei a confirmação anterior sem alterar a agenda." : `${v.seller_name}, ${v.client_name} não confirmou até o horário da visita. Encerrei o acompanhamento sem cancelar a visita.`}) on conflict do nothing`;
       });
     } else if (phase === "warn") {
       await sql.begin(async (tx) => {
         const updated =
           await tx`update public.visit_confirmations set warned_at=now() where id=${v.id} and status='waiting' and warned_at is null and sent_at<=now()-interval '2 hours' and not exists(select 1 from public.visit_communication_jobs j where j.confirmation_id=visit_confirmations.id and j.kind='inbound') returning id`;
         if (updated.length)
-          await tx`insert into public.visit_communication_jobs(confirmation_id,dedupe_key,kind,phone,body) values(${v.id},${v.id + ":2h"},'seller',${v.seller_phone},${`${v.seller_name}, ${v.client_name} ainda não respondeu. Continuo acompanhando até ${fmtWhen(v.due_at)}.`}) on conflict(dedupe_key) do nothing`;
+          await tx`insert into public.visit_communication_jobs(confirmation_id,dedupe_key,kind,phone,body) values(${v.id},${v.id + ":2h"},'seller',${v.seller_phone},${`${v.seller_name}, ${v.client_name} ainda não respondeu. Continuo acompanhando até ${fmtWhen(v.due_at)}.`}) on conflict do nothing`;
       });
     }
   }
@@ -282,7 +282,7 @@ export async function processVisitCommunications() {
             ["client", v.client_phone, ack],
             ["seller", v.seller_phone, notice],
           ])
-            await tx`insert into public.visit_communication_jobs(confirmation_id,dedupe_key,kind,phone,body) values(${v.id},${job.id + ":" + kind},${kind},${phone},${body}) on conflict(dedupe_key) do nothing`;
+            await tx`insert into public.visit_communication_jobs(confirmation_id,dedupe_key,kind,phone,body) values(${v.id},${job.id + ":" + kind},${kind},${phone},${body}) on conflict do nothing`;
           await tx`insert into public.interactions(organization_id,company_id,channel,kind,title,content,actor_type) values(${TAWPER_ORG_ID},${v.company_id},'whatsapp','note','Resposta à confirmação de visita',${notice},'ai')`;
           await tx`update public.visit_communication_jobs set status='sent',finished_at=now() where id=${job.id}`;
         });
@@ -326,7 +326,7 @@ export async function processVisitCommunications() {
     } catch (e) {
       await sql`update public.visit_communication_jobs set status='failed',error=${e instanceof Error ? e.message.slice(0, 500) : "Falha"},finished_at=now() where id=${job.id}`;
       await sql`insert into public.notifications(organization_id,recipient_id,type,title,body,link,source_kind,dedupe_key)
-        values(${TAWPER_ORG_ID},${v.seller_id},'system','Falha na comunicação da visita',${job.kind === "inbound" ? `Não consegui interpretar a resposta de ${v.client_name}. Confira a conversa: ${String(job.body).slice(0, 2000)}` : `Não foi possível comprovar a entrega da mensagem de ${v.client_name}. Confira antes de reenviar.`},${"/empresas/" + v.company_id},'visit_confirmation_failed',${"visit-failed:" + job.id}) on conflict(dedupe_key) do nothing`;
+        values(${TAWPER_ORG_ID},${v.seller_id},'system','Falha na comunicação da visita',${job.kind === "inbound" ? `Não consegui interpretar a resposta de ${v.client_name}. Confira a conversa: ${String(job.body).slice(0, 2000)}` : `Não foi possível comprovar a entrega da mensagem de ${v.client_name}. Confira antes de reenviar.`},${"/empresas/" + v.company_id},'visit_confirmation_failed',${"visit-failed:" + job.id}) on conflict do nothing`;
       console.error("[visitas] falha no trabalho", job.id);
     }
   }
