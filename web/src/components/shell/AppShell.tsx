@@ -5,6 +5,7 @@ import {
   Bot,
   Building2,
   ChevronDown,
+  CircleHelp,
   LogOut,
   Columns3,
   FileText,
@@ -100,6 +101,7 @@ function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavig
       <Link
         key={n.href}
         href={n.href}
+        prefetch={n.href === "/ajuda" ? false : undefined}
         onClick={() => {
           if (n.href === "/conversas") onConversasIntent?.();
           onNavigate?.();
@@ -151,6 +153,7 @@ function Sidebar({ onNavigate, onConversasIntent, collapsed = false }: { onNavig
         )}
       </nav>
       <div className={cn("space-y-0.5 border-t border-line py-2", collapsed ? "px-2" : "px-2.5")}>
+        {item({ href: "/ajuda", label: "Ajuda", icon: <CircleHelp size={18} /> })}
         {item({ href: "/configuracoes", label: "Configurações", icon: <Settings size={18} /> })}
         {!onNavigate && (
           <button

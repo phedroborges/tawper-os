@@ -1,0 +1,2189 @@
+[
+  {
+    "id": "entender-sistema",
+    "category": "primeiros-passos",
+    "title": "O que é o Tawper OS e como as partes se conectam?",
+    "summary": "O sistema organiza o relacionamento comercial: quem atendemos, o que sabemos, qual é a oportunidade e qual ação vem em seguida.",
+    "steps": [
+      {
+        "title": "Comece pela empresa",
+        "text": "A Carteira reúne as empresas atendidas. Cada empresa tem um responsável e uma ficha que concentra dados, contatos e histórico."
+      },
+      {
+        "title": "Entenda o negócio",
+        "text": "O negócio representa uma oportunidade de venda. O funil mostra o momento dessa oportunidade e os requisitos para avançar."
+      },
+      {
+        "title": "Organize a continuidade",
+        "text": "Tarefas dizem o que ainda precisa ser feito. Registros contam o que aconteceu. Ao concluir uma ação, registre o resultado e decida a continuidade."
+      },
+      {
+        "title": "Acompanhe o resultado",
+        "text": "As vendas registradas alimentam metas e análises. Depois da primeira venda, a recorrência ajuda a acompanhar entrega, relacionamento e próximas compras."
+      }
+    ],
+    "flow": [
+      "Empresa e contatos",
+      "Oportunidade no funil",
+      "Ação com prazo",
+      "Resultado registrado",
+      "Próximo passo"
+    ],
+    "example": {
+      "situation": "Uma empresa demonstrou interesse, mas ainda precisa avaliar a aplicação.",
+      "action": "Registre o interesse, identifique a pessoa que fará a avaliação e crie a tarefa de acompanhamento.",
+      "result": "O histórico explica o contexto e a agenda mostra a próxima ação; o interesse ainda não é tratado como venda."
+    },
+    "related": [
+      "organizar-dia",
+      "cadastrar-cliente",
+      "entender-funis"
+    ],
+    "outcome": "Você distingue empresa, contato, negócio, tarefa e resultado e sabe onde procurar cada informação."
+  },
+  {
+    "id": "organizar-dia",
+    "category": "primeiros-passos",
+    "title": "Como organizar minha rotina em Meu dia?",
+    "summary": "Use Meu dia para transformar compromissos e atrasos em uma sequência de trabalho.",
+    "steps": [
+      {
+        "title": "Revise hoje e os atrasados",
+        "text": "Comece pelas ações com prazo definido. Abra a empresa antes de contatar alguém para entender o último resultado e o objetivo do compromisso."
+      },
+      {
+        "title": "Execute com contexto",
+        "text": "Confirme pessoa, empresa e motivo do contato. Se uma tarefa perdeu o sentido ou mudou de data, trate isso de forma explícita."
+      },
+      {
+        "title": "Atualize depois de agir",
+        "text": "Conclua a tarefa realizada e registre o resultado. Se não realizou, reagende ou cancele conforme a situação; não conclua para apenas retirar da lista."
+      },
+      {
+        "title": "Feche o dia com continuidade",
+        "text": "Confira o que ficou em aberto e mantenha um próximo passo claro para as contas que continuam em atendimento."
+      }
+    ],
+    "flow": [
+      "Revisar agenda",
+      "Ler o histórico",
+      "Executar",
+      "Registrar",
+      "Definir continuidade"
+    ],
+    "faq": [
+      {
+        "q": "Uma tarefa atrasada deve ser apagada?",
+        "a": "Não para esconder o atraso. Registre o que aconteceu e decida se ela será concluída, reagendada ou cancelada."
+      }
+    ],
+    "related": [
+      "registrar-atividade",
+      "gerenciar-tarefa",
+      "cliente-nao-aparece"
+    ],
+    "outcome": "Os compromissos têm uma decisão e as contas em atendimento mantêm continuidade clara."
+  },
+  {
+    "id": "perfis-acesso",
+    "category": "primeiros-passos",
+    "title": "Como funcionam as funções e o acesso de administrador?",
+    "summary": "A função comercial organiza a rotina. O acesso de administrador é uma permissão adicional para gerenciar o sistema.",
+    "steps": [
+      {
+        "title": "Vendedor e representante",
+        "text": "Trabalham na carteira atribuída, consultam seus compromissos e registram a evolução do atendimento. Também ajustam a própria conta e os lembretes."
+      },
+      {
+        "title": "Gestor comercial",
+        "text": "Acompanha a operação consolidada, Gestão, Painel, Atendimento IA e Auditoria. Pode orientar a equipe e investigar os resultados."
+      },
+      {
+        "title": "Acesso de administrador",
+        "text": "É uma permissão adicional, separada da função comercial. Uma pessoa que vende, representa ou faz gestão também pode receber acesso de administrador para configurar equipe, requisitos, metas e propostas."
+      },
+      {
+        "title": "Se uma opção não aparece",
+        "text": "Confira sua função e a permissão de administrador com o responsável. Não crie outro acesso nem duplique um cliente para tentar obter uma permissão."
+      }
+    ],
+    "table": {
+      "headers": [
+        "Função e acesso",
+        "Foco do trabalho",
+        "Configurações"
+      ],
+      "rows": [
+        [
+          "Vendedor / representante sem administração",
+          "Carteira atribuída e execução",
+          "Minha conta e Lembretes"
+        ],
+        [
+          "Gestor sem administração",
+          "Acompanhamento consolidado",
+          "Pessoais e Auditoria"
+        ],
+        [
+          "Pessoa com acesso de administrador",
+          "Função comercial e administração",
+          "Todas as configurações"
+        ]
+      ]
+    },
+    "callout": {
+      "title": "Cargo do cliente não é perfil de acesso",
+      "text": "Uma pessoa cadastrada como diretora ou compradora é um contato da empresa. Esse cadastro não concede acesso interno ao sistema."
+    },
+    "related": [
+      "minha-conta",
+      "gerenciar-equipe",
+      "contatos-cliente"
+    ],
+    "outcome": "Você distingue função comercial de permissão de administrador e sabe quem deve tratar mudanças de acesso."
+  },
+  {
+    "id": "minha-conta",
+    "category": "primeiros-passos",
+    "title": "Como conferir minha conta, senha e WhatsApp?",
+    "summary": "Mantenha seus dados corretos para identificar a autoria dos registros e receber as comunicações destinadas à equipe.",
+    "steps": [
+      {
+        "title": "Abra Configurações → Minha conta",
+        "text": "Confira nome completo, nome curto e o número de WhatsApp. Use seu próprio acesso para que as ações tenham autoria correta."
+      },
+      {
+        "title": "Atualize os dados e salve",
+        "text": "O número deve ser válido e não pode estar associado a outro membro ativo da equipe. Confira o resultado após salvar."
+      },
+      {
+        "title": "Troque a senha pelo formulário próprio",
+        "text": "Preencha os campos solicitados e respeite o mínimo de oito caracteres. Não compartilhe sua senha com colegas."
+      },
+      {
+        "title": "Peça ajustes de perfil ao administrador",
+        "text": "Cargo e permissões administrados pela empresa não são alterados por uma promoção feita pelo próprio usuário."
+      }
+    ],
+    "faq": [
+      {
+        "q": "Mudei meu número. Preciso avisar?",
+        "a": "Atualize Minha conta e confira com a administração o vínculo com a equipe antes de usar o agente e os lembretes."
+      }
+    ],
+    "related": [
+      "perfis-acesso",
+      "lembretes-equipe",
+      "acesso-ia"
+    ],
+    "outcome": "Seus dados e o número usado nos fluxos internos correspondem à sua conta."
+  },
+  {
+    "id": "cadastrar-cliente",
+    "category": "clientes",
+    "title": "Como cadastrar uma nova empresa?",
+    "summary": "Um bom cadastro permite localizar a conta, identificar com quem falar e saber qual será a primeira ação.",
+    "steps": [
+      {
+        "title": "Pesquise antes de criar",
+        "text": "Na Carteira ou na busca, procure nome, contato, telefone ou CNPJ. Se a empresa já existe, complete a ficha existente ou procure o responsável."
+      },
+      {
+        "title": "Preencha os dados da empresa",
+        "text": "Informe Nome fantasia e revise responsável, ramo, origem e prioridade. CNPJ é opcional na criação, mas precisa ser válido quando informado."
+      },
+      {
+        "title": "Resolva a localização",
+        "text": "Informe CEP e endereço ou use a localização atual quando apropriado. Aguarde a localização ser resolvida e confira cidade e UF; isso sustenta mapa, região e rotas."
+      },
+      {
+        "title": "Inclua o primeiro contato",
+        "text": "Informe o nome da pessoa. Complete cargo e papel com o que foi apurado. WhatsApp pode ser adicionado quando disponível e deve ser válido se preenchido."
+      },
+      {
+        "title": "Defina o próximo passo",
+        "text": "Preencha O que fazer, tipo, vencimento e prioridade. Use um objetivo concreto, como identificar a frota e o fornecedor atual."
+      },
+      {
+        "title": "Revise e salve",
+        "text": "Resolva os alertas de duplicidade. Depois de salvar, abra a ficha e confira responsável, contato, negócio e tarefa inicial."
+      }
+    ],
+    "before": [
+      "Verifique se a empresa já existe.",
+      "Tenha nome, localização, uma pessoa de contato e o primeiro passo."
+    ],
+    "flow": [
+      "Buscar duplicidade",
+      "Identificar empresa",
+      "Localizar",
+      "Cadastrar contato",
+      "Agendar primeiro passo"
+    ],
+    "checklist": [
+      "Nome da empresa conferido",
+      "Localização resolvida",
+      "Responsável correto",
+      "Contato identificado",
+      "Primeira tarefa definida"
+    ],
+    "faq": [
+      {
+        "q": "Preciso conhecer todos os dados técnicos para cadastrar?",
+        "a": "Não. Complete os dados que já sabe e apure os demais durante o atendimento. Os requisitos para avançar no funil continuam valendo."
+      },
+      {
+        "q": "O cadastro pela IA pede os mesmos campos?",
+        "a": "A IA pode iniciar a conta com nome e cidade e preparar um passo padrão. Complete a ficha depois; o formulário de Nova empresa exige os seus campos e validações."
+      }
+    ],
+    "related": [
+      "evitar-duplicidade",
+      "contatos-cliente",
+      "criar-tarefa",
+      "cliente-nao-aparece"
+    ],
+    "outcome": "Existe uma única ficha da empresa, com contato, responsável e tarefa inicial conferidos."
+  },
+  {
+    "id": "evitar-duplicidade",
+    "category": "clientes",
+    "title": "O sistema encontrou um cadastro parecido. O que fazer?",
+    "summary": "O alerta ajuda a evitar que o relacionamento da mesma empresa fique dividido em fichas diferentes.",
+    "steps": [
+      {
+        "title": "Compare os sinais",
+        "text": "Confira nome, cidade, CNPJ e contatos. Um nome parecido não prova que sejam a mesma empresa; um telefone pode apontar para um contato já conhecido."
+      },
+      {
+        "title": "Se for a mesma empresa",
+        "text": "Use o cadastro existente ou o fluxo de união disponível e autorizado. Revise os dados que serão incorporados antes de confirmar."
+      },
+      {
+        "title": "Se forem empresas diferentes",
+        "text": "Prossiga como novo cadastro somente depois de verificar a diferença. Use identificação e localização claras."
+      },
+      {
+        "title": "Confira o histórico após a decisão",
+        "text": "Certifique-se de que contatos, continuidade e responsável ficaram associados à empresa correta."
+      }
+    ],
+    "example": {
+      "situation": "Um novo contato informa o nome de uma empresa que já está na carteira.",
+      "action": "Localize a ficha existente e acrescente a pessoa aos contatos dessa empresa.",
+      "result": "O histórico permanece reunido e o novo contato não cria outra conta desnecessariamente."
+    },
+    "related": [
+      "cadastrar-cliente",
+      "ficha-cliente"
+    ],
+    "outcome": "O histórico ficou associado à empresa correta, sem multiplicar fichas desnecessariamente."
+  },
+  {
+    "id": "contatos-cliente",
+    "category": "clientes",
+    "title": "Como cadastrar contatos e diferenciar cargo de papel?",
+    "summary": "Cargo descreve a posição da pessoa na empresa. Papel descreve o que ela faz na decisão de compra.",
+    "steps": [
+      {
+        "title": "Abra a empresa e vá a Contatos",
+        "text": "Confira se a pessoa já existe antes de adicionar. Revise nome e canais para evitar registros duplicados."
+      },
+      {
+        "title": "Informe o cargo real",
+        "text": "Exemplos de cargo: direção, gerência de manutenção ou compras. Use a função apurada, sem promover a pessoa para facilitar a negociação."
+      },
+      {
+        "title": "Defina o papel na compra",
+        "text": "Registre se ela decide, negocia, avalia tecnicamente, usa, libera pagamento, controla estoque ou influencia. Se não souber, apure antes de afirmar."
+      },
+      {
+        "title": "Confira o canal e a autorização",
+        "text": "Mantenha o WhatsApp da pessoa correta. Para a confirmação automatizada de visita, o contato precisa estar ativo e autorizar mensagens."
+      }
+    ],
+    "table": {
+      "headers": [
+        "Papel",
+        "Como reconhecer"
+      ],
+      "rows": [
+        [
+          "Decide a compra",
+          "Aprova a decisão final"
+        ],
+        [
+          "Negocia e compra",
+          "Cota, negocia e faz o pedido"
+        ],
+        [
+          "Avalia tecnicamente",
+          "Confere aplicação, especificações e teste"
+        ],
+        [
+          "Usa no dia a dia",
+          "Opera ou aplica o produto"
+        ],
+        [
+          "Libera o pagamento",
+          "Trata liberação e condições financeiras"
+        ],
+        [
+          "Recebe e controla estoque",
+          "Confere recebimento e estoque"
+        ],
+        [
+          "Influencia",
+          "Recomenda ou opina"
+        ],
+        [
+          "Só contato",
+          "Repassa informações, sem papel de compra definido"
+        ]
+      ]
+    },
+    "callout": {
+      "title": "Contato externo continua externo",
+      "text": "Cadastrar uma pessoa na empresa não a autoriza a consultar a carteira pelo agente interno."
+    },
+    "related": [
+      "ficha-cliente",
+      "confirmar-visita",
+      "acesso-ia"
+    ],
+    "outcome": "A pessoa está na empresa certa, com cargo, papel e canal correspondentes ao que foi apurado."
+  },
+  {
+    "id": "ficha-cliente",
+    "category": "clientes",
+    "title": "Onde encontro histórico, tarefas, negócio e estratégia de uma empresa?",
+    "summary": "A ficha reúne o contexto do relacionamento. Cada área responde a uma pergunta diferente.",
+    "steps": [
+      {
+        "title": "Confira a empresa",
+        "text": "Revise nome, localização e responsável antes de agir. Isso evita registrar um resultado na conta errada."
+      },
+      {
+        "title": "Leia o Histórico e as Tarefas",
+        "text": "Histórico mostra o que aconteceu. Tarefas mostra o que falta fazer, com prazo e situação. Leia os dois para entender o atendimento."
+      },
+      {
+        "title": "Consulte Negócio e Estratégia",
+        "text": "Negócio reúne etapa, requisitos e resultado comercial. Estratégia organiza diagnóstico, barreiras e abordagem."
+      },
+      {
+        "title": "Confira Contatos e Auditoria",
+        "text": "Contatos identifica as pessoas. Auditoria ajuda a entender mudanças, autor e contexto quando essas informações estão disponíveis."
+      }
+    ],
+    "table": {
+      "headers": [
+        "Quero saber…",
+        "Onde olhar"
+      ],
+      "rows": [
+        [
+          "O que aconteceu?",
+          "Histórico"
+        ],
+        [
+          "O que faremos depois?",
+          "Tarefas e próximo passo"
+        ],
+        [
+          "Em que momento está a oportunidade?",
+          "Negócio"
+        ],
+        [
+          "Qual será a abordagem?",
+          "Estratégia"
+        ],
+        [
+          "Com quem precisamos falar?",
+          "Contatos"
+        ],
+        [
+          "O que foi alterado?",
+          "Auditoria"
+        ]
+      ]
+    },
+    "related": [
+      "registrar-atividade",
+      "estrategia-cliente",
+      "auditoria"
+    ],
+    "outcome": "Você consegue retomar o atendimento entendendo o que aconteceu e o que precisa ser feito."
+  },
+  {
+    "id": "registrar-atividade",
+    "category": "agenda",
+    "title": "Como registrar uma ligação, visita ou outro atendimento realizado?",
+    "summary": "Registre o fato, o resultado e a continuidade para que a próxima pessoa consiga entender o atendimento.",
+    "steps": [
+      {
+        "title": "Abra a empresa correta e use Registrar",
+        "text": "Escolha o tipo que descreve a ação, como Ligação, WhatsApp, Visita, Reunião ou E-mail."
+      },
+      {
+        "title": "Descreva o resultado",
+        "text": "Informe com quem falou, o que foi apurado, o que o cliente pediu e o que foi combinado. Uma frase como “visitado” não explica o resultado."
+      },
+      {
+        "title": "Trate a tarefa correspondente",
+        "text": "Se havia uma tarefa para essa ação, conclua a tarefa realizada. Evite registrar o fato e deixar o mesmo compromisso pendente."
+      },
+      {
+        "title": "Decida a continuidade",
+        "text": "Crie o próximo passo com objetivo e prazo ou use a situação comercial adequada. As exigências podem variar pelo tipo de atividade."
+      },
+      {
+        "title": "Confira o registro",
+        "text": "Leia o Histórico e a agenda para confirmar que passado e futuro ficaram organizados corretamente."
+      }
+    ],
+    "flow": [
+      "Ação realizada",
+      "Resultado documentado",
+      "Tarefa tratada",
+      "Continuidade definida"
+    ],
+    "example": {
+      "situation": "O contato pediu material técnico antes de decidir sobre um teste.",
+      "action": "Registre a conversa e crie a tarefa de enviar o material com prazo definido.",
+      "result": "O pedido fica no histórico e o envio continua visível na agenda até ser realizado."
+    },
+    "related": [
+      "criar-tarefa",
+      "gerenciar-tarefa",
+      "regras-atividades"
+    ],
+    "outcome": "O histórico mostra o resultado e a agenda guarda a próxima ação."
+  },
+  {
+    "id": "criar-tarefa",
+    "category": "agenda",
+    "title": "Como criar um próximo passo que seja útil?",
+    "summary": "A tarefa precisa deixar claro o que fazer, para qual empresa, por quem e até quando.",
+    "steps": [
+      {
+        "title": "Escolha a empresa e a ação",
+        "text": "Use um título específico: “Revisar o resultado do teste com o contato técnico” é mais útil que “acompanhar cliente”."
+      },
+      {
+        "title": "Confira tipo e responsável",
+        "text": "Escolha o tipo compatível com a ação e a pessoa que deve executá-la. Não confunda responsável com o contato externo."
+      },
+      {
+        "title": "Defina prazo e prioridade",
+        "text": "Revise o vencimento. Para visitas e compromissos combinados, informe também a hora; antes de pedir confirmação ao cliente, data e hora devem estar explícitas."
+      },
+      {
+        "title": "Salve e confira",
+        "text": "Verifique se a ação aparece nas tarefas da empresa e na agenda do responsável."
+      }
+    ],
+    "comparison": [
+      {
+        "title": "Tarefa",
+        "text": "O que ainda será feito, com responsável e prazo."
+      },
+      {
+        "title": "Registro",
+        "text": "O que aconteceu e qual foi o resultado."
+      },
+      {
+        "title": "Venda",
+        "text": "Uma decisão comercial registrada com valor."
+      }
+    ],
+    "related": [
+      "gerenciar-tarefa",
+      "planejar-visita",
+      "organizar-dia"
+    ],
+    "outcome": "A ação aparece na empresa e na agenda do responsável, com objetivo e prazo corretos."
+  },
+  {
+    "id": "gerenciar-tarefa",
+    "category": "agenda",
+    "title": "Quando concluir, reagendar ou cancelar uma tarefa?",
+    "summary": "Escolha a ação pelo que aconteceu de verdade. Retirar uma tarefa da lista não é o objetivo do registro.",
+    "steps": [
+      {
+        "title": "Conclua quando realizou",
+        "text": "Registre o resultado e decida a continuidade. A confirmação de uma visita pelo cliente não significa que a visita foi realizada."
+      },
+      {
+        "title": "Reagende quando o compromisso mudou",
+        "text": "Defina nova data e hora e confira o responsável. Se havia acompanhamento de confirmação de visita, revise a necessidade de um novo pedido ao cliente."
+      },
+      {
+        "title": "Cancele quando a ação não será realizada",
+        "text": "Registre o motivo e mantenha outra continuidade se a empresa continua em atendimento."
+      },
+      {
+        "title": "Confira o que ficou aberto",
+        "text": "Evite ações duplicadas ou um próximo passo sem sentido depois da mudança."
+      }
+    ],
+    "comparison": [
+      {
+        "title": "Concluir",
+        "text": "A ação aconteceu. Registre resultado."
+      },
+      {
+        "title": "Reagendar",
+        "text": "A ação continua necessária, mas mudou o compromisso."
+      },
+      {
+        "title": "Cancelar",
+        "text": "A ação não será realizada. Explique o motivo."
+      }
+    ],
+    "related": [
+      "registrar-atividade",
+      "confirmar-visita",
+      "cliente-sem-resposta"
+    ],
+    "outcome": "A situação da tarefa corresponde ao que aconteceu, sem duplicidade ou continuidade perdida."
+  },
+  {
+    "id": "planejar-visita",
+    "category": "agenda",
+    "title": "Como preparar uma visita antes de avisar o cliente?",
+    "summary": "Uma visita precisa de objetivo, responsável, data e hora. Isso evita compromissos sem prazo e mensagens ambíguas.",
+    "steps": [
+      {
+        "title": "Defina o objetivo",
+        "text": "Esclareça se é apresentação, avaliação técnica, teste, relacionamento ou outro propósito real."
+      },
+      {
+        "title": "Combine a agenda interna",
+        "text": "Defina quem vai realizar e em qual data e hora. Confira deslocamento e outros compromissos antes de assumir o horário."
+      },
+      {
+        "title": "Crie ou revise a tarefa de Visita",
+        "text": "A tarefa pode existir antes da confirmação externa: ela representa o compromisso planejado pela equipe."
+      },
+      {
+        "title": "Escolha o contato correto",
+        "text": "Confira número e autorização antes de solicitar uma mensagem de confirmação. Sem data, hora ou objetivo, esclareça os dados primeiro."
+      }
+    ],
+    "flow": [
+      "Objetivo",
+      "Responsável",
+      "Data e hora",
+      "Contato autorizado",
+      "Pedido de confirmação"
+    ],
+    "faq": [
+      {
+        "q": "A tarefa deve ser criada só depois do aceite do cliente?",
+        "a": "Ela pode ser criada antes, como planejamento. A confirmação é acompanhada separadamente. O vendedor continua responsável por revisar a agenda."
+      }
+    ],
+    "related": [
+      "confirmar-visita",
+      "cliente-sem-resposta",
+      "planejar-rota"
+    ],
+    "outcome": "O compromisso tem objetivo, responsável, data, hora e contato definidos antes da confirmação."
+  },
+  {
+    "id": "confirmar-visita",
+    "category": "ia-whatsapp",
+    "title": "Como pedir à IA que confirme uma visita com o cliente?",
+    "summary": "O agente pode pedir a confirmação de uma visita definida e informar o retorno ao vendedor responsável.",
+    "steps": [
+      {
+        "title": "Confira os pré-requisitos",
+        "text": "A visita deve ser pendente e futura, com data, hora e objetivo. O contato precisa de WhatsApp válido e autorização; o vendedor responsável também precisa de número válido."
+      },
+      {
+        "title": "Faça o pedido pelo WhatsApp interno",
+        "text": "Informe empresa, contato, data, hora e objetivo. Se algo estiver faltando ou houver ambiguidade, responda à pergunta da IA antes de considerar o envio resolvido."
+      },
+      {
+        "title": "Leia a confirmação do pedido",
+        "text": "Mensagem agendada para envio significa que o pedido foi aceito para processamento. Não significa que o cliente já recebeu ou confirmou."
+      },
+      {
+        "title": "Acompanhe o retorno",
+        "text": "Uma confirmação clara do mesmo compromisso permite agradecer ao cliente e avisar o responsável. Outro horário precisa de alinhamento, sem aceite automático."
+      },
+      {
+        "title": "Mantenha a tarefa em dia",
+        "text": "A visita continua precisando ser realizada, reagendada ou cancelada. O retorno do cliente não conclui a tarefa."
+      }
+    ],
+    "before": [
+      "Data, hora e objetivo definidos pelo vendedor.",
+      "Visita futura, contato autorizado e números válidos.",
+      "Cliente e vendedor devem ser pessoas e números distintos."
+    ],
+    "flow": [
+      "Visita definida",
+      "Pedido aceito",
+      "Mensagem enviada",
+      "Resposta acompanhada",
+      "Retorno ao responsável"
+    ],
+    "example": {
+      "situation": "Existe uma visita futura às 15h para uma apresentação técnica.",
+      "action": "“Peça ao contato do cliente a confirmação da visita de amanhã às 15h para apresentação técnica. Esse é o horário definido.”",
+      "result": "A IA deve identificar o compromisso e o contato, pedir os dados que faltarem e acompanhar o retorno ao responsável."
+    },
+    "cases": [
+      {
+        "title": "Cliente confirmou o mesmo horário",
+        "text": "O agente agradece e avisa o responsável. Depois, a equipe realiza a visita e registra o resultado."
+      },
+      {
+        "title": "Cliente propôs outro horário",
+        "text": "A proposta é encaminhada para alinhamento. O compromisso não muda automaticamente; o vendedor precisa decidir e reagendar quando necessário."
+      },
+      {
+        "title": "Cliente não respondeu",
+        "text": "Após duas horas do envio efetivo, o vendedor é avisado. O acompanhamento continua até o horário da visita."
+      }
+    ],
+    "callout": {
+      "title": "Confirmação e execução são diferentes",
+      "text": "A tarefa ainda não exibe um estado próprio de “aguardando confirmação / confirmada”. Confira o retorno da IA e o histórico; não conclua a visita por causa do aceite."
+    },
+    "related": [
+      "cliente-sem-resposta",
+      "planejar-visita",
+      "pedir-ia"
+    ],
+    "outcome": "O pedido está ligado ao compromisso correto e o responsável sabe acompanhar o retorno; a visita continua exigindo execução."
+  },
+  {
+    "id": "cliente-sem-resposta",
+    "category": "ia-whatsapp",
+    "title": "O que acontece se o cliente não responder ou pedir outro horário?",
+    "summary": "O acompanhamento tem prazo. O silêncio não apaga o compromisso, e uma proposta de horário não é aceita automaticamente.",
+    "steps": [
+      {
+        "title": "Depois do envio, aguarde o acompanhamento",
+        "text": "A contagem usa o envio efetivo. Duas horas sem resposta geram um aviso ao vendedor responsável."
+      },
+      {
+        "title": "Continue observando até o compromisso",
+        "text": "O aviso de duas horas não encerra o acompanhamento. Uma resposta recebida antes do horário da visita ainda pode ser tratada."
+      },
+      {
+        "title": "No horário da visita, revise a agenda",
+        "text": "Se não houve resposta até o limite, o acompanhamento encerra. A tarefa permanece e o vendedor decide se realiza, reagenda ou cancela."
+      },
+      {
+        "title": "Trate exceções com atenção",
+        "text": "Outro horário exige alinhamento. Áudio do cliente nesse fluxo precisa de conferência manual. Alterar, concluir ou cancelar a visita interrompe o acompanhamento anterior."
+      }
+    ],
+    "timeline": [
+      {
+        "time": "Envio efetivo",
+        "text": "Começa o acompanhamento da resposta."
+      },
+      {
+        "time": "Após 2 horas sem resposta",
+        "text": "O vendedor recebe aviso; a espera continua."
+      },
+      {
+        "time": "Até o horário da visita",
+        "text": "Respostas ainda podem gerar retorno ao responsável."
+      },
+      {
+        "time": "Limite atingido",
+        "text": "Encerra o acompanhamento, sem cancelar automaticamente a tarefa."
+      }
+    ],
+    "faq": [
+      {
+        "q": "Posso assumir que a visita foi cancelada?",
+        "a": "Não. A equipe precisa decidir o destino do compromisso. Silêncio do cliente não equivale a cancelamento."
+      },
+      {
+        "q": "Depois de reagendar, o pedido antigo continua valendo?",
+        "a": "O acompanhamento antigo é interrompido. Confira o novo compromisso e peça nova confirmação quando necessário."
+      }
+    ],
+    "related": [
+      "confirmar-visita",
+      "gerenciar-tarefa"
+    ],
+    "outcome": "Você sabe quando o acompanhamento termina e qual decisão tomar sobre a tarefa."
+  },
+  {
+    "id": "entender-funis",
+    "category": "funis-vendas",
+    "title": "Como funcionam Aquisição e Recorrência?",
+    "summary": "Aquisição acompanha a primeira venda. Recorrência organiza o relacionamento e as próximas compras da mesma empresa.",
+    "steps": [
+      {
+        "title": "Escolha a jornada",
+        "text": "No quadro de Funis, confira se está vendo Aquisição ou Recorrência. A empresa pode manter seu histórico ao atravessar ciclos de compra."
+      },
+      {
+        "title": "Leia a etapa como uma condição comercial",
+        "text": "A etapa mostra o que já foi comprovado. Ter uma visita marcada não é o mesmo que apresentação realizada ou aprovação técnica."
+      },
+      {
+        "title": "Use tarefas para fazer o trabalho avançar",
+        "text": "Atividades e próximos passos sustentam a evolução, mas não substituem os requisitos de passagem."
+      },
+      {
+        "title": "Registre a venda de forma explícita",
+        "text": "A primeira venda inicia a recorrência. Novas vendas ficam no histórico e o ciclo de relacionamento volta ao Pós-venda."
+      }
+    ],
+    "journeys": [
+      {
+        "title": "Aquisição",
+        "items": [
+          "Lead desconhecido",
+          "Qualificação",
+          "Apresentação",
+          "Cadastro",
+          "Homologação",
+          "Produto aprovado",
+          "Orçamento",
+          "Negociação",
+          "Primeira venda"
+        ]
+      },
+      {
+        "title": "Recorrência",
+        "items": [
+          "Pós-venda",
+          "Relacionamento",
+          "Previsão de compra",
+          "Novo orçamento",
+          "Negociação",
+          "Vendas"
+        ]
+      }
+    ],
+    "related": [
+      "avancar-etapa",
+      "requisitos-etapas",
+      "registrar-venda"
+    ],
+    "outcome": "Você distingue primeira venda de recorrência e compreende o sentido de cada jornada."
+  },
+  {
+    "id": "avancar-etapa",
+    "category": "funis-vendas",
+    "title": "Como mover um negócio e por que o avanço pode ser bloqueado?",
+    "summary": "Mover o cartão não ignora os requisitos. A passagem precisa refletir fatos já apurados e gravados.",
+    "steps": [
+      {
+        "title": "Confira a conta e os filtros",
+        "text": "Revise empresa, responsável e jornada. Um filtro muda o que está visível, não a situação do negócio."
+      },
+      {
+        "title": "Abra os requisitos",
+        "text": "Confira o que falta na etapa. Complete campos da empresa e confirme somente o que realmente aconteceu."
+      },
+      {
+        "title": "Avance pela ação disponível",
+        "text": "No computador, arraste o cartão para uma etapa seguinte ou use Mover. No celular, prefira Mover; o gesto de toque também serve para rolar o quadro."
+      },
+      {
+        "title": "Resolva as pendências indicadas",
+        "text": "O sistema pode conferir etapas intermediárias. Se os requisitos estiverem completos, o avanço pode atravessar mais de uma etapa, conforme a situação."
+      },
+      {
+        "title": "Confira o próximo trabalho",
+        "text": "Leia onde o negócio ficou e quais ações precisam ocorrer. A etapa de ganho abre o registro de venda; não basta marcar requisitos."
+      }
+    ],
+    "flow": [
+      "Apurar o fato",
+      "Gravar o dado",
+      "Conferir requisitos",
+      "Mover",
+      "Revisar continuidade"
+    ],
+    "callout": {
+      "title": "Não há arraste livre para trás",
+      "text": "Se uma mudança está incorreta, use o fluxo de correção apropriado ou peça ajuda ao responsável. Não crie outra empresa para corrigir uma etapa."
+    },
+    "faq": [
+      {
+        "q": "Contei a informação no histórico, mas continua faltando. Por quê?",
+        "a": "Alguns requisitos dependem de campos da ficha, como frota ou tipo de prensa. Registre o dado no campo correspondente, além do contexto no histórico."
+      }
+    ],
+    "related": [
+      "requisitos-etapas",
+      "ficha-cliente",
+      "cliente-nao-aparece"
+    ],
+    "outcome": "O negócio ficou na etapa sustentada por fatos, com requisitos e próximo trabalho conferidos."
+  },
+  {
+    "id": "requisitos-etapas",
+    "category": "funis-vendas",
+    "title": "O que preciso comprovar em cada etapa?",
+    "summary": "Os requisitos orientam a passagem. A lista mostrada no negócio vale para a operação; o administrador pode ajustar as regras.",
+    "steps": [
+      {
+        "title": "Separe dado de confirmação",
+        "text": "Cidade, ramo, frota e prensa vêm do cadastro. Apresentação realizada, documentação aprovada e teste concluído precisam de confirmação do processo."
+      },
+      {
+        "title": "Comprove antes de marcar",
+        "text": "Use informações do atendimento e evidências disponíveis. Não invente aprovação ou interesse apenas para liberar o quadro."
+      },
+      {
+        "title": "Confira o valor vigente",
+        "text": "Os critérios abaixo são a referência padrão. Se a empresa usa regras adicionais, siga as pendências exibidas no negócio."
+      }
+    ],
+    "table": {
+      "headers": [
+        "Etapa de aquisição",
+        "Referência padrão"
+      ],
+      "rows": [
+        [
+          "Lead desconhecido",
+          "Cidade/UF, região, ramo e contato"
+        ],
+        [
+          "Qualificação",
+          "Frota, prensa, marca atual e potencial"
+        ],
+        [
+          "Apresentação",
+          "Apresentação realizada e interesse técnico"
+        ],
+        [
+          "Cadastro",
+          "Documentação enviada e cadastro aprovado pelo cliente"
+        ],
+        [
+          "Homologação",
+          "Itens identificados, material de teste enviado ou instalado e aprovação técnica"
+        ],
+        [
+          "Produto aprovado",
+          "Solicitação de orçamento recebida"
+        ],
+        [
+          "Orçamento",
+          "Proposta enviada ao cliente"
+        ],
+        [
+          "Negociação",
+          "Alinhar condições e obter decisão"
+        ],
+        [
+          "Primeira venda",
+          "Registrar ganho e valor real"
+        ]
+      ]
+    },
+    "extra": {
+      "title": "Na recorrência",
+      "text": "Pós-venda verifica entrega, aplicação e feedback. Relacionamento mapeia estoque, safra e reforma. Previsão de compra verifica nova demanda. Novo orçamento exige proposta enviada; negociação e venda precisam de decisão explícita."
+    },
+    "related": [
+      "avancar-etapa",
+      "configurar-etapas",
+      "registrar-venda"
+    ],
+    "outcome": "Você sabe quais dados ou confirmações apurar antes de pedir passagem."
+  },
+  {
+    "id": "registrar-venda",
+    "category": "funis-vendas",
+    "title": "Como registrar uma venda e o que muda depois?",
+    "summary": "Venda é um resultado comercial com valor real. Ela é diferente de potencial, orçamento e visita concluída.",
+    "steps": [
+      {
+        "title": "Abra a empresa e o negócio corretos",
+        "text": "Confira se está registrando primeira venda ou uma nova compra no ciclo de recorrência."
+      },
+      {
+        "title": "Use Registrar venda e revise os dados",
+        "text": "Informe o valor fechado e os demais dados solicitados. Não use o valor estimado da oportunidade como resultado sem confirmar o fechamento."
+      },
+      {
+        "title": "Confirme com atenção",
+        "text": "Pela IA, a alteração pode ser proposta para confirmação. Leia empresa e valor antes de responder CONFIRMAR."
+      },
+      {
+        "title": "Acompanhe o novo ciclo",
+        "text": "A primeira venda encerra aquisição e inicia a recorrência. Uma recompra mantém o histórico de vendas e reinicia o Pós-venda."
+      },
+      {
+        "title": "Defina o pós-venda",
+        "text": "Acompanhe entrega, aplicação e satisfação. O relacionamento não termina quando o valor entra nos indicadores."
+      }
+    ],
+    "comparison": [
+      {
+        "title": "Potencial",
+        "text": "Possibilidade estimada de negócio."
+      },
+      {
+        "title": "Orçamento",
+        "text": "Oferta em avaliação pelo cliente."
+      },
+      {
+        "title": "Venda",
+        "text": "Decisão de compra registrada com valor."
+      }
+    ],
+    "callout": {
+      "title": "Resultado comercial não comprova pagamento",
+      "text": "Registrar uma venda ou anexar um orçamento não confirma, por si só, faturamento ou recebimento financeiro."
+    },
+    "related": [
+      "entender-funis",
+      "metas-resultados",
+      "registrar-atividade"
+    ],
+    "outcome": "O ganho foi registrado com valor real e a continuidade de pós-venda está definida."
+  },
+  {
+    "id": "espera-perda",
+    "category": "funis-vendas",
+    "title": "Quando colocar em espera e quando registrar perda?",
+    "summary": "Use espera para uma pausa com condição e revisão. Use perda quando a oportunidade foi encerrada sem venda.",
+    "steps": [
+      {
+        "title": "Entenda a decisão do cliente",
+        "text": "Uma resposta adiada não é automaticamente perda; uma recusa explícita não deve permanecer indefinidamente como negociação ativa."
+      },
+      {
+        "title": "Para esperar, defina três coisas",
+        "text": "Registre motivo, o que precisa acontecer para retomar e uma data de revisão. Evite “depois vejo”, sem prazo."
+      },
+      {
+        "title": "Para perder, explique o motivo",
+        "text": "Registre a razão real do encerramento e o contexto relevante. Perder o negócio não apaga a empresa nem seu histórico."
+      },
+      {
+        "title": "Retome quando a condição mudar",
+        "text": "Revise o contexto e defina uma nova continuidade. Pela IA, leia a proposta de alteração e confirme quando solicitado."
+      }
+    ],
+    "comparison": [
+      {
+        "title": "Em andamento",
+        "text": "Existe trabalho e uma continuidade definida."
+      },
+      {
+        "title": "Em espera",
+        "text": "Há uma condição de retomada e uma data de revisão."
+      },
+      {
+        "title": "Perdido",
+        "text": "A oportunidade foi encerrada, com motivo."
+      }
+    ],
+    "related": [
+      "gerenciar-tarefa",
+      "gestao-equipe",
+      "pedir-ia"
+    ],
+    "outcome": "A oportunidade tem situação justificada; pausas possuem condição e revisão."
+  },
+  {
+    "id": "estrategia-cliente",
+    "category": "clientes",
+    "title": "Como usar a Estratégia e as sugestões da IA?",
+    "summary": "A estratégia explica o objetivo, o diagnóstico e a abordagem. Ela ajuda a transformar histórico em uma próxima conversa melhor.",
+    "steps": [
+      {
+        "title": "Leia os fatos disponíveis",
+        "text": "Confira etapa, contatos, resultado dos atendimentos e o que ainda não foi apurado."
+      },
+      {
+        "title": "Organize a abordagem",
+        "text": "Defina objetivo, barreira principal, estratégia e próximo passo. Escreva o que muda na próxima ação, não apenas uma descrição genérica do cliente."
+      },
+      {
+        "title": "Se pedir sugestão à IA, revise a base",
+        "text": "Confira os dados usados, hipóteses, perguntas e informações faltantes. Sugestão não comprova interesse, aprovação técnica ou venda."
+      },
+      {
+        "title": "Aprove com atenção ao efeito",
+        "text": "O fluxo pode oferecer criação de ações ao aprovar. Revise essa opção e os próximos passos antes de confirmar."
+      },
+      {
+        "title": "Atualize após o resultado",
+        "text": "Registre o que funcionou, o que mudou e qual é a nova continuidade."
+      }
+    ],
+    "example": {
+      "situation": "O atendimento ficou concentrado em compras, mas a avaliação depende da manutenção.",
+      "action": "Planeje envolver o contato técnico e esclarecer os critérios do teste antes de discutir somente preço.",
+      "result": "A próxima ação passa a tratar a barreira identificada, em vez de repetir uma cobrança genérica."
+    },
+    "related": [
+      "ficha-cliente",
+      "contatos-cliente",
+      "registrar-atividade"
+    ],
+    "outcome": "A próxima abordagem responde ao diagnóstico e tem uma ação concreta para execução."
+  },
+  {
+    "id": "preparar-proposta",
+    "category": "propostas",
+    "title": "Como preparar a proposta com o orçamento externo?",
+    "summary": "O gerador combina a apresentação oficial com o orçamento em PDF preparado fora do sistema.",
+    "steps": [
+      {
+        "title": "Escolha o cliente",
+        "text": "Abra Propostas, selecione a empresa e confira contato destinatário e consultor."
+      },
+      {
+        "title": "Anexe o PDF do orçamento",
+        "text": "Use o orçamento externo em PDF de até 10 MB. Revise número, valor e escopo lidos pela IA com o documento original."
+      },
+      {
+        "title": "Confira as condições",
+        "text": "Revise pagamento, validade, frete, entrega e observações. Os padrões ajudam a preencher, mas cada proposta precisa de conferência."
+      },
+      {
+        "title": "Revise a apresentação e o anexo",
+        "text": "Selecione a versão Executiva, com nove slides, ou Completa, com 34 slides, conforme o objetivo. Confira cliente, destinatário, condições e as páginas originais do orçamento anexado."
+      },
+      {
+        "title": "Gere o arquivo e faça o envio",
+        "text": "Baixe o PDF ou use a opção de imprimir/salvar. Envie pelo canal combinado com o cliente."
+      },
+      {
+        "title": "Registre o envio e o retorno",
+        "text": "Depois de enviar, marque a proposta como enviada e defina o acompanhamento da decisão."
+      }
+    ],
+    "before": [
+      "Orçamento externo em PDF, de até 10 MB.",
+      "Empresa, destinatário e condições conferidos."
+    ],
+    "flow": [
+      "Cliente",
+      "PDF externo",
+      "Condições",
+      "Documento final",
+      "Envio pelo canal",
+      "Registro e retorno"
+    ],
+    "checklist": [
+      "Número e valor iguais aos do orçamento",
+      "Cliente e destinatário corretos",
+      "Pagamento, validade, frete e entrega revisados",
+      "Documento final conferido",
+      "Envio efetivo realizado",
+      "Retorno agendado"
+    ],
+    "related": [
+      "enviar-proposta",
+      "condicoes-proposta",
+      "avancar-etapa"
+    ],
+    "outcome": "O documento está revisado, enviado pelo canal combinado e acompanhado por um próximo passo."
+  },
+  {
+    "id": "enviar-proposta",
+    "category": "propostas",
+    "title": "Marcar a proposta como enviada já envia o PDF ao cliente?",
+    "summary": "Não. O botão registra o envio no sistema. O documento precisa ser transmitido pelo canal combinado.",
+    "steps": [
+      {
+        "title": "Gere e confira o PDF",
+        "text": "Verifique se o documento contém a apresentação e o orçamento anexo esperado."
+      },
+      {
+        "title": "Envie ao destinatário correto",
+        "text": "Use WhatsApp, e-mail ou outro canal combinado. Confira se o arquivo foi realmente enviado e para a pessoa certa."
+      },
+      {
+        "title": "Marque como enviada depois",
+        "text": "A ação Salvar orçamento & marcar enviada ou Marcar enviada atualiza o registro comercial. Não é comprovante de entrega ou leitura."
+      },
+      {
+        "title": "Crie o acompanhamento",
+        "text": "Defina o próximo contato para confirmar análise, tratar dúvidas ou obter a decisão."
+      }
+    ],
+    "comparison": [
+      {
+        "title": "Gerar",
+        "text": "Produz o documento para revisão."
+      },
+      {
+        "title": "Enviar",
+        "text": "Transmite o arquivo pelo canal combinado."
+      },
+      {
+        "title": "Marcar enviada",
+        "text": "Registra no sistema o que foi feito."
+      }
+    ],
+    "faq": [
+      {
+        "q": "Posso mandar ao cliente o endereço do PDF que aparece no sistema?",
+        "a": "Não presuma que esse endereço é público. Obtenha o arquivo pelo fluxo disponível e envie pelo canal autorizado."
+      }
+    ],
+    "related": [
+      "preparar-proposta",
+      "criar-tarefa",
+      "resultado-envio"
+    ],
+    "outcome": "Você distingue arquivo gerado, envio efetivo e registro comercial."
+  },
+  {
+    "id": "planejar-rota",
+    "category": "rotas",
+    "title": "Como montar uma rota e transformar o plano em visitas?",
+    "summary": "Uma boa rota combina localização, ordem de deslocamento e compromissos possíveis. Planejar e confirmar são decisões diferentes.",
+    "steps": [
+      {
+        "title": "Defina o recorte",
+        "text": "Abra Rotas, escolha região, data da viagem e ponto de partida. Confira a localização dos clientes antes de confiar no trajeto."
+      },
+      {
+        "title": "Escolha as empresas",
+        "text": "Marque na lista ou no mapa as contas que fazem sentido para o objetivo do dia. Considere urgência, etapa e necessidade de visita."
+      },
+      {
+        "title": "Revise a ordem",
+        "text": "Use a estratégia disponível, como Caminho + Urgência, Menor km possível ou Urgentes primeiro. Ajuste a ordem quando houver restrições práticas."
+      },
+      {
+        "title": "Confira dias e horários",
+        "text": "Observe deslocamento, atendimento e avisos de vários dias. Considere almoço, portaria, espera e disponibilidade real dos contatos."
+      },
+      {
+        "title": "Decida entre planejar e confirmar",
+        "text": "Só planejar mantém o roteiro como plano. Confirmar e criar visitas assume a agenda interna e gera as atividades correspondentes."
+      },
+      {
+        "title": "Alinhe os clientes e navegue",
+        "text": "As tarefas de confirmação precisam ser tratadas. Abra o roteiro ou destino no Google Maps quando for navegar."
+      }
+    ],
+    "flow": [
+      "Definir origem",
+      "Escolher clientes",
+      "Revisar ordem",
+      "Conferir agenda",
+      "Confirmar plano",
+      "Alinhar clientes"
+    ],
+    "callout": {
+      "title": "Confirmar a rota não confirma os clientes",
+      "text": "O roteiro pode gerar visitas e tarefas de contato, mas isso não aciona automaticamente o acompanhamento de confirmação por IA para todos os clientes."
+    },
+    "related": [
+      "agenda-rota",
+      "planejar-visita",
+      "confirmar-visita"
+    ],
+    "outcome": "O roteiro foi revisado e a equipe sabe quais visitas e contatos ainda precisam ser tratados."
+  },
+  {
+    "id": "agenda-rota",
+    "category": "rotas",
+    "title": "Como interpretar horários, otimização e integração com o Maps?",
+    "summary": "O roteiro é uma estimativa de planejamento. Ele precisa ser comparado com o que é possível realizar no campo.",
+    "steps": [
+      {
+        "title": "Entenda a jornada usada no plano",
+        "text": "O planejamento considera jornada das 8h às 18h, almoço das 12h às 13h e tempos de deslocamento, portaria, espera e visita."
+      },
+      {
+        "title": "Revise a distribuição",
+        "text": "Uma visita pode passar para outro dia útil quando o roteiro não cabe no dia. Confira feriados locais e móveis, hospedagem e janelas de atendimento."
+      },
+      {
+        "title": "Reotimize quando quiser recalcular",
+        "text": "Reotimizar substitui a ordem manual. Depois de usar, revise novamente a sequência e os compromissos."
+      },
+      {
+        "title": "Use o Maps como navegação",
+        "text": "Abrir a rota ou o destino envia o itinerário ao Maps. Isso não cria evento no Google Agenda nem comprova chegada ou visita realizada."
+      },
+      {
+        "title": "Se mudar o plano, revise as tarefas",
+        "text": "Uma rota confirmada pode ter gerado atividades. Confira essas atividades e os acompanhamentos antes de refazer ou cancelar compromissos."
+      }
+    ],
+    "table": {
+      "headers": [
+        "No planejamento",
+        "Como interpretar"
+      ],
+      "rows": [
+        [
+          "Tempo de visita",
+          "Referência de 60 minutos"
+        ],
+        [
+          "Portaria e espera",
+          "Estimativas de 20 e 10 minutos"
+        ],
+        [
+          "Estrada",
+          "Margem adicional de 20%"
+        ],
+        [
+          "Mapa indisponível",
+          "A distância pode ser aproximada; revise antes de assumir horários"
+        ],
+        [
+          "Fim da jornada",
+          "O restante pode ser distribuído por próximos dias úteis"
+        ]
+      ]
+    },
+    "related": [
+      "planejar-rota",
+      "gerenciar-tarefa"
+    ],
+    "outcome": "Você sabe o que a estimativa considera e o que conferir antes de assumir o roteiro."
+  },
+  {
+    "id": "metas-resultados",
+    "category": "metas-gestao",
+    "title": "Como ler meta, recuperação e caminho para o resultado?",
+    "summary": "A meta define o objetivo. A recuperação mostra o esforço necessário para compensar o saldo. A projeção é uma estimativa.",
+    "steps": [
+      {
+        "title": "Confira pessoa, período e unidade",
+        "text": "Mês, trimestre, semestre e ano representam recortes diferentes. Reais vendidos, vendas e registros não são a mesma medida."
+      },
+      {
+        "title": "Compare realizado e meta base",
+        "text": "A referência base distribui a meta anual pelo período. O realizado depende das vendas registradas corretamente."
+      },
+      {
+        "title": "Entenda a recuperação",
+        "text": "O saldo que não foi vendido é distribuído pelos períodos restantes. Se o início do ano ficou abaixo da meta, a referência de recuperação pode subir."
+      },
+      {
+        "title": "Use o caminho para planejar esforço",
+        "text": "O sistema relaciona saldo, ticket e conversão para estimar vendas e orçamentos necessários. Com pouco histórico, pode usar uma referência do time ou um padrão."
+      },
+      {
+        "title": "Revise qualidade e execução",
+        "text": "Resultados sem valor correto, registros incompletos ou falta de continuidade distorcem a análise. Corrija o fato na origem."
+      }
+    ],
+    "flow": [
+      "Saldo para a meta",
+      "Ticket de referência",
+      "Vendas necessárias",
+      "Conversão de referência",
+      "Orçamentos necessários"
+    ],
+    "example": {
+      "situation": "Exemplo didático: faltam R$ 100 mil; o ticket de referência é R$ 25 mil e a conversão é 40%.",
+      "action": "A referência de esforço é quatro vendas e dez orçamentos, com arredondamento quando necessário.",
+      "result": "O cálculo orienta o plano de trabalho. Não garante que dez orçamentos produzirão quatro vendas."
+    },
+    "faq": [
+      {
+        "q": "O que significa regressão nesse contexto?",
+        "a": "É o cálculo de recuperação do que falta para a meta e do ritmo exigido, não uma previsão garantida de demanda."
+      },
+      {
+        "q": "O que entra na meta de registros?",
+        "a": "Atividades concluídas e interações atribuídas à pessoa, conforme a contagem do sistema. Isso não equivale a contar somente conversas únicas."
+      }
+    ],
+    "related": [
+      "painel-resultados",
+      "configurar-metas",
+      "registrar-venda"
+    ],
+    "outcome": "Você distingue objetivo, ritmo e estimativa e consegue explicar o esforço de recuperação."
+  },
+  {
+    "id": "painel-resultados",
+    "category": "metas-gestao",
+    "title": "Como usar o Painel, os filtros e o modo TV?",
+    "summary": "Leia primeiro a pergunta que o indicador responde. Depois confira período, recorte e origem antes de decidir.",
+    "steps": [
+      {
+        "title": "Defina o que quer analisar",
+        "text": "Escolha se a pergunta é sobre vendido, ritmo da meta, oportunidades, execução ou gargalos."
+      },
+      {
+        "title": "Revise os filtros",
+        "text": "Confira período, vendedor, cliente e faixa de valor. Alguns gráficos têm janelas próprias, como últimos meses ou ano corrente; leia título e legenda."
+      },
+      {
+        "title": "Diferencie resultado e estimativa",
+        "text": "Vendas registradas são realizado. Projeção por ritmo e oportunidades ponderadas são estimativas; não representam receita já fechada ou recebida."
+      },
+      {
+        "title": "Abra o detalhe disponível",
+        "text": "Use os indicadores que permitem aprofundamento para chegar às empresas e oportunidades de origem."
+      },
+      {
+        "title": "Use o modo TV para apresentar",
+        "text": "Revise os filtros antes de ativar Modo TV. A apresentação muda a leitura da tela, não os negócios ou as metas."
+      }
+    ],
+    "comparison": [
+      {
+        "title": "Realizado",
+        "text": "O que foi registrado como venda no recorte."
+      },
+      {
+        "title": "Projeção",
+        "text": "O que o ritmo atual sugere, com incerteza."
+      },
+      {
+        "title": "Funil ponderado",
+        "text": "Estimativa sobre oportunidades ainda abertas."
+      }
+    ],
+    "related": [
+      "metas-resultados",
+      "gestao-equipe",
+      "cliente-nao-aparece"
+    ],
+    "permissions": "Gestor e administrador",
+    "outcome": "Você conhece recorte, origem e significado do indicador antes de tomar uma decisão."
+  },
+  {
+    "id": "gestao-equipe",
+    "category": "metas-gestao",
+    "title": "Como tratar alertas, prioridades e cobranças da equipe?",
+    "summary": "Gestão ajuda a decidir onde intervir. Um alerta precisa terminar em entendimento, orientação e continuidade.",
+    "steps": [
+      {
+        "title": "Escolha o recorte",
+        "text": "Use responsável, busca e tipo de alerta para encontrar as contas que precisam de atenção."
+      },
+      {
+        "title": "Leia a causa e abra o contexto",
+        "text": "Atraso pede conferir execução. Falta de próximo passo pede decidir continuidade. Estagnação pede entender o requisito ou objeção travada."
+      },
+      {
+        "title": "Combine uma ação verificável",
+        "text": "Diga o que precisa acontecer, quem fará e até quando. Uma orientação específica é mais útil que apenas pedir para atualizar o sistema."
+      },
+      {
+        "title": "Registre e confira",
+        "text": "Para acompanhamento durável, use uma atividade ou tarefa e confirme o registro ao reabrir a empresa. Comunique o responsável pelo canal combinado."
+      },
+      {
+        "title": "Volte ao resultado",
+        "text": "No próximo acompanhamento, confira o que foi feito e qual é a nova continuidade, em vez de repetir a mesma cobrança."
+      }
+    ],
+    "table": {
+      "headers": [
+        "Alerta",
+        "O que conferir"
+      ],
+      "rows": [
+        [
+          "Atraso",
+          "O que impediu a execução e qual é a decisão"
+        ],
+        [
+          "Sem próximo passo",
+          "Qual será a continuidade"
+        ],
+        [
+          "Estagnação",
+          "Qual requisito ou objeção travou"
+        ],
+        [
+          "Orçamento",
+          "Envio, validade e retorno"
+        ],
+        [
+          "Recorrência",
+          "Demanda e janela da próxima compra"
+        ],
+        [
+          "Espera vencida",
+          "Se a condição de retomada mudou"
+        ],
+        [
+          "Dados incompletos",
+          "Qual informação precisa ser apurada"
+        ]
+      ]
+    },
+    "callout": {
+      "title": "Cobrança comercial não é cobrança financeira",
+      "text": "Cobrar serve ao acompanhamento de andamento. O comentário pode não permanecer após recarregar; use também tarefa ou atividade quando a orientação exigir acompanhamento. Não presuma envio automático por WhatsApp."
+    },
+    "related": [
+      "registrar-atividade",
+      "criar-tarefa",
+      "espera-perda"
+    ],
+    "permissions": "Gestor e administrador",
+    "outcome": "O alerta foi transformado em orientação, responsável, prazo e acompanhamento verificáveis."
+  },
+  {
+    "id": "pedir-ia",
+    "category": "ia-whatsapp",
+    "title": "Como fazer um pedido claro para a IA no WhatsApp?",
+    "summary": "Use linguagem natural, mas deixe claros cliente, fato, resultado e próxima ação. Leia a resposta para saber o que foi feito.",
+    "steps": [
+      {
+        "title": "Identifique o contexto",
+        "text": "Informe a empresa e a pessoa envolvida. Se houver nomes parecidos, acrescente cidade ou outro dado de identificação."
+      },
+      {
+        "title": "Separe passado de futuro",
+        "text": "“Liguei e ele pediu material” é um fato para registro. “Ligar para revisar o teste” é uma tarefa futura."
+      },
+      {
+        "title": "Inclua prazo quando houver compromisso",
+        "text": "Informe data e hora com clareza. Para confirmação externa de visita, acrescente o objetivo e confirme o horário definido."
+      },
+      {
+        "title": "Responda às perguntas e confirmações",
+        "text": "A IA pode precisar identificar a conta ou obter um dado. Para mudanças comerciais propostas, leia o resumo antes de responder CONFIRMAR."
+      },
+      {
+        "title": "Confira o resultado",
+        "text": "Verifique a resposta e, em ações importantes, o Histórico e as Tarefas. Pedido enviado e alteração concluída não são a mesma coisa."
+      }
+    ],
+    "comparison": [
+      {
+        "title": "Contexto",
+        "text": "Qual empresa e qual pessoa?"
+      },
+      {
+        "title": "Fato e resultado",
+        "text": "O que aconteceu e o que foi combinado?"
+      },
+      {
+        "title": "Continuidade",
+        "text": "O que fazer, por quem e quando?"
+      }
+    ],
+    "example": {
+      "situation": "Um contato pediu uma ficha técnica antes de avaliar a aplicação.",
+      "action": "“Registre a ligação para a empresa que informei: o contato pediu a ficha técnica. Crie uma tarefa para enviar o material na data e hora que vou indicar.”",
+      "result": "A IA deve esclarecer o que faltar, registrar o fato e preparar a continuidade. Confira os dados antes de considerar resolvido."
+    },
+    "callout": {
+      "title": "Use o canal certo",
+      "text": "O agente interno no WhatsApp e Pergunte à IA na interface têm usos diferentes. Para o acompanhamento de confirmação de visita descrito nesta central, use o WhatsApp interno."
+    },
+    "related": [
+      "pedidos-disponiveis",
+      "corrigir-ia",
+      "confirmar-visita"
+    ],
+    "outcome": "O pedido contém contexto e continuidade suficientes, e você conferiu o que foi feito."
+  },
+  {
+    "id": "pedidos-disponiveis",
+    "category": "ia-whatsapp",
+    "title": "O que posso pedir à IA para fazer no sistema?",
+    "summary": "Você não precisa conhecer nomes internos. Descreva a intenção e confira os dados identificados antes de uma decisão importante.",
+    "steps": [
+      {
+        "title": "Consultar e organizar dados",
+        "text": "Peça para localizar cliente, consultar agenda, histórico ou pendências e corrigir dados da empresa ou das pessoas de contato."
+      },
+      {
+        "title": "Registrar e planejar o atendimento",
+        "text": "Conte uma atividade realizada ou peça uma tarefa futura. Também é possível pedir reagendamento, conclusão ou cancelamento de uma tarefa identificada."
+      },
+      {
+        "title": "Tratar decisões comerciais",
+        "text": "Peça avanço de etapa, registro de venda, perda, espera ou retomada. Essas decisões são apresentadas para confirmação e precisam dos respectivos dados."
+      },
+      {
+        "title": "Acompanhar a confirmação de visita",
+        "text": "Com visita futura definida e contato autorizado, peça a confirmação e o retorno ao responsável. Isso não é uma autorização para campanhas ou mensagens livres a qualquer número."
+      }
+    ],
+    "table": {
+      "headers": [
+        "Quero…",
+        "Como pedir"
+      ],
+      "rows": [
+        [
+          "Encontrar cliente ou contato",
+          "“Localize a empresa e confira o contato responsável.”"
+        ],
+        [
+          "Criar ou completar cadastro",
+          "“Cadastre esta empresa na cidade informada” ou “Atualize o fornecedor atual.”"
+        ],
+        [
+          "Adicionar, corrigir ou remover contato",
+          "Identifique a empresa, a pessoa e a alteração; confira duplicidades."
+        ],
+        [
+          "Registrar uma ação",
+          "“Registre a visita e este resultado…”"
+        ],
+        [
+          "Criar ou alterar tarefa",
+          "Diga ação, cliente, data, hora e qual tarefa deve mudar."
+        ],
+        [
+          "Avançar etapa",
+          "Informe o fato comprovado e confira os requisitos."
+        ],
+        [
+          "Registrar venda",
+          "Informe empresa, negócio e valor fechado."
+        ],
+        [
+          "Perder, esperar ou retomar",
+          "Informe motivo e, na espera, condição e data de revisão."
+        ],
+        [
+          "Consultar a operação",
+          "“Quais retornos da minha carteira estão atrasados?”"
+        ],
+        [
+          "Pedir confirmação de visita",
+          "Informe compromisso, horário, objetivo e contato autorizado."
+        ]
+      ]
+    },
+    "related": [
+      "pedir-ia",
+      "confirmar-visita",
+      "corrigir-ia"
+    ],
+    "outcome": "Você sabe descrever a intenção e reconhece os limites do pedido."
+  },
+  {
+    "id": "corrigir-ia",
+    "category": "ia-whatsapp",
+    "title": "A IA entendeu errado ou pediu confirmação. Como agir?",
+    "summary": "Leia o que foi identificado e corrija a informação antes de continuar. Não confirme um resumo incorreto.",
+    "steps": [
+      {
+        "title": "Confira o resumo",
+        "text": "Revise empresa, pessoa, ação, valor, data e hora. Identifique exatamente qual dado não corresponde ao pedido."
+      },
+      {
+        "title": "Explique a correção",
+        "text": "Informe o dado certo em linguagem direta. Se houver duas contas semelhantes, esclareça a identificação antes de pedir outra alteração."
+      },
+      {
+        "title": "Use a confirmação com cuidado",
+        "text": "CONFIRMAR aprova a proposta pendente. CANCELAR pode cancelar essa proposta; para cancelar uma tarefa existente, identifique também a tarefa."
+      },
+      {
+        "title": "Confira uma reversão",
+        "text": "DESFAZER solicita a reversão que o fluxo consegue realizar. Não presuma que qualquer alteração antiga ou mensagem já enviada possa ser revertida."
+      },
+      {
+        "title": "Verifique a ficha",
+        "text": "Confira Histórico, Tarefas e Negócio depois de uma correção importante. Se a divergência continuar, peça revisão do atendimento."
+      }
+    ],
+    "faq": [
+      {
+        "q": "“Mensagem agendada” quer dizer que o cliente confirmou?",
+        "a": "Não. Pedido aceito, envio e resposta do cliente são etapas diferentes."
+      }
+    ],
+    "related": [
+      "resultado-envio",
+      "atendimento-ia",
+      "pedir-ia"
+    ],
+    "outcome": "O dado incorreto foi esclarecido e o resultado importante foi conferido na ficha."
+  },
+  {
+    "id": "resultado-envio",
+    "category": "ia-whatsapp",
+    "title": "Como saber se uma mensagem ou ação realmente aconteceu?",
+    "summary": "Diferencie pedido aceito, envio, entrega, resposta e registro. Cada um comprova uma parte do processo.",
+    "steps": [
+      {
+        "title": "Leia o status com precisão",
+        "text": "Uma mensagem agendada indica pedido aceito para envio. Um registro salvo indica informação no sistema; nenhum dos dois comprova leitura pelo destinatário."
+      },
+      {
+        "title": "Confira o canal e o histórico",
+        "text": "Verifique o atendimento ou a conversa disponível e a alteração esperada na ficha."
+      },
+      {
+        "title": "Evite repetir ações incertas",
+        "text": "Se houver aviso de envio não confirmado, confira antes de reenviar. Uma repetição pode gerar mensagem ou tarefa duplicada."
+      },
+      {
+        "title": "Peça ajuda com contexto",
+        "text": "Informe a ação, a empresa, o horário e a mensagem exibida. Não envie senha ou dados que não sejam necessários para investigar."
+      }
+    ],
+    "flow": [
+      "Pedido aceito",
+      "Envio",
+      "Recebimento / leitura",
+      "Resposta",
+      "Próxima ação"
+    ],
+    "related": [
+      "enviar-proposta",
+      "confirmar-visita",
+      "lembretes-equipe"
+    ],
+    "outcome": "Você não confunde solicitação aceita com entrega, leitura ou confirmação."
+  },
+  {
+    "id": "lembretes-equipe",
+    "category": "ia-whatsapp",
+    "title": "Como funcionam os lembretes automáticos da equipe?",
+    "summary": "O lembrete diário vai para o vendedor, com agenda e pendências. Ele é separado da confirmação enviada ao cliente.",
+    "steps": [
+      {
+        "title": "Confira sua preferência",
+        "text": "Abra Configurações → Lembretes e veja se quer receber. Confira também o WhatsApp em Minha conta."
+      },
+      {
+        "title": "Entenda o horário",
+        "text": "A referência é 07h30, no horário de Brasília, em dias úteis considerados pelo calendário. Há recuperação antes das 10h quando o serviço retoma dentro dessa janela."
+      },
+      {
+        "title": "Leia as seções",
+        "text": "O texto pode incluir hoje, atrasadas e o dia exatamente dois dias úteis à frente, com até oito itens por seção. Sem tarefas elegíveis, não há mensagem vazia."
+      },
+      {
+        "title": "Use o resumo para trabalhar",
+        "text": "Abra o contexto da empresa, execute e registre o que foi feito. Desativar o lembrete não cancela tarefas."
+      },
+      {
+        "title": "Se não receber, confira antes de repetir",
+        "text": "Revise preferência, número, dia, tarefas e avisos. A entrega depende da operação do serviço; envio aceito não comprova leitura."
+      }
+    ],
+    "comparison": [
+      {
+        "title": "Lembrete da equipe",
+        "text": "Resumo da agenda enviado ao vendedor."
+      },
+      {
+        "title": "Confirmação do cliente",
+        "text": "Contato sobre uma visita específica, com acompanhamento."
+      }
+    ],
+    "faq": [
+      {
+        "q": "Todos os feriados são considerados?",
+        "a": "Há feriados nacionais de data fixa no calendário. Confira feriados móveis e locais na organização da agenda."
+      }
+    ],
+    "related": [
+      "minha-conta",
+      "organizar-dia",
+      "confirmar-visita"
+    ],
+    "outcome": "Sua preferência e seu número foram conferidos e você sabe interpretar o resumo recebido."
+  },
+  {
+    "id": "atendimento-ia",
+    "category": "administracao",
+    "title": "Como acompanhar Atendimentos e Registros da equipe?",
+    "summary": "Atendimento IA reúne conversas, registros e sinais de revisão. Use evidências do atendimento, não apenas uma nota.",
+    "steps": [
+      {
+        "title": "Abra Atendimentos da Equipe",
+        "text": "Identifique pessoa, horário, pedido e resposta. Confira o que ficou pendente de esclarecimento ou confirmação."
+      },
+      {
+        "title": "Compare com Registros da Equipe",
+        "text": "Verifique o que foi interpretado e o que efetivamente aparece na empresa. Uma resposta correta no texto não substitui conferir o registro."
+      },
+      {
+        "title": "Investigue sinais de revisão",
+        "text": "Notas, alertas e indicação de correção ajudam a priorizar a conferência. Leia a causa e confira o resultado."
+      },
+      {
+        "title": "Diferencie demonstração de atendimento real",
+        "text": "O console pode mostrar exemplos quando não há sessões reais carregadas. Confira data, origem e registros antes de concluir que há conexão ou atividade recente."
+      }
+    ],
+    "flow": [
+      "Pedido",
+      "Resposta",
+      "Registro na empresa",
+      "Conferência",
+      "Correção quando necessária"
+    ],
+    "related": [
+      "treinamento-ia",
+      "acesso-ia",
+      "corrigir-ia"
+    ],
+    "permissions": "Gestor e administrador",
+    "outcome": "Pedido, resposta e registro foram comparados antes de declarar o atendimento correto."
+  },
+  {
+    "id": "acesso-ia",
+    "category": "administracao",
+    "title": "Como tratar novos números, autorizados e contatos externos?",
+    "summary": "Uma pessoa da equipe e um contato de cliente têm funções diferentes. A autorização interna depende do cadastro correto.",
+    "steps": [
+      {
+        "title": "Identifique a pessoa",
+        "text": "Antes de associar um número, confirme se pertence a alguém da equipe ou a uma pessoa de uma empresa atendida."
+      },
+      {
+        "title": "Se for equipe, revise o cadastro",
+        "text": "O administrador deve conferir usuário ativo, perfil e WhatsApp em Equipe. Não vincule um número por suposição."
+      },
+      {
+        "title": "Se for cliente, mantenha como contato externo",
+        "text": "Cadastre na empresa correta. Responder a uma confirmação de visita não dá acesso à carteira ou ao agente interno."
+      },
+      {
+        "title": "Confira Acesso & Externos",
+        "text": "Use a área para investigar os números e associações. Ao mudar um telefone, confirme o vínculo antes de voltar a usar a IA."
+      }
+    ],
+    "comparison": [
+      {
+        "title": "Equipe autorizada",
+        "text": "Usa o agente interno conforme o perfil e a carteira."
+      },
+      {
+        "title": "Contato externo",
+        "text": "Participa do atendimento do cliente, sem acesso interno."
+      }
+    ],
+    "related": [
+      "gerenciar-equipe",
+      "contatos-cliente",
+      "minha-conta"
+    ],
+    "permissions": "Gestor e administrador; cadastro da equipe pelo administrador",
+    "outcome": "O número está associado à pessoa e à função corretas, sem dar acesso interno a um contato externo."
+  },
+  {
+    "id": "treinamento-ia",
+    "category": "administracao",
+    "title": "Como revisar e orientar o comportamento da IA?",
+    "summary": "As regras de treinamento orientam respostas futuras. Uma boa regra é específica, verificável e coerente com o processo comercial.",
+    "steps": [
+      {
+        "title": "Entenda o erro",
+        "text": "Leia o atendimento e compare com o registro na empresa. Identifique se faltou contexto, houve ambiguidade ou ocorreu uma ação incorreta."
+      },
+      {
+        "title": "Formule uma orientação útil",
+        "text": "Prefira “peça a cidade quando houver duas empresas com nomes parecidos” a instruções vagas como “sempre esteja certo”."
+      },
+      {
+        "title": "Revise escopo e ativação",
+        "text": "Confira se a orientação está correta e não contradiz requisitos, permissões ou outra regra vigente."
+      },
+      {
+        "title": "Cuidado ao avaliar ou corrigir",
+        "text": "Essas ações podem corrigir registros, acrescentar orientações e enviar retorno à equipe. Não trate o comando como mera leitura."
+      },
+      {
+        "title": "Confira o efeito",
+        "text": "Verifique o resultado real e os atendimentos seguintes. Uma indicação de correção não dispensa conferência."
+      }
+    ],
+    "example": {
+      "situation": "Um pedido não distinguia duas empresas de nomes parecidos.",
+      "action": "Oriente a IA a pedir um dado de identificação antes de alterar qualquer ficha.",
+      "result": "A orientação reduz ambiguidade sem inventar um cliente ou presumir uma confirmação."
+    },
+    "related": [
+      "atendimento-ia",
+      "corrigir-ia"
+    ],
+    "permissions": "Gestor e administrador",
+    "outcome": "A orientação é específica e o resultado da revisão foi conferido."
+  },
+  {
+    "id": "configuracoes",
+    "category": "administracao",
+    "title": "Onde ajustar cada configuração?",
+    "summary": "As opções aparecem conforme o perfil. Mudanças do processo precisam ser comunicadas à equipe.",
+    "steps": [
+      {
+        "title": "Ajustes pessoais",
+        "text": "Minha conta mantém seus dados e senha. Lembretes controla sua preferência de comunicação diária."
+      },
+      {
+        "title": "Ajustes do processo",
+        "text": "Requisitos das etapas, Requisitos das atividades, Metas e Condições da proposta são administrados pelo administrador."
+      },
+      {
+        "title": "Ajustes da equipe",
+        "text": "Equipe controla usuários e responsabilidades. Auditoria ajuda gestores e administradores a entender alterações."
+      },
+      {
+        "title": "Confira o efeito depois de salvar",
+        "text": "Revise um caso representativo e comunique o procedimento novo. A área Implementação é de acompanhamento da administração, fora da rotina comercial."
+      }
+    ],
+    "table": {
+      "headers": [
+        "Configuração",
+        "O que muda",
+        "Quem acessa"
+      ],
+      "rows": [
+        [
+          "Minha conta",
+          "Dados pessoais e senha",
+          "Todos"
+        ],
+        [
+          "Lembretes",
+          "Preferência individual",
+          "Todos"
+        ],
+        [
+          "Requisitos das etapas",
+          "Condições de passagem e referências",
+          "Administrador"
+        ],
+        [
+          "Requisitos das atividades",
+          "Resultado e continuidade exigidos",
+          "Administrador"
+        ],
+        [
+          "Metas",
+          "Objetivos e distribuição",
+          "Administrador"
+        ],
+        [
+          "Condições da proposta",
+          "Padrões comerciais do gerador",
+          "Administrador"
+        ],
+        [
+          "Equipe",
+          "Acesso e responsabilidade",
+          "Administrador"
+        ],
+        [
+          "Auditoria",
+          "Consulta de alterações",
+          "Gestor e administrador"
+        ]
+      ]
+    },
+    "related": [
+      "configurar-etapas",
+      "regras-atividades",
+      "configurar-metas",
+      "condicoes-proposta",
+      "gerenciar-equipe"
+    ],
+    "outcome": "Você sabe onde ajustar cada regra e qual perfil participa da mudança."
+  },
+  {
+    "id": "configurar-etapas",
+    "category": "administracao",
+    "title": "Como ajustar requisitos e prazos das etapas?",
+    "summary": "A configuração define o que deve ser comprovado e quando a permanência em uma etapa pede atenção.",
+    "steps": [
+      {
+        "title": "Abra Configurações → Requisitos das etapas",
+        "text": "Escolha a jornada e a etapa que precisa ser ajustada. Leia o objetivo comercial antes de alterar a exigência."
+      },
+      {
+        "title": "Revise os critérios",
+        "text": "Confira os requisitos padrão habilitados e os adicionais. Uma nova confirmação precisa ter sentido prático e alguém capaz de apurá-la."
+      },
+      {
+        "title": "Ajuste referências e sugestões",
+        "text": "Revise limite de dias e tarefas sugeridas. O prazo é uma referência de acompanhamento, não uma aprovação automática."
+      },
+      {
+        "title": "Salve e confira um caso",
+        "text": "Verifique a lista de pendências no negócio e explique à equipe o que passou a ser exigido."
+      }
+    ],
+    "callout": {
+      "title": "Não use uma regra apenas para preencher o quadro",
+      "text": "Antes de exigir um dado, combine como será apurado e o que comprova que está correto."
+    },
+    "related": [
+      "requisitos-etapas",
+      "avancar-etapa",
+      "configuracoes"
+    ],
+    "permissions": "Administrador",
+    "outcome": "A exigência corresponde ao processo real e a equipe sabe como comprová-la."
+  },
+  {
+    "id": "regras-atividades",
+    "category": "administracao",
+    "title": "Como configurar resultado obrigatório e próximo passo?",
+    "summary": "As regras variam por tipo de atividade e orientam a conclusão com continuidade.",
+    "steps": [
+      {
+        "title": "Abra Configurações → Requisitos das atividades",
+        "text": "Escolha o tipo, como Visita, Ligação ou WhatsApp."
+      },
+      {
+        "title": "Defina o resultado exigido",
+        "text": "Se o resultado for obrigatório, a pessoa precisará explicar o que aconteceu para concluir o fluxo."
+      },
+      {
+        "title": "Defina a continuidade",
+        "text": "Revise exigência de próximo passo, tipo sugerido e prazo. Não confunda uma sugestão de prazo com o compromisso efetivamente combinado."
+      },
+      {
+        "title": "Salve e confira a experiência",
+        "text": "Teste uma conclusão representativa e comunique à equipe o que deverá preencher."
+      }
+    ],
+    "example": {
+      "situation": "Uma visita precisa deixar claro o que foi combinado e o que vem depois.",
+      "action": "Configure resultado obrigatório e uma sugestão de retorno compatível com o processo.",
+      "result": "A conclusão passa a pedir uma informação útil e a orientar continuidade; a equipe ainda deve revisar o caso real."
+    },
+    "related": [
+      "registrar-atividade",
+      "gerenciar-tarefa",
+      "configuracoes"
+    ],
+    "permissions": "Administrador",
+    "outcome": "A conclusão pede informações úteis e orienta a continuidade adequada."
+  },
+  {
+    "id": "configurar-metas",
+    "category": "administracao",
+    "title": "Como definir metas da empresa e da equipe?",
+    "summary": "A distribuição precisa corresponder ao planejamento da empresa e às pessoas que participam do resultado.",
+    "steps": [
+      {
+        "title": "Abra Configurações → Metas",
+        "text": "Confira ano e meta anual da empresa antes de distribuir."
+      },
+      {
+        "title": "Revise os participantes",
+        "text": "Inclua quem efetivamente vende. Gestores e administradores podem participar quando também têm atuação comercial."
+      },
+      {
+        "title": "Confira as parcelas individuais",
+        "text": "Defina valores quando necessário e revise a distribuição do restante entre os participantes. Confira se o total faz sentido."
+      },
+      {
+        "title": "Ajuste metas de registros e atividades",
+        "text": "Observe quantidade, unidade e período. Meta por dia, semana e mês produz referências diferentes."
+      },
+      {
+        "title": "Salve e confira a tela de Metas",
+        "text": "Compare períodos e pessoas para validar a distribuição e explicar as referências à equipe."
+      }
+    ],
+    "related": [
+      "metas-resultados",
+      "painel-resultados",
+      "configuracoes"
+    ],
+    "permissions": "Administrador",
+    "outcome": "Objetivo, participantes e parcelas foram conferidos na tela de Metas."
+  },
+  {
+    "id": "condicoes-proposta",
+    "category": "administracao",
+    "title": "Como alterar os padrões das propostas?",
+    "summary": "Os padrões ajudam a preencher novas propostas. Cada negociação continua exigindo revisão das condições.",
+    "steps": [
+      {
+        "title": "Abra Configurações → Condições da proposta",
+        "text": "Confira as opções de pagamento, validade, frete, entrega e observações disponíveis."
+      },
+      {
+        "title": "Atualize o que foi aprovado comercialmente",
+        "text": "Evite usar um padrão para prometer uma condição que depende de análise caso a caso."
+      },
+      {
+        "title": "Salve e confira uma proposta",
+        "text": "Revise os campos no gerador e veja se o padrão está adequado para o uso da equipe."
+      },
+      {
+        "title": "Trate documentos antigos separadamente",
+        "text": "Uma mudança do padrão não atualiza automaticamente um PDF já enviado. Revise e gere outra versão quando necessário."
+      }
+    ],
+    "related": [
+      "preparar-proposta",
+      "enviar-proposta",
+      "configuracoes"
+    ],
+    "permissions": "Administrador",
+    "outcome": "Os padrões corretos aparecem no gerador; documentos enviados foram tratados separadamente."
+  },
+  {
+    "id": "gerenciar-equipe",
+    "category": "administracao",
+    "title": "Como criar, editar, desativar ou reativar um usuário?",
+    "summary": "Equipe administra acesso e responsabilidade. Antes de retirar alguém, decida quem assumirá a continuidade.",
+    "steps": [
+      {
+        "title": "Abra Configurações → Equipe",
+        "text": "Confira se a pessoa já existe. Para um novo usuário, informe nome, e-mail, função e senha inicial de pelo menos oito caracteres. Revise separadamente se ela deve ter acesso de administrador."
+      },
+      {
+        "title": "Revise cargo e WhatsApp",
+        "text": "Use o número correto e exclusivo entre membros ativos. Um telefone errado afeta identificação no agente e lembretes."
+      },
+      {
+        "title": "Ao editar, confira os campos disponíveis",
+        "text": "O e-mail não é alterado pelo formulário comum de atualização. Para essa necessidade, procure o responsável pelo acesso."
+      },
+      {
+        "title": "Ao desativar, transfira responsabilidades",
+        "text": "Quando houver carteira, escolha uma pessoa ativa para assumir empresas, negócios abertos, tarefas pendentes e conversas."
+      },
+      {
+        "title": "Ao reativar, confira conflitos",
+        "text": "Revise número, função, permissão de administrador e carteira antes de retomar o uso. O fluxo impede desativar a própria conta e a interface impede alterar a própria permissão de administrador."
+      }
+    ],
+    "flow": [
+      "Identificar pessoa",
+      "Definir perfil",
+      "Conferir número",
+      "Atribuir responsabilidade",
+      "Revisar acesso"
+    ],
+    "related": [
+      "perfis-acesso",
+      "acesso-ia",
+      "minha-conta"
+    ],
+    "permissions": "Administrador",
+    "outcome": "Acesso e responsabilidade estão corretos e as pendências de uma saída têm novo responsável."
+  },
+  {
+    "id": "auditoria",
+    "category": "administracao",
+    "title": "Como conferir quem alterou um registro?",
+    "summary": "A Auditoria ajuda a reconstruir uma mudança e seu contexto. Ela não substitui o resultado registrado no atendimento.",
+    "steps": [
+      {
+        "title": "Comece pela empresa",
+        "text": "A área de Auditoria da ficha reúne alterações relacionadas à conta."
+      },
+      {
+        "title": "Use a Auditoria geral quando necessário",
+        "text": "Gestores e administradores podem buscar eventos mais amplos e conferir autor, origem e diferenças quando disponíveis."
+      },
+      {
+        "title": "Compare com o histórico",
+        "text": "Entenda por que a mudança aconteceu e se o resultado corresponde ao que foi combinado."
+      },
+      {
+        "title": "Peça ajuda para eventos antigos",
+        "text": "A tela mostra um conjunto recente. Uma ausência na consulta não prova que um evento antigo nunca existiu."
+      }
+    ],
+    "related": [
+      "ficha-cliente",
+      "atendimento-ia",
+      "configuracoes"
+    ],
+    "permissions": "Gestor e administrador na consulta geral",
+    "outcome": "Você encontrou contexto e autoria disponíveis ou sabe como pedir investigação adicional."
+  },
+  {
+    "id": "cliente-nao-aparece",
+    "category": "solucionar",
+    "title": "Não encontro um cliente, uma venda ou uma tarefa. O que conferir?",
+    "summary": "Antes de criar outra ficha, elimine os filtros e diferenças de contexto que podem ocultar o registro.",
+    "steps": [
+      {
+        "title": "Limpe a busca e os filtros",
+        "text": "Confira responsável, região, situação, jornada e período."
+      },
+      {
+        "title": "Pesquise por outro dado",
+        "text": "Tente empresa, contato, cidade ou CNPJ quando disponível. Confirme se está olhando a carteira e o perfil corretos."
+      },
+      {
+        "title": "Revise o significado do período",
+        "text": "Oportunidades abertas podem usar entrada na etapa; vendas usam fechamento. Amplie o período para procurar um resultado antigo."
+      },
+      {
+        "title": "Confira situação e continuidade",
+        "text": "Uma conta pode estar em espera, perdida ou em outro ciclo. Uma tarefa pode ter sido concluída, reagendada ou cancelada."
+      },
+      {
+        "title": "Peça investigação antes de duplicar",
+        "text": "Informe o que procurou e onde. Criar outra empresa pode separar o histórico e piorar a busca."
+      }
+    ],
+    "flow": [
+      "Limpar filtros",
+      "Confirmar acesso",
+      "Buscar outros dados",
+      "Rever período e situação",
+      "Pedir ajuda"
+    ],
+    "related": [
+      "evitar-duplicidade",
+      "ficha-cliente",
+      "perfis-acesso"
+    ],
+    "outcome": "Você esgotou filtros e contexto antes de criar uma duplicata ou assumir exclusão."
+  },
+  {
+    "id": "pedir-ajuda",
+    "category": "solucionar",
+    "title": "Como pedir suporte quando uma ação não funciona?",
+    "summary": "Uma descrição objetiva ajuda a equipe responsável a investigar sem expor informações desnecessárias.",
+    "steps": [
+      {
+        "title": "Descreva a ação",
+        "text": "Informe em qual área estava e o que tentou fazer: localizar, salvar, mover, enviar ou concluir."
+      },
+      {
+        "title": "Informe o resultado observado",
+        "text": "Copie o texto da mensagem e diga o que esperava acontecer. Acrescente o horário aproximado e se o problema se repetiu."
+      },
+      {
+        "title": "Confirme o contexto necessário",
+        "text": "Indique o perfil de acesso e a conta envolvida pelo canal autorizado. Envie apenas os dados necessários para localizar o caso."
+      },
+      {
+        "title": "Proteja as informações",
+        "text": "Não compartilhe senha, credenciais, conversas inteiras ou dados de terceiros sem necessidade. Se usar uma captura para suporte, limite-a ao problema."
+      },
+      {
+        "title": "Evite repetir uma ação incerta",
+        "text": "Antes de reenviar mensagem, cadastrar outra empresa ou registrar outra venda, confira se a primeira tentativa produziu resultado."
+      }
+    ],
+    "checklist": [
+      "Área e ação identificadas",
+      "Mensagem exata anotada",
+      "Horário aproximado informado",
+      "Resultado esperado explicado",
+      "Dados limitados ao necessário"
+    ],
+    "related": [
+      "resultado-envio",
+      "cliente-nao-aparece",
+      "corrigir-ia"
+    ],
+    "outcome": "O suporte recebe uma descrição útil, limitada aos dados necessários para investigar."
+  }
+]
